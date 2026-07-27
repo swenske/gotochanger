@@ -412,22 +412,22 @@ func setupDevice(configfsRoot, hba, name string, listener *tcmu.Listener, handle
 	}
 	hostsBefore, err := tcmu.ListSCSIHosts()
 	if err != nil {
-		releaseHostLock()
+		_ = releaseHostLock()
 		return nil, fmt.Errorf("list scsi hosts (before): %w", err)
 	}
 	loopback := tcmu.LoopbackConfig{WWN: deviceWWN(name)}
 	if err := tcmu.CreateLoopbackTarget(configfsRoot, loopback); err != nil {
-		releaseHostLock()
+		_ = releaseHostLock()
 		return nil, fmt.Errorf("create loopback target: %w", err)
 	}
 	log.Info("loopback target created", "device", name, "wwn", loopback.WWN)
 	hostsAfter, err := tcmu.ListSCSIHosts()
 	if err != nil {
-		releaseHostLock()
+		_ = releaseHostLock()
 		return nil, fmt.Errorf("list scsi hosts (after): %w", err)
 	}
 	_, hostPath, ok := tcmu.NewSCSIHost(hostsBefore, hostsAfter)
-	releaseHostLock()
+	_ = releaseHostLock()
 	if !ok {
 		return nil, fmt.Errorf("no new scsi host appeared after creating loopback target %s", loopback.WWN)
 	}

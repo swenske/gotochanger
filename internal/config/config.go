@@ -593,7 +593,7 @@ func ParseSize(s string) (int64, error) {
 		return 0, fmt.Errorf("invalid size %q: %w", s, err)
 	}
 	unit := strings.ToLower(m[2])
-	var mult float64 = 1
+	var mult float64
 	switch {
 	case unit == "" || unit == "b":
 		mult = 1
