@@ -1,3 +1,17 @@
+gotochanger (0.7.0) UNRELEASED; urgency=medium
+
+  * Initial commit: gotochanger virtual tape autochanger simulator
+  * Correct license: MIT, Sebastien WENSKE (not proprietary)
+  * Add CI workflow and goreleaser/nfpm release packaging config
+  * Add manual release workflow (workflow_dispatch, self-hosted runner)
+  * Add Claude PR review and issue triage workflows
+  * Fix lint findings from the first real golangci-lint run
+  * Fix .golangci.yml schema: linters-settings is top-level in v1
+  * Fix remaining lint findings (first real full lint pass)
+  * Update README (#1)
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Mon, 27 Jul 2026 07:13:33 +0000
+
 gotochanger (0.6.2) UNRELEASED; urgency=medium
 
   * Fix kernel mode never moving a volume's end-of-data back when it is
