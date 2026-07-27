@@ -4,15 +4,23 @@
 name: Claude Issue Triage
 
 on:
-  issues:
-    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: claude-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
 
 permissions:
+  contents: read
   issues: write
   id-token: write
 
 jobs:
   triage:
+    if: >
+      !github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +28,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_model: claude-haiku-4-5-20251001
           prompt: |
             A new issue was just opened on gotochanger, a Bareos tape-
             autochanger simulator written in Go. Read the issue and post a
