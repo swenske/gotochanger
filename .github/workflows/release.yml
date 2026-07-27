@@ -145,23 +145,35 @@ jobs:
           echo "Opened PR #$pr_number ($branch -> main)"
 
           head_sha="$(git rev-parse HEAD)"
-          echo "Waiting for required checks on $head_sha..."
+          # Only these are actually required by main's branch protection
+          # (ci.yml's own job names) - opening this PR also triggers
+          # claude-review.yml's own "review" check on the same commit,
+          # which is advisory only and must never gate a release (found
+          # the hard way: a real release attempt hung/failed here because
+          # a flaky Claude review run was treated as required).
+          required_names='["lint","test","build"]'
+          echo "Waiting for required checks ($required_names) on $head_sha..."
           checks="{}"
+          present_count=0
           for _ in $(seq 1 60); do
             checks="$(curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs")"
-            total="$(echo "$checks" | jq '.total_count')"
-            incomplete="$(echo "$checks" | jq '[.check_runs[] | select(.status != "completed")] | length')"
-            if [ "$total" -gt 0 ] && [ "$incomplete" = "0" ]; then
+            present="$(echo "$checks" | jq --argjson names "$required_names" \
+              '[.check_runs[] | select(.name as $n | $names | index($n) != null)]')"
+            present_count="$(echo "$present" | jq 'length')"
+            incomplete="$(echo "$present" | jq '[.[] | select(.status != "completed")] | length')"
+            if [ "$present_count" -ge 3 ] && [ "$incomplete" = "0" ]; then
               break
             fi
             sleep 10
           done
 
-          failed="$(echo "$checks" | jq '[.check_runs[] | select(.conclusion != "success")] | length')"
-          if [ "$total" = "0" ] || [ "$failed" != "0" ]; then
-            echo "checks did not all complete successfully, aborting release:" >&2
-            echo "$checks" | jq -r '.check_runs[] | "\(.name): \(.status)/\(.conclusion)"' >&2
+          failed="$(echo "$checks" | jq --argjson names "$required_names" \
+            '[.check_runs[] | select(.name as $n | $names | index($n) != null) | select(.conclusion != "success")] | length')"
+          if [ "$present_count" -lt 3 ] || [ "$failed" != "0" ]; then
+            echo "required checks (lint/test/build) did not all complete successfully, aborting release:" >&2
+            echo "$checks" | jq --argjson names "$required_names" -r \
+              '.check_runs[] | select(.name as $n | $names | index($n) != null) | "\(.name): \(.status)/\(.conclusion)"' >&2
             exit 1
           fi
 
