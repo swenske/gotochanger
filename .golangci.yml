@@ -18,14 +18,23 @@ linters:
     - unused      # unused identifiers
     - gosimple    # code that could be simpler
     - misspell    # comment/string typos
-  settings:
-    errcheck:
-      exclude-functions:
-        # A deferred/bare Tx.Rollback() after a successful Commit() is the
-        # standard Go database idiom - its error (typically sql.ErrTxDone)
-        # is expected and inherent to the pattern, not something callers
-        # are meant to act on.
-        - (*database/sql.Tx).Rollback
+
+# NOTE: CI currently resolves golangci-lint "latest" to a 1.x release
+# (confirmed via a real run: golangci-lint-1.64.8), whose config schema
+# has "linters-settings" as its own top-level key - NOT nested under
+# "linters.settings" as in golangci-lint v2. Confirmed the hard way: the
+# v2-style nested form fails golangci-lint's own "config verify" step
+# with "additional properties 'settings' not allowed". If the pinned
+# "latest" version ever moves to v2, this whole block moves under
+# "linters:" as "settings:" instead.
+linters-settings:
+  errcheck:
+    exclude-functions:
+      # A deferred/bare Tx.Rollback() after a successful Commit() is the
+      # standard Go database idiom - its error (typically sql.ErrTxDone)
+      # is expected and inherent to the pattern, not something callers
+      # are meant to act on.
+      - (*database/sql.Tx).Rollback
 
 issues:
   # Don't cap the number of issues reported per-linter/total - see them all.
