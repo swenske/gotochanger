@@ -8,7 +8,13 @@ and SNMP traps — without any real tape hardware.
 It is meant as a drop-in, much more capable replacement for Bareos's
 `disk-changer.in`, adding I/O slots, a REST API, a management web UI, and
 SNMP notifications, while remaining compatible with existing
-`Device Type = File` Bareos configurations.
+`Device Type = File` Bareos configurations. An optional second backend
+can also expose the same library as real kernel SCSI devices (`/dev/sg*`,
+`/dev/nst*`) via TCMU/LIO, for deployments that need Bareos to see an
+actual SCSI changer rather than a changer-script convention — see
+"Kernel mode: real SCSI devices" below.
+
+![gotochanger dashboard](docs/dashboard.png)
 
 ## Components
 
@@ -16,7 +22,8 @@ SNMP notifications, while remaining compatible with existing
 |------------------------|--------------------------------------------------------------------------|
 | `gotochangerd`         | The daemon: library state, REST API, embedded web UI, SNMP traps, setup wizard.        |
 | `gotochanger-changer`  | Drop-in replacement for Bareos's `disk-changer.in` "Changer Command".     |
-| `gotochangerctl`       | General purpose admin CLI (status, load/unload/move, volumes, tokens).   |
+| `gotochangerctl`       | General purpose admin CLI (status, load/unload/move, volumes, backup/restore, tokens).   |
+| `gotochanger-tcmud`    | Optional kernel-mode backend (ships in the separate `gotochanger-kernel` package): exposes the same library as real SCSI devices (`/dev/sg*`, `/dev/nst*`) via TCMU/LIO, translating real SCSI CDBs into the same calls `gotochanger-changer` makes over the trusted socket. |
 
 ## Concepts
 
@@ -39,15 +46,30 @@ Modeled after SCSI Medium Changer (SMC) element types:
   (1-5 slots each), the I/O-slot equivalent of a magazine. I/O slots
   aren't configured as a flat count; they belong to a mailbox, and logical
   libraries assign whole mailboxes (by ID), not individual I/O slot
-  addresses.
+  addresses. A mailbox can optionally require a 4-digit PIN to open its
+  door.
 - **Magazines** — named, independently addressable groups of storage slots
-  (5-20 slots, in increments of 5).
+  (5-20 slots, in increments of 5). Like mailboxes, a magazine can
+  optionally require a 4-digit PIN to open its storage door; no PIN
+  configured means the door opens freely.
 - **Drives** (`drive:N`) — data transfer elements. Loading a drive symlinks
   its configured device path (Bareos's "Archive Device") to the volume's
-  backing file, exactly like `disk-changer.in` did.
+  backing file, exactly like `disk-changer.in` did (in userspace/file
+  mode — see "Kernel mode" below for the alternative). Drives track
+  mounts-since-cleaning and can be faulted individually; a separate
+  **robotic fault** (`blocked_arm`, `mispositioned_cartridge`,
+  `pickup_failure`, `drop_failure`, `movement_jam`, `other`) targets the
+  single shared arm instead, blocking *all* Load/Unload/Move until
+  cleared — there's only one robot.
 - **Volumes** are plain files under `<data_dir>/volumes/`, growable up to a
   configured capacity; once a loaded volume's file reaches that capacity it
-  is marked full and made read-only, simulating end-of-tape.
+  is marked full and made read-only, simulating end-of-tape. A volume can
+  also be individually write-protected (simulating a physical write-protect
+  tab), and can be sent to and recalled from an offsite vault, either
+  manually or on an automatic rotation schedule.
+- **Cleaning tapes** — a special volume kind with a limited usage count
+  that decrements each cleaning cycle and expires once exhausted; cleaning
+  behavior (mount threshold, max uses) is configurable per library.
 - **Logical libraries** — a named partition of the physical library (like a
   Dell ML3), each with its own subset of drives/magazines/mailboxes and a
   color for the dashboard. `Load`/`Unload`/`Move` reject any element
@@ -57,7 +79,9 @@ Modeled after SCSI Medium Changer (SMC) element types:
   library at a time.
 - **Tape sets** — named groups of cartridges by tape/media type (LTOx,
   DDSx, DLTxxxx — tracked separately from drive hardware types), each
-  stored under its own folder on disk.
+  stored under its own folder on disk. Cartridge barcodes can be
+  auto-generated per set for LTO, DLT, SDLT, DDS/DAT, AIT/SAIT, and IBM
+  3592 conventions, plus a generic fallback for custom formats.
 
 Library topology (a VTL name, drive/tape types, magazines, mailboxes,
 drive devices, logical libraries, tape sets) lives in a SQLite database at
@@ -69,7 +93,7 @@ no drives, magazines, or mailboxes configured at all until the wizard runs.
 ## Quick start
 
 ```sh
-sudo apt install ./gotochanger_0.2.0_amd64.deb
+sudo apt install ./gotochanger_<version>_amd64.deb
 sudo systemctl status gotochanger
 journalctl -u gotochanger | grep 'bootstrap API token'   # save this token!
 ```
@@ -83,8 +107,8 @@ auto-generating N labeled cartridges per set), at least one logical
 library, and a latency profile. Finishing the wizard applies the new
 topology to the running daemon immediately, no restart needed.
 From there, use the **Admin** section to manage users/tokens, the drive/tape
-type catalogs, tape sets, magazines, mailboxes, and logical libraries; or
-drive everything from the CLI:
+type catalogs, tape sets, drives, magazines, mailboxes, logical libraries,
+and backups; or drive everything from the CLI:
 
 ```sh
 # gotochangerctl talks to the trusted local Unix socket by default, no token needed
@@ -109,7 +133,7 @@ unauthenticated over the trusted local Unix socket (used by
 Three roles, in increasing order of privilege:
 
 | Role       | Can do                                                              |
-|------------|----------------------------------------------------------------------|
+|------------|------------------------------------------------------------------------|
 | `viewer`   | Read-only: status, events, volumes list                              |
 | `operator` | Everything a viewer can, plus load/unload/move/door operations/outside tape create-delete/drive fault |
 | `admin`    | Everything, plus the Admin section: users, tokens, settings          |
@@ -129,24 +153,38 @@ From the **Admin** section (admin role required) you can:
 - **Drive Types** / **Tape Types**: manage the suggested catalogs (add,
   update, remove) — LTO-8, LTO-9, DDS, DLT, and an Unlimited
   capacity/performance model are seeded on first start.
+- **Drives**: create/edit/remove drives (device path + drive-type
+  assignment). Changes hot-apply immediately — no restart needed. Deleting
+  a drive that currently holds a volume is refused.
 - **Tape Sets**: create/edit/delete named groups of cartridges by tape
   type, each with its own storage folder.
 - **Magazines**: create/edit/delete slot groups (5-20 slots, in increments
-  of 5). Changes hot-apply immediately — no restart needed. Deleting a
-  magazine that still has volumes in its slots is refused.
+  of 5), optionally PIN-protected. Changes hot-apply immediately — no
+  restart needed. Deleting a magazine that still has volumes in its slots
+  is refused.
 - **Mailboxes**: create/edit/delete I/O slot groups (1-5 slots each),
-  the I/O-slot equivalent of a magazine. Changes hot-apply immediately.
-  Deleting a mailbox that still has volumes in its slots is refused.
+  the I/O-slot equivalent of a magazine, optionally PIN-protected. Changes
+  hot-apply immediately. Deleting a mailbox that still has volumes in its
+  slots is refused.
 - **Logical Libraries**: create/edit/delete named partitions of the
   library, assigning drives/magazines/mailboxes and a display color. An
   element can only belong to one logical library at a time (rejected with
   409 otherwise); unassigned drives/slots/mailboxes are listed in the same
   screen for reassignment.
+- **Backup & Restore**: download an on-demand backup, configure a
+  recurring scheduled backup with a retention count, browse/download/
+  delete previously stored backups, restore from a backup file (requires
+  a service restart to apply — and **replaces user accounts and API
+  tokens along with topology**, since auth lives in the same database),
+  or factory-reset the whole install (gated on typing the VTL's current
+  name to confirm, with an option to also delete volume files on disk).
 - **Settings**: view/change the parts of configuration that can safely
   apply without a restart (default volume capacity, barcodes, poll
-  interval, log level, SNMP, latency profile, offsite rotation schedule).
-  Only `data_dir`, `tokens_file`, and `listen` require editing
-  `/etc/gotochanger/config.yaml` plus `systemctl restart gotochanger`.
+  interval, log level, SNMP, latency profile, cleaning thresholds, the
+  magazine/mailbox door PIN, offsite rotation schedule, and the
+  userspace/kernel operational mode). Only `data_dir`, `tokens_file`, and
+  `listen` require editing `/etc/gotochanger/config.yaml` plus
+  `systemctl restart gotochanger`.
 
 Equivalent CLI commands (`gotochangerctl`, talking to the trusted socket by
 default so no token/login is needed locally):
@@ -172,6 +210,12 @@ gotochangerctl unassigned
 gotochangerctl offsite send slot 4
 gotochangerctl offsite recall Vol0004 slot 4
 gotochangerctl wizard status
+
+gotochangerctl backup download ./gotochanger-backup.db
+gotochangerctl backup list
+gotochangerctl backup schedule set interval=24h retention=7
+gotochangerctl restore ./gotochanger-backup.db     # requires a service restart to apply
+gotochangerctl reset MyVTL --delete-volumes         # factory reset, gated on the VTL's name
 ```
 
 ## Bareos integration
@@ -255,6 +299,44 @@ I/O slot, or drive doesn't belong to `Library1` — this is what keeps two
 Bareos Autochangers sharing one physical gotochanger instance from
 touching each other's media.
 
+### Kernel mode: real SCSI devices
+
+By default gotochanger runs in **userspace/file mode**: loading a drive
+symlinks a plain file at the configured `Archive Device` path, no root or
+kernel modules required. An optional **kernel mode** instead exposes the
+same library as real SCSI devices (`/dev/sg*` for the changer/generic
+device, `/dev/nst*` for tape drives) via TCMU/LIO, for tools that insist
+on talking to an actual SCSI medium changer rather than a changer-script
+convention — no real tape hardware is involved either way, kernel mode
+just adds a real *kernel device node* backed by the same plain files.
+
+1. Install the separate `gotochanger-kernel` package (depends on
+   `gotochanger` and `polkitd`). It needs root and the `target_core_user`
+   kernel module — the package's postinst does a best-effort `modprobe`.
+2. Turn it on by setting the **operational mode** to `kernel` (setup
+   wizard, or Admin → Settings / `gotochangerctl settings set
+   operational_mode=kernel`). gotochangerd's own reconciler then
+   automatically starts/stops one `gotochanger-tcmud@<logical-library-
+   name>.service` instance per logical library (`@default` if the
+   library is unscoped) via polkit-authorized systemd calls — no manual
+   `systemctl enable` step is required, though it's supported (the Admin
+   UI's per-library "Kernel Mode Setup" dialog shows the equivalent
+   manual `systemctl enable --now gotochanger-tcmud@<instance>` command
+   for cases where automatic management isn't wanted).
+3. Real devices then appear under `/dev/sg*`/`/dev/nst*`. Prefer the
+   stable `/dev/tape/by-id/scsi-<NAA>[-nst]` symlinks over raw
+   `/dev/sgN`/`/dev/nstN` numbers, which are **not** stable across a
+   `gotochanger-tcmud` restart. Admin → Drives and the Bareos-Config
+   generator button both show the actual current device paths.
+4. Point Bareos's `Archive Device`/`Changer Device` at those real device
+   paths instead of the file-based ones — no other config-file syntax
+   change is needed.
+
+Device paths are tracked in memory on the gotochangerd side (a running
+`gotochanger-tcmud` self-reports them at startup) and are lost on a
+gotochangerd restart until the `gotochanger-tcmud` instance itself
+restarts.
+
 ## REST API
 
 All actions are available over HTTP. The Unix socket
@@ -273,10 +355,13 @@ of the `admin`/`operator`/`viewer` roles described above.
 | POST   | `/api/v1/auth/change-password` | viewer+   | Change your own password          |
 | GET    | `/api/v1/status`               | viewer+   | Full library snapshot             |
 | GET    | `/api/v1/events`                | viewer+   | Recent activity log               |
+| GET    | `/api/v1/stream`                | viewer+   | Live event stream (Server-Sent Events) |
 | GET    | `/api/v1/volumes`               | viewer+   | List all volumes                  |
 | GET    | `/api/v1/outside`               | viewer+   | List outside-library tapes        |
 | POST   | `/api/v1/outside`               | operator+ | Create outside-library tape       |
 | DELETE | `/api/v1/outside/{label}`       | operator+ | Delete outside-library tape       |
+| GET    | `/api/v1/cleaning/tapes`        | viewer+   | List cleaning tapes and remaining uses |
+| POST   | `/api/v1/cleaning/tapes`        | operator+ | Create a cleaning tape            |
 | POST   | `/api/v1/load`                  | operator+ | Load a slot/ioslot into a drive   |
 | POST   | `/api/v1/unload`                | operator+ | Unload a drive to a slot/ioslot   |
 | POST   | `/api/v1/move`                  | operator+ | Move between slot/ioslot elements |
@@ -284,10 +369,22 @@ of the `admin`/`operator`/`viewer` roles described above.
 | POST   | `/api/v1/doors/io/close`        | operator+ | Close I/O door and process actions|
 | POST   | `/api/v1/doors/storage/open`    | operator+ | Open storage door                 |
 | POST   | `/api/v1/doors/storage/close`   | operator+ | Close storage door and process actions|
-| POST   | `/api/v1/drives/{index}/fault`  | operator+ | Inject/clear a simulated drive fault|
+| POST   | `/api/v1/drives/{index}/fault`  | operator+ | Inject/clear a simulated fault on one drive |
+| POST   | `/api/v1/robotics/fault`        | operator+ | Inject/clear a simulated fault on the shared robotic arm (blocks all Load/Unload/Move) |
+| POST   | `/api/v1/volumes/{barcode}/write-protect` | operator+ | Set/clear a volume's write-protect flag |
 | GET/POST/DELETE | `/api/v1/users`        | admin     | Manage user accounts              |
 | GET/POST/DELETE | `/api/v1/tokens`       | admin     | Manage scoped API tokens          |
 | GET/PUT | `/api/v1/settings`             | admin     | View/update application settings  |
+| GET/PUT | `/api/v1/settings/latency`     | admin     | View/update latency simulation settings |
+| GET/PUT | `/api/v1/settings/cleaning`    | admin     | View/update cleaning thresholds   |
+| GET/PUT | `/api/v1/settings/pin`         | admin     | View/update the magazine/mailbox door PIN |
+| GET    | `/api/v1/backup/download`      | admin     | Download an on-demand backup of `state.db` |
+| GET/PUT | `/api/v1/backup/schedule`     | admin     | View/update the recurring backup schedule |
+| GET    | `/api/v1/backups`              | admin     | List stored (scheduled) backups   |
+| GET    | `/api/v1/backups/{filename}/download` | admin | Download a stored backup   |
+| DELETE | `/api/v1/backups/{filename}`   | admin     | Delete a stored backup            |
+| POST   | `/api/v1/restore`              | admin     | Restore `state.db` from a backup file (requires restart) |
+| POST   | `/api/v1/reset`                | admin     | Factory reset (name-confirmed)    |
 | GET    | `/api/v1/wizard`               | none      | Current setup wizard state         |
 | POST   | `/api/v1/wizard`               | none      | Submit one wizard step (persists immediately) |
 | POST   | `/api/v1/wizard/complete`      | none      | Finish the wizard, hot-apply topology |
@@ -296,26 +393,34 @@ of the `admin`/`operator`/`viewer` roles described above.
 | GET/POST/PUT/DELETE | `/api/v1/logical-libraries[/{name}]` | admin | Manage logical library partitions |
 | GET    | `/api/v1/unassigned`           | admin     | Drives/slots/mailboxes in no logical library |
 | GET/POST/PUT/DELETE | `/api/v1/drive-types[/{name}]` | admin | Manage the drive-type catalog     |
+| GET/POST/PUT/DELETE | `/api/v1/drives[/{index}]` | admin | Manage drives (device path + drive-type assignment, hot-applies) |
 | GET/POST/PUT/DELETE | `/api/v1/tape-types[/{name}]`  | admin | Manage the tape/media-type catalog|
 | GET/POST/PUT/DELETE | `/api/v1/tape-sets[/{name}]`   | admin | Manage tape sets (type + storage folder) |
+| GET    | `/api/v1/fs/browse`             | admin     | Browse server-side folders (tape-set storage picker) |
 | GET/POST/PUT/DELETE | `/api/v1/magazines[/{id}]`     | admin | Manage magazines (hot-applies)    |
 | GET/POST/PUT/DELETE | `/api/v1/mailboxes[/{id}]`     | admin | Manage mailboxes (hot-applies)    |
 | GET    | `/api/v1/offsite`               | viewer+   | List volumes in the offsite vault  |
 | POST   | `/api/v1/offsite/send`          | operator+ | Send a volume to the offsite vault |
 | POST   | `/api/v1/offsite/recall`        | operator+ | Recall a volume from the offsite vault |
+| GET    | `/api/v1/kernel-mode/status`    | viewer+   | Whether the `gotochanger-kernel` package/kernel module are available |
+| GET    | `/api/v1/kernel-mode/devices`   | viewer+   | Real device paths self-reported by running `gotochanger-tcmud` instances |
+| POST/DELETE | `/api/v1/kernel-mode/devices/{instance}` | operator+ | Used by `gotochanger-tcmud` itself to report/clear its devices |
 
 `Load`/`Unload`/`Move` (and `GET /api/v1/status`) additionally accept an
 `X-Logical-Library: NAME` header to scope the operation to one logical
 library — see "Scoping an Autochanger to one logical library" above.
 
-### Interactive API docs (Swagger UI)
+### Interactive API docs (Swagger UI) and User Guide
 
 A full OpenAPI 3.0 spec is served at `/api/v1/openapi.json` and rendered
 as an interactive, embedded Swagger UI at **`/docs`** (linked from the web
-UI's nav bar). No internet access is required to view it: the Swagger UI
-assets are vendored and embedded in the binary. Use the "Authorize" button
-with an API token, or just stay logged into the web UI in the same browser
-(the session cookie is sent automatically for same-origin requests).
+UI's nav bar). An embedded, self-contained **User Guide** is also served
+at **`/guide`**, linked from the same nav bar and opening in a new tab.
+Neither requires internet access to view: both the Swagger UI assets and
+the guide are vendored and embedded in the binary. Use the "Authorize"
+button with an API token, or just stay logged into the web UI in the same
+browser (the session cookie is sent automatically for same-origin
+requests).
 
 ## SNMP traps
 
@@ -388,6 +493,11 @@ make install DESTDIR=/some/root   # used by debian/rules
 dpkg-buildpackage -us -uc -b
 ```
 
+Produces two binary packages from the same source tree: `gotochanger`
+(`gotochangerd`, `gotochanger-changer`, `gotochangerctl`) and
+`gotochanger-kernel` (`gotochanger-tcmud` plus its systemd unit) for
+kernel mode.
+
 ## Quick redeploy helper
 
 For faster inner-loop testing, use the helper script:
@@ -410,20 +520,20 @@ network access.
 
 ## Scope and limitations
 
-gotochanger is a userspace simulation: it does **not** create real kernel
-SCSI generic devices (`/dev/sg*`, `/dev/nst*`). Bareos (and any tool driven
-through `gotochanger-changer`/the REST API) never needs one — Bareos calls
-a "Changer Command" script and reads/writes plain files, exactly as with
-`disk-changer.in`. A future phase could expose true kernel SCSI devices via
-`target_core_user` (TCMU)/LIO, backed by this same daemon, for tools that
-insist on talking to a real SCSI medium changer/tape device; that is
-intentionally out of scope for this initial version given the root
-privileges, kernel module and custom SSC/SMC command emulation it would
-require.
+gotochanger's default mode is a userspace simulation: it does not create
+real kernel SCSI generic devices, and no root or kernel modules are
+required. Bareos (and any tool driven through `gotochanger-changer`/the
+REST API) never needs one in this mode — Bareos calls a "Changer Command"
+script and reads/writes plain files, exactly as with `disk-changer.in`.
+The optional `gotochanger-kernel` package (see "Kernel mode: real SCSI
+devices" above) does expose true kernel SCSI devices via TCMU/LIO, backed
+by this same daemon, for tools that insist on talking to a real SCSI
+medium changer/tape device — it requires root, the `target_core_user`
+kernel module, and is off by default.
 
-**Drive bandwidth throttling is not implemented.** A loaded drive is a
-symlink at the configured device path; Bareos writes directly to that
-file and gotochanger never sees the byte stream, so there's nothing to
-throttle without a real interception layer (FUSE, or the same TCMU/LIO
-kernel-device work described above). Revisit alongside kernel-device
-support if this is ever needed.
+**Drive bandwidth throttling only applies in kernel mode.** In the default
+userspace/file mode, a loaded drive is a symlink at the configured device
+path; Bareos writes directly to that file and gotochangerd never sees the
+byte stream, so there's nothing to throttle. In kernel mode, `gotochanger-
+tcmud` sits directly in the SCSI I/O path and does throttle reads/writes to
+the assigned drive type's configured native speed.
