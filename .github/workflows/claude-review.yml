@@ -1,0 +1,50 @@
+# Claude-powered PR review: runs on every PR open/update, on a
+# GitHub-hosted runner with the minimum permissions needed to read the
+# diff and post review comments - never on the self-hosted runner, and
+# never with any permission beyond what posting a review requires.
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so Claude can see the diff against the PR's base
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # This project is a stateful simulator (a virtual tape library)
+          # built around a single shared `Library` struct guarded by one
+          # sync.RWMutex - its own history is full of real bugs from
+          # exactly the categories below, so they're worth calling out
+          # explicitly rather than leaving the review fully generic.
+          prompt: |
+            Review this pull request to gotochanger, a Bareos tape-autochanger
+            simulator written in Go. Focus on:
+
+            - Correctness bugs: off-by-one errors, incorrect error handling,
+              nil-pointer/bounds issues, and edge cases in element/slot/drive
+              addressing logic.
+            - Goroutine and concurrency issues: anything touching the shared
+              `Library` state must go through its `sync.RWMutex` correctly;
+              watch for values (especially maps or pointers to live elements)
+              escaping that lock into a goroutine, an HTTP response, or an
+              SNMP notification without being copied/snapshotted first.
+            - Idiomatic Go error handling: wrapped errors with context,
+              consistent sentinel-error usage, no swallowed errors.
+            - Edge cases: empty/zero-value inputs, restart/reload paths,
+              and anything that changes on-disk or database state.
+
+            Be specific and reference exact file/line locations. Skip style
+            nitpicks already covered by golangci-lint (govet, staticcheck,
+            errcheck, ineffassign, unused, gosimple, misspell).
