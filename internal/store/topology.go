@@ -992,31 +992,66 @@ func (s *Store) DeleteMagazine(id string) error {
 // SaveMagazines replaces the whole magazines list. Used by the setup
 // wizard, which resubmits its full current list on every step (rather than
 // individual create/update/delete calls, which is what the Admin API uses
-// instead - see CreateMagazine/UpdateMagazine/DeleteMagazine). Every
-// magazine in mags gets a freshly reserved base_address, same as
-// CreateMagazine - harmless even across repeated wizard resubmissions
-// while the topology isn't live yet (nothing hot-applies until
-// CompleteWizard), and keeps this function's existing full-replace
-// semantics simple.
+// instead - see CreateMagazine/UpdateMagazine/DeleteMagazine). Every ID
+// already present keeps its existing base_address rather than drawing a
+// fresh one - the wizard's Next/Previous navigation and validation retries
+// resubmit a step's data repeatedly, and reserving a brand-new block on
+// every resubmission needlessly burns through next_topology_base_address
+// (this is exactly what produced a real installation's magazines starting
+// at physical address 121 instead of 1). Reuse is always safe: it never
+// hands an ID an address range it didn't already hold, and
+// ValidateMagazine's slot-count bounds (5-20) mean any resubmitted slot
+// count still fits inside the block already reserved for that ID. Only an
+// ID with no existing row (a genuinely new magazine) reserves a fresh
+// block, same as CreateMagazine. An ID dropped from mags is simply not
+// reinserted - its block is abandoned, same as DeleteMagazine.
 func (s *Store) SaveMagazines(mags []config.MagazineConfig) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
+	existing, err := existingBaseAddressesTx(tx, "magazines")
+	if err != nil {
+		return fmt.Errorf("read existing magazine addresses: %w", err)
+	}
 	if _, err := tx.Exec("DELETE FROM magazines"); err != nil {
 		return fmt.Errorf("clear magazines: %w", err)
 	}
 	for _, m := range mags {
-		base, err := nextTopologyBaseAddressTx(tx, magazineAddressBlockSize)
-		if err != nil {
-			return fmt.Errorf("reserve address for magazine %s: %w", m.ID, err)
+		base, ok := existing[m.ID]
+		if !ok {
+			base, err = nextTopologyBaseAddressTx(tx, magazineAddressBlockSize)
+			if err != nil {
+				return fmt.Errorf("reserve address for magazine %s: %w", m.ID, err)
+			}
 		}
 		if _, err := tx.Exec("INSERT INTO magazines (id, slots, base_address) VALUES (?, ?, ?)", m.ID, m.Slots, base); err != nil {
 			return fmt.Errorf("save magazine %s: %w", m.ID, err)
 		}
 	}
 	return tx.Commit()
+}
+
+// existingBaseAddressesTx returns the current id -> base_address mapping
+// for "magazines" or "mailboxes", read within tx so it's consistent with
+// the delete+reinsert that follows in the same transaction.
+func existingBaseAddressesTx(tx *sql.Tx, table string) (map[string]int, error) {
+	rows, err := tx.Query(fmt.Sprintf("SELECT id, base_address FROM %s", table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int)
+	for rows.Next() {
+		var id string
+		var base int
+		if err := rows.Scan(&id, &base); err != nil {
+			return nil, err
+		}
+		out[id] = base
+	}
+	return out, rows.Err()
 }
 
 // ---- mailboxes (mirrors magazines exactly - real, independently
@@ -1096,21 +1131,28 @@ func (s *Store) DeleteMailbox(id string) error {
 }
 
 // SaveMailboxes replaces the whole mailboxes list. Used by the setup
-// wizard; see SaveMagazines (mailbox base_address assignment mirrors it
-// exactly).
+// wizard; see SaveMagazines (mailbox base_address assignment - including
+// reuse-by-ID for already-existing rows - mirrors it exactly).
 func (s *Store) SaveMailboxes(mbs []config.MailboxConfig) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
+	existing, err := existingBaseAddressesTx(tx, "mailboxes")
+	if err != nil {
+		return fmt.Errorf("read existing mailbox addresses: %w", err)
+	}
 	if _, err := tx.Exec("DELETE FROM mailboxes"); err != nil {
 		return fmt.Errorf("clear mailboxes: %w", err)
 	}
 	for _, m := range mbs {
-		base, err := nextTopologyBaseAddressTx(tx, mailboxAddressBlockSize)
-		if err != nil {
-			return fmt.Errorf("reserve address for mailbox %s: %w", m.ID, err)
+		base, ok := existing[m.ID]
+		if !ok {
+			base, err = nextTopologyBaseAddressTx(tx, mailboxAddressBlockSize)
+			if err != nil {
+				return fmt.Errorf("reserve address for mailbox %s: %w", m.ID, err)
+			}
 		}
 		if _, err := tx.Exec("INSERT INTO mailboxes (id, slots, base_address, pin_hash) VALUES (?, ?, ?, ?)", m.ID, m.Slots, base, nullIfEmpty(m.PINHash)); err != nil {
 			return fmt.Errorf("save mailbox %s: %w", m.ID, err)

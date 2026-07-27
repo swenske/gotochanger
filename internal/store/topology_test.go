@@ -439,6 +439,179 @@ func TestCreateMagazineNeverReusesAFreedAddressRange(t *testing.T) {
 	}
 }
 
+// TestSaveMagazinesReusesExistingBaseAddress is a regression test for a
+// real-world bug: the setup wizard resubmits its full magazines list on
+// every step (Next/Previous/validation retry - see UpdateWizardState), and
+// SaveMagazines used to reserve a brand-new address block for every entry
+// on every call regardless of whether it already existed. Ordinary wizard
+// navigation could burn through dozens of blocks before the user ever
+// finished the wizard, landing the final configuration's addresses far
+// past 1 (observed in production: magazines starting at physical address
+// 121 instead of 1). SaveMagazines must now keep an already-existing ID's
+// base_address stable across repeated calls, and only reserve a fresh
+// block for IDs it hasn't seen before.
+func TestSaveMagazinesReusesExistingBaseAddress(t *testing.T) {
+	s := newTestStore(t)
+
+	mags := []config.MagazineConfig{
+		{ID: "Magazine1", Slots: 10},
+		{ID: "Magazine2", Slots: 5},
+	}
+	if err := s.SaveMagazines(mags); err != nil {
+		t.Fatalf("save magazines: %v", err)
+	}
+	first, err := s.ListMagazines()
+	if err != nil {
+		t.Fatalf("list magazines: %v", err)
+	}
+	baseByID := make(map[string]int, len(first))
+	for _, m := range first {
+		baseByID[m.ID] = m.BaseAddress
+	}
+
+	// Resubmitting the identical list (e.g. clicking Previous then Next
+	// through the wizard step) must not change either magazine's address.
+	if err := s.SaveMagazines(mags); err != nil {
+		t.Fatalf("resave identical magazines: %v", err)
+	}
+	afterIdentical, err := s.ListMagazines()
+	if err != nil {
+		t.Fatalf("list magazines after identical resave: %v", err)
+	}
+	for _, m := range afterIdentical {
+		if m.BaseAddress != baseByID[m.ID] {
+			t.Fatalf("magazine %s base_address changed from %d to %d on an unchanged resubmission", m.ID, baseByID[m.ID], m.BaseAddress)
+		}
+	}
+
+	// Resubmitting with an existing ID's slot count edited must keep that
+	// ID's base_address (ValidateMagazine's 5-20 slot bound guarantees it
+	// still fits the block already reserved for that ID).
+	edited := []config.MagazineConfig{
+		{ID: "Magazine1", Slots: 15},
+		{ID: "Magazine2", Slots: 5},
+	}
+	if err := s.SaveMagazines(edited); err != nil {
+		t.Fatalf("resave edited magazines: %v", err)
+	}
+	afterEdit, err := s.ListMagazines()
+	if err != nil {
+		t.Fatalf("list magazines after edit: %v", err)
+	}
+	for _, m := range afterEdit {
+		if m.BaseAddress != baseByID[m.ID] {
+			t.Fatalf("magazine %s base_address changed from %d to %d after only its slot count changed", m.ID, baseByID[m.ID], m.BaseAddress)
+		}
+		if m.ID == "Magazine1" && m.Slots != 15 {
+			t.Fatalf("expected Magazine1 slots to update to 15, got %d", m.Slots)
+		}
+	}
+
+	// Adding a genuinely new ID must reserve a fresh block for it alone -
+	// the two existing IDs still keep their original addresses.
+	withNew := append(append([]config.MagazineConfig{}, edited...), config.MagazineConfig{ID: "Magazine3", Slots: 5})
+	if err := s.SaveMagazines(withNew); err != nil {
+		t.Fatalf("resave with new magazine: %v", err)
+	}
+	afterNew, err := s.ListMagazines()
+	if err != nil {
+		t.Fatalf("list magazines after adding new: %v", err)
+	}
+	var newBase int
+	for _, m := range afterNew {
+		if m.ID == "Magazine3" {
+			newBase = m.BaseAddress
+			continue
+		}
+		if m.BaseAddress != baseByID[m.ID] {
+			t.Fatalf("magazine %s base_address changed from %d to %d after adding an unrelated new magazine", m.ID, baseByID[m.ID], m.BaseAddress)
+		}
+	}
+	if newBase == 0 {
+		t.Fatalf("expected Magazine3 to have a nonzero base_address, got %+v", afterNew)
+	}
+	for _, base := range baseByID {
+		if newBase == base {
+			t.Fatalf("expected Magazine3's base_address (%d) to not collide with an existing magazine's", newBase)
+		}
+	}
+}
+
+// TestSaveMailboxesReusesExistingBaseAddress mirrors
+// TestSaveMagazinesReusesExistingBaseAddress for SaveMailboxes, which the
+// wizard's mailbox step (step 4) drives identically.
+func TestSaveMailboxesReusesExistingBaseAddress(t *testing.T) {
+	s := newTestStore(t)
+
+	mbs := []config.MailboxConfig{
+		{ID: "Mailbox1", Slots: 4},
+	}
+	if err := s.SaveMailboxes(mbs); err != nil {
+		t.Fatalf("save mailboxes: %v", err)
+	}
+	first, err := s.ListMailboxes()
+	if err != nil {
+		t.Fatalf("list mailboxes: %v", err)
+	}
+	baseByID := make(map[string]int, len(first))
+	for _, m := range first {
+		baseByID[m.ID] = m.BaseAddress
+	}
+
+	// Resubmitting the identical list must not change the address.
+	if err := s.SaveMailboxes(mbs); err != nil {
+		t.Fatalf("resave identical mailboxes: %v", err)
+	}
+	afterIdentical, err := s.ListMailboxes()
+	if err != nil {
+		t.Fatalf("list mailboxes after identical resave: %v", err)
+	}
+	if afterIdentical[0].BaseAddress != baseByID["Mailbox1"] {
+		t.Fatalf("mailbox base_address changed from %d to %d on an unchanged resubmission", baseByID["Mailbox1"], afterIdentical[0].BaseAddress)
+	}
+
+	// Resubmitting with the slot count edited must keep the address
+	// (ValidateMailbox's 1-5 slot bound guarantees it still fits the
+	// block already reserved for this ID).
+	edited := []config.MailboxConfig{{ID: "Mailbox1", Slots: 2}}
+	if err := s.SaveMailboxes(edited); err != nil {
+		t.Fatalf("resave edited mailboxes: %v", err)
+	}
+	afterEdit, err := s.ListMailboxes()
+	if err != nil {
+		t.Fatalf("list mailboxes after edit: %v", err)
+	}
+	if afterEdit[0].BaseAddress != baseByID["Mailbox1"] {
+		t.Fatalf("mailbox base_address changed from %d to %d after only its slot count changed", baseByID["Mailbox1"], afterEdit[0].BaseAddress)
+	}
+	if afterEdit[0].Slots != 2 {
+		t.Fatalf("expected Mailbox1 slots to update to 2, got %d", afterEdit[0].Slots)
+	}
+
+	// Adding a genuinely new ID reserves a fresh block only for it.
+	withNew := []config.MailboxConfig{edited[0], {ID: "Mailbox2", Slots: 3}}
+	if err := s.SaveMailboxes(withNew); err != nil {
+		t.Fatalf("resave with new mailbox: %v", err)
+	}
+	afterNew, err := s.ListMailboxes()
+	if err != nil {
+		t.Fatalf("list mailboxes after adding new: %v", err)
+	}
+	var newBase int
+	for _, m := range afterNew {
+		if m.ID == "Mailbox2" {
+			newBase = m.BaseAddress
+			continue
+		}
+		if m.BaseAddress != baseByID[m.ID] {
+			t.Fatalf("mailbox %s base_address changed from %d to %d after adding an unrelated new mailbox", m.ID, baseByID[m.ID], m.BaseAddress)
+		}
+	}
+	if newBase == 0 || newBase == baseByID["Mailbox1"] {
+		t.Fatalf("expected Mailbox2 to reserve a distinct nonzero base_address, got %d", newBase)
+	}
+}
+
 // openStoreWithLegacyMagazines builds a database with a pre-base_address
 // magazines/mailboxes schema (no base_address column at all) and the
 // given rows already present, then opens a Store over it - exercising
