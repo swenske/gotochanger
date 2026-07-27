@@ -32,7 +32,9 @@ func run(args []string) error {
 	token := fs.String("token", envOr("GOTOCHANGER_TOKEN", ""), "API token, required when --url is set")
 	jsonOut := fs.Bool("json", false, "print raw JSON responses instead of a formatted summary")
 	logicalLibrary := fs.String("logical-library", "", "scope load/unload/move/status to this logical library")
-	fs.Parse(args)
+	// fs is flag.ExitOnError - Parse never returns a non-nil error, it
+	// calls os.Exit(2) itself on a bad flag.
+	_ = fs.Parse(args)
 
 	rest := fs.Args()
 	if len(rest) == 0 {
