@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gotochanger &mdash; virtual tape library</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<!-- ==================== Auth screens ==================== -->
+<div id="authScreen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <div class="auth-header">
+      <img class="auth-header-bg" id="authHeaderBg" alt="" aria-hidden="true">
+      <h1><svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3"/><circle cx="11" cy="16" r="4.2"/><circle cx="21" cy="16" r="4.2"/><circle cx="11" cy="16" r="1.1" fill="currentColor" stroke="none"/><circle cx="21" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M2 22h28"/></svg>gotochanger</h1>
+    </div>
+
+    <form id="bootstrapForm" class="auth-form" hidden>
+      <p class="auth-lead">Welcome. Set a password for the built-in <strong>Admin</strong> account to get started.</p>
+      <label>New password</label>
+      <input type="password" id="bootstrapPassword" autocomplete="new-password" required>
+      <label>Confirm password</label>
+      <input type="password" id="bootstrapConfirm" autocomplete="new-password" required>
+      <p class="hint">At least 12 characters, with at least 3 of: lowercase, uppercase, digits, special characters.</p>
+      <button type="submit">Set password &amp; sign in</button>
+      <p class="auth-error" id="bootstrapError"></p>
+    </form>
+
+    <form id="loginForm" class="auth-form" hidden>
+      <label>Username</label>
+      <input type="text" id="loginUsername" autocomplete="username" value="Admin" required>
+      <label>Password</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <p class="auth-error" id="loginError"></p>
+      <p class="hint auth-version" id="loginVersion"></p>
+    </form>
+
+    <form id="changePasswordForm" class="auth-form" hidden>
+      <p class="auth-lead">Your password must be changed before continuing.</p>
+      <label>Current password</label>
+      <input type="password" id="cpCurrent" autocomplete="current-password" required>
+      <label>New password</label>
+      <input type="password" id="cpNew" autocomplete="new-password" required>
+      <p class="hint">At least 12 characters, with at least 3 of: lowercase, uppercase, digits, special characters.</p>
+      <button type="submit">Change password</button>
+      <p class="auth-error" id="cpError"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== Wizard screen ==================== -->
+<div id="wizardScreen" class="wizard-screen" hidden>
+  <div class="wizard-card">
+    <h1><svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3"/><circle cx="11" cy="16" r="4.2"/><circle cx="21" cy="16" r="4.2"/><circle cx="11" cy="16" r="1.1" fill="currentColor" stroke="none"/><circle cx="21" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M2 22h28"/></svg>gotochanger Setup Wizard</h1>
+    <div id="wizardSteps" class="wizard-steps"></div>
+    <div id="wizardContent" class="wizard-content"></div>
+  </div>
+</div>
+
+<!-- ==================== Main app ==================== -->
+<div id="app" hidden>
+<header>
+  <h1><svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3"/><circle cx="11" cy="16" r="4.2"/><circle cx="21" cy="16" r="4.2"/><circle cx="11" cy="16" r="1.1" fill="currentColor" stroke="none"/><circle cx="21" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M2 22h28"/></svg>gotochanger <span class="sub">virtual autochanger</span> <span class="sub" id="appVersion"></span></h1>
+  <nav id="mainNav" class="main-nav">
+    <button class="nav-btn active" data-view="dashboard"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>Dashboard</button>
+    <button class="nav-btn" data-view="admin" id="adminNavBtn" hidden><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.02 5.98l-1.7 1.7M7.68 16.32l-1.7 1.7M18.02 18.02l-1.7-1.7M7.68 7.68l-1.7-1.7"/></svg>Admin</button>
+    <a class="nav-btn" href="/docs" target="_blank" rel="noopener"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H18a1 1 0 0 1 1 1v17a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 18.5v-14z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>API Docs</a>
+    <a class="nav-btn" href="/guide" target="_blank" rel="noopener">📘 User Guide</a>
+  </nav>
+  <div class="userbox">
+    <span id="whoami" class="pill"></span>
+    <button id="logoutBtn">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <!-- ---- Dashboard view ---- -->
+  <div id="view-dashboard" class="dashboard-panels">
+    <div class="dashboard-toolbar">
+      <label class="switch-label">
+        <span class="switch"><input type="checkbox" id="showLibraryColorsToggle"><span class="switch-slider"></span></span>
+        Show library colors
+      </label>
+      <label class="switch-label">
+        <span class="switch"><input type="checkbox" id="hideUnassignedToggle"><span class="switch-slider"></span></span>
+        Hide unassigned
+      </label>
+      <button id="collapseAllBtn">Collapse all</button>
+    </div>
+
+    <section id="outside" class="panel" data-panel-id="outside" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>Outside Library Tapes</h2>
+        <div class="panel-head-actions">
+          <button id="outsideCreateBtn">Create tape</button>
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div id="outsideGrid" class="grid"></div>
+    </section>
+
+    <section id="offsite" class="panel" data-panel-id="offsite" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Vault</h2>
+        <div class="panel-head-actions">
+          <button id="offsiteSendBtn">Send to offsite</button>
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div id="offsiteGrid" class="grid"></div>
+    </section>
+
+    <section id="robot" class="panel" data-panel-id="robot" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2"/><path d="M5 17V11h6l4-4h4"/><circle cx="19" cy="7" r="1.6"/><path d="M11 11l2 2"/></svg>Robotic Arm</h2>
+        <div class="panel-head-actions">
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div class="robot-panel-row">
+        <div id="robotStatus" class="grid"></div>
+        <div id="robotActivity" class="robot-activity" role="log" aria-label="Robotic arm live activity"></div>
+      </div>
+    </section>
+
+    <section id="drives" class="panel" data-panel-id="drives" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives</h2>
+        <div class="panel-head-actions">
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div id="drivesGrid" class="grid"></div>
+    </section>
+
+    <section id="ioslots" class="panel" data-panel-id="ioslots" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>I/O Slots (mail slots)</h2>
+        <div class="panel-head-actions">
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div id="ioGrid" class="magazine-groups"></div>
+    </section>
+
+    <section id="slots" class="panel" data-panel-id="slots" draggable="true">
+      <div class="panel-head">
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Storage Slots</h2>
+        <div class="panel-head-actions">
+          <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
+        </div>
+      </div>
+      <div id="slotsGrid" class="magazine-groups"></div>
+    </section>
+
+  </div>
+
+  <section id="events" class="events-dock">
+    <div class="events-dock-head">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Activity log</h2>
+      <button id="eventsToggleBtn" class="panel-collapse-btn" aria-expanded="true" title="Hide activity log">
+        <span id="eventsToggleIcon" aria-hidden="true">▼</span>
+      </button>
+    </div>
+    <ul id="eventList" class="events"></ul>
+  </section>
+
+  <!-- ---- Admin view ---- -->
+  <div id="view-admin" hidden>
+    <nav class="sub-nav">
+      <div class="subnav-group">
+        <div class="subnav-group-label">Access Control</div>
+        <div class="subnav-group-buttons">
+          <button class="subnav-btn active" data-admin="users"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-4 3.2-6 7-6s7 2 7 6"/></svg>Users</button>
+          <button class="subnav-btn" data-admin="tokens"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4"/><path d="M11.5 12H21M17 12v3M14 12v2.5"/></svg>API Tokens</button>
+        </div>
+      </div>
+      <div class="subnav-group">
+        <div class="subnav-group-label">Library Topology</div>
+        <div class="subnav-group-buttons">
+          <button class="subnav-btn" data-admin="drive-types"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="12" height="10" rx="1.2"/><path d="M14 10h6l2 2v3l-2 2h-6"/></svg>Drive Types</button>
+          <button class="subnav-btn" data-admin="tape-types"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><circle cx="9" cy="12" r="2.6"/><circle cx="15" cy="12" r="2.6"/></svg>Tape Types</button>
+          <button class="subnav-btn" data-admin="tape-sets"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z"/><path d="M3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></svg>Tape Sets</button>
+          <button class="subnav-btn" data-admin="drives"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives</button>
+          <button class="subnav-btn" data-admin="magazines"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Magazines</button>
+          <button class="subnav-btn" data-admin="mailboxes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>Mailboxes</button>
+          <button class="subnav-btn" data-admin="logical-libraries"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16"/></svg>Logical Libraries</button>
+        </div>
+      </div>
+      <div class="subnav-group">
+        <div class="subnav-group-label">Operations</div>
+        <div class="subnav-group-buttons">
+          <button class="subnav-btn" data-admin="latency"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Latency</button>
+          <button class="subnav-btn" data-admin="cleaning-tapes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Cleaning Tapes</button>
+          <button class="subnav-btn" data-admin="settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.02 5.98l-1.7 1.7M7.68 16.32l-1.7 1.7M18.02 18.02l-1.7-1.7M7.68 7.68l-1.7-1.7"/></svg>Settings</button>
+          <button class="subnav-btn" data-admin="security"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Security</button>
+          <button class="subnav-btn" data-admin="backup"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Backup</button>
+          <button class="subnav-btn" data-admin="reset"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M4.5 13a8 8 0 1 0 2-8.5L4 10"/></svg>Reset</button>
+        </div>
+      </div>
+    </nav>
+
+    <section id="admin-users" class="panel">
+      <h2>Users</h2>
+      <button id="newUserBtn">New user</button>
+      <table class="admin-table">
+        <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="usersTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-tokens" class="panel" hidden>
+      <h2>API Tokens</h2>
+      <p class="hint">Tokens authenticate remote API calls (header <code>X-Api-Key</code> or <code>Authorization: Bearer</code>), scoped to a role just like user accounts.</p>
+      <button id="newTokenBtn">New token</button>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="tokensTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-drive-types" class="panel" hidden>
+      <h2>Drive Types</h2>
+      <p class="hint">The catalog of drive hardware models suggested during setup and used by logical libraries.</p>
+      <button id="newDriveTypeBtn">New drive type</button>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Model</th><th>Generation</th><th>Speed</th><th>Capacity</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody id="driveTypesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-tape-types" class="panel" hidden>
+      <h2>Tape Types</h2>
+      <p class="hint">The catalog of tape/media types (LTOx, DDSx, DLTxxxx) tape sets are grouped by. Each defines its own barcode format.</p>
+      <button id="newTapeTypeBtn">New tape type</button>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Capacity</th><th>Barcode Format</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody id="tapeTypesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-tape-sets" class="panel" hidden>
+      <h2>Tape Sets</h2>
+      <p class="hint">Groups of cartridges by tape type, each stored under its own folder on disk.</p>
+      <button id="newTapeSetBtn">New tape set</button>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Tape Type</th><th>Storage Folder</th><th>Cartridges</th><th>Actions</th></tr></thead>
+        <tbody id="tapeSetsTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-drives" class="panel" hidden>
+      <h2>Drives</h2>
+      <p class="hint">Physical drive devices (Data Transfer Elements). Adding or removing one hot-applies immediately, no restart needed.</p>
+      <button id="newDriveBtn">New drive</button>
+      <table class="admin-table">
+        <thead><tr><th>Index</th><th>Device Path</th><th>Drive Type</th><th>Model</th><th>Generation</th><th>Capacity</th><th>Actions</th></tr></thead>
+        <tbody id="drivesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-magazines" class="panel" hidden>
+      <h2>Magazines</h2>
+      <p class="hint">Slot groups (5-20 slots, in increments of 5). Adding or removing one hot-applies immediately, no restart needed.</p>
+      <button id="newMagazineBtn">New magazine</button>
+      <table class="admin-table">
+        <thead><tr><th>ID</th><th>Slots</th><th>Actions</th></tr></thead>
+        <tbody id="magazinesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-mailboxes" class="panel" hidden>
+      <h2>Mailboxes</h2>
+      <p class="hint">I/O door element groups (1-5 slots each). Adding or removing one hot-applies immediately, no restart needed.</p>
+      <button id="newMailboxBtn">New mailbox</button>
+      <table class="admin-table">
+        <thead><tr><th>ID</th><th>Slots</th><th>PIN</th><th>Actions</th></tr></thead>
+        <tbody id="mailboxesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-logical-libraries" class="panel" hidden>
+      <h2>Logical Libraries</h2>
+      <p class="hint">Partitions of the virtual tape library - each drive/magazine/mailbox belongs to at most one. Changes hot-apply immediately. Click New/Edit to assign drives, magazines, and mailboxes by dragging them between Available and this library.</p>
+      <button id="newLogicalLibBtn">New logical library</button>
+      <button id="wholeLibraryKernelModeBtn">Kernel Mode Setup (whole library)</button>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Drives</th><th>Slots</th><th>Mailboxes</th><th>Changer SCSI Path</th><th>Actions</th></tr></thead>
+        <tbody id="logicalLibrariesTable"></tbody>
+      </table>
+    </section>
+
+    <section id="admin-latency" class="panel" hidden>
+      <h2>Latency</h2>
+      <p class="hint">These are simulated delays for exercising backup software against realistic tape-library timing - not measurements of real hardware. Applies to the whole virtual tape library (all logical libraries share one timing model).</p>
+      <form id="latencySettingsForm" class="settings-form">
+        <fieldset>
+          <legend>Enable</legend>
+          <label><input type="checkbox" id="lt_enabled"> Enable tape library latency simulation</label>
+        </fieldset>
+        <fieldset>
+          <legend>Drive delays</legend>
+          <label>Drive load time</label>
+          <input type="text" id="lt_drive_load" placeholder="8s">
+          <label>Drive unload time</label>
+          <input type="text" id="lt_drive_unload" placeholder="6s">
+          <label>Tape positioning time (seek inside the drive after load)</label>
+          <input type="text" id="lt_tape_positioning" placeholder="4s">
+        </fieldset>
+        <fieldset>
+          <legend>Robotic arm delays</legend>
+          <label>Robotic arm movement time (tape moves)</label>
+          <input type="text" id="lt_robot_move_tape" placeholder="5s">
+          <label>Robotic arm movement time (magazine scans)</label>
+          <input type="text" id="lt_robot_move_scan" placeholder="6s">
+          <label>Tape scanning time after a magazine is closed</label>
+          <input type="text" id="lt_magazine_scan" placeholder="12s">
+          <label>Door open/close movement time</label>
+          <input type="text" id="lt_door_action" placeholder="2s">
+        </fieldset>
+        <p class="hint">Durations accept units like "500ms", "2s", "1m" (0s to 5m).</p>
+        <div class="dialog-actions">
+          <button type="button" id="latencyLoadDefaultsBtn">Load defaults</button>
+          <button type="submit">Save</button>
+        </div>
+        <p class="auth-error" id="latencySettingsError"></p>
+      </form>
+    </section>
+
+    <section id="admin-cleaning-tapes" class="panel" hidden>
+      <h2>Cleaning Tapes</h2>
+      <p class="hint">Cleaning-cartridge management for drive-head cleaning cycles. Applies to the whole virtual tape library. Cleaning tapes are <strong>universal</strong>: they have no specific tape type or model and work with every supported drive family. There's no separate "start cleaning" action - loading a cleaning tape into a drive (the same Load action used for any cartridge) is itself a manual cleaning cycle; it's automatically ejected and returned to its slot once the cycle completes.</p>
+      <form id="cleaningSettingsForm" class="settings-form">
+        <fieldset>
+          <legend>Enable</legend>
+          <label><input type="checkbox" id="cl_enabled"> Enable cleaning-tape management</label>
+        </fieldset>
+        <fieldset>
+          <legend>Operating mode</legend>
+          <label>Mode</label>
+          <select id="cl_mode">
+            <option value="backup_software">Managed by the backup software (cleaning tapes live in a magazine attached to a logical library the backup software uses)</option>
+            <option value="backup_robot">Managed by the backup robot (cleaning tapes live in a magazine not assigned to any logical library)</option>
+          </select>
+        </fieldset>
+        <fieldset>
+          <legend>Tunables</legend>
+          <label>Max uses per cleaning tape</label>
+          <input type="text" id="cl_max_uses" placeholder="20">
+          <label>Drive mounts before a cleaning cycle is required</label>
+          <input type="text" id="cl_mount_threshold" placeholder="50">
+          <label>Cleaning cycle duration</label>
+          <input type="text" id="cl_duration" placeholder="2m">
+        </fieldset>
+        <p class="hint">Duration accepts units like "500ms", "2s", "1m" (0s to 30m).</p>
+        <div class="dialog-actions">
+          <button type="button" id="cleaningLoadDefaultsBtn">Load defaults</button>
+          <button type="submit">Save</button>
+        </div>
+        <p class="auth-error" id="cleaningSettingsError"></p>
+      </form>
+
+      <h3>Cleaning tape pool</h3>
+      <p class="hint">Up to 5 cleaning cartridges, barcode format "00001CLN". Hover a tape for its remaining cleaning cycles. A tape's <code>expired</code> state requires manual removal: open its magazine's storage door, stage a pickup for its slot, close the door, then delete it from the Outside Library Tapes panel on the dashboard.</p>
+      <button id="newCleaningTapeBtn">New cleaning tape</button>
+      <div id="cleaningTapesGrid" class="grid"></div>
+    </section>
+
+    <section id="admin-settings" class="panel" hidden>
+      <h2>Settings</h2>
+      <p class="hint" id="restartHint"></p>
+      <form id="settingsForm" class="settings-form">
+        <fieldset>
+          <legend>Library</legend>
+          <label>Default volume capacity</label>
+          <input type="text" id="s_default_capacity" placeholder="10GiB">
+        </fieldset>
+        <fieldset>
+          <legend>Offsite</legend>
+          <label><input type="checkbox" id="s_offsite_location"> Enable offsite location</label>
+          <p class="hint">When disabled, the dashboard's Offsite Vault panel is hidden and sending/recalling volumes offsite is rejected.</p>
+          <label>Rotation interval</label>
+          <input type="text" id="s_offsite_rotation_interval" placeholder="24h">
+          <label>Volumes per rotation</label>
+          <input type="number" id="s_offsite_rotation_count" min="0" placeholder="1">
+          <p class="hint">Optional: automatically send full volumes to the offsite vault on a schedule, simulating tape rotation. Leave interval blank to disable.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Daemon</legend>
+          <label>Capacity poll interval</label>
+          <input type="text" id="s_poll_interval" placeholder="5s">
+          <label>Log level</label>
+          <select id="s_log_level">
+            <option value="debug">debug</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+          <p class="hint">Tokens/users file paths take effect on the next service restart.</p>
+          <label>Tokens file path</label>
+          <input type="text" id="s_tokens_file" placeholder="/etc/gotochanger/tokens.json">
+          <label>Users file path</label>
+          <input type="text" id="s_users_file" placeholder="/etc/gotochanger/users.json">
+        </fieldset>
+        <fieldset>
+          <legend>SNMP traps</legend>
+          <p class="hint">Download MIB: <a href="/api/v1/snmp/mib" target="_blank" rel="noopener">GOTOCHANGER-MIB</a></p>
+          <label><input type="checkbox" id="s_snmp_enabled"> Enabled</label>
+          <label>Enterprise OID</label>
+          <input type="text" id="s_snmp_oid" placeholder="1.3.6.1.4.1.55555.1">
+          <label>Agent address</label>
+          <input type="text" id="s_snmp_agent" placeholder="127.0.0.1">
+          <label>Targets (one per line: host:port:community)</label>
+          <textarea id="s_snmp_targets" rows="3" placeholder="192.0.2.10:162:public"></textarea>
+        </fieldset>
+        <button type="submit">Save settings</button>
+        <p class="auth-error" id="settingsError"></p>
+      </form>
+      <details class="raw-config">
+        <summary>Read-only: full effective configuration (data_dir/listen come from /etc/gotochanger/config.yaml; everything else lives in the database)</summary>
+        <pre id="rawConfig"></pre>
+      </details>
+    </section>
+
+    <section id="admin-security" class="panel" hidden>
+      <h2>Security</h2>
+      <p class="hint">A configured PIN must be entered on a numeric keypad before an operator can open the corresponding door - if no PIN is set, that door opens with no prompt.</p>
+      <fieldset>
+        <legend>Magazine PIN</legend>
+        <p class="hint">One PIN applies globally to every magazine's storage door.</p>
+        <p id="magazinePinStatus" class="hint"></p>
+        <form id="magazinePinForm">
+          <label>New 4-digit PIN (blank clears it)</label>
+          <input type="password" id="s_magazine_pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234">
+          <button type="submit">Save</button>
+        </form>
+        <p class="auth-error" id="magazinePinError"></p>
+      </fieldset>
+      <p class="hint">Per-mailbox PINs are set individually from Admin &gt; Mailboxes.</p>
+    </section>
+
+    <section id="admin-backup" class="panel" hidden>
+      <h2>Backup</h2>
+      <p class="hint">A backup contains the full database (topology, settings, and dynamic state) needed to restore this virtual tape library.</p>
+
+      <h3>Manual backup</h3>
+      <p class="hint">Trigger and download a snapshot right now.</p>
+      <button id="downloadBackupBtn">Download backup now</button>
+
+      <div id="backupAdminOnly" hidden>
+        <h3>Scheduled backups</h3>
+        <form id="backupScheduleForm" class="settings-form">
+          <label>Interval (empty disables scheduling)</label>
+          <input type="text" id="bk_interval" placeholder="24h">
+          <label>Retention (how many to keep, 0 = unlimited)</label>
+          <input type="number" id="bk_retention" min="0" placeholder="7">
+          <button type="submit">Save schedule</button>
+          <p class="hint" id="bk_last_run"></p>
+          <p class="auth-error" id="backupScheduleError"></p>
+        </form>
+
+        <table class="admin-table">
+          <thead><tr><th>File</th><th>Size</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="backupsTable"></tbody>
+        </table>
+
+        <h3>Restore</h3>
+        <p class="hint"><strong>Warning:</strong> restoring replaces the entire database (topology, settings, dynamic state) and restarts the service. The daemon will be briefly unreachable and you will need to sign in again.</p>
+        <form id="restoreForm" class="settings-form">
+          <label>Backup file</label>
+          <input type="file" id="restoreFile" accept=".db">
+          <button type="submit">Restore</button>
+          <p class="auth-error" id="restoreError"></p>
+          <p class="hint" id="restoreStatus"></p>
+        </form>
+      </div>
+    </section>
+
+    <section id="admin-reset" class="panel" hidden>
+      <h2>Reset</h2>
+      <p class="hint"><strong>Warning:</strong> this permanently deletes the entire VTL - every magazine, mailbox, drive, logical library and tape set, all settings (latency, cleaning, offsite, SNMP, etc.), and <strong>all user accounts and API tokens</strong>. You will need to set a new Admin password afterward, exactly as on a brand new install. A safety backup is taken automatically first and can be restored via Admin &gt; Backup if this was a mistake. The service restarts to apply the reset and will be briefly unreachable.</p>
+      <form id="resetForm" class="settings-form">
+        <label>Type <strong id="resetExpectedName"></strong> to confirm</label>
+        <input type="text" id="resetConfirmName" autocomplete="off">
+        <label><input type="checkbox" id="resetDeleteVolumes"> Also permanently delete every cartridge/volume file from disk</label>
+        <button type="submit" id="resetSubmitBtn" disabled>Reset VTL</button>
+        <p class="auth-error" id="resetError"></p>
+        <p class="hint" id="resetStatus"></p>
+      </form>
+    </section>
+  </div>
+</main>
+</div>
+
+<dialog id="dialog">
+  <form id="dialogForm" method="dialog">
+    <h3 id="dialogTitle"></h3>
+    <div id="dialogBody"></div>
+    <div class="dialog-actions">
+      <button value="cancel">Cancel</button>
+      <button id="dialogOk" value="ok">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="folderPickerDialog" class="folder-picker-dialog">
+  <h3>Choose a folder</h3>
+  <div id="folderPickerPath" class="folder-picker-path"></div>
+  <ul id="folderPickerList" class="folder-picker-list"></ul>
+  <div class="dialog-actions">
+    <button type="button" id="folderPickerSelectBtn">Select this folder</button>
+    <button type="button" id="folderPickerCancelBtn">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="bareosConfigDialog" class="bareos-config-dialog">
+  <h3 id="bareosConfigTitle"></h3>
+  <p class="hint">Storage daemon config for this Autochanger, plus a director-side Storage resource skeleton. Address/SD Port/Password are host-specific - fill those in yourself.</p>
+  <pre id="bareosConfigText"></pre>
+  <div class="dialog-actions">
+    <button type="button" id="bareosConfigCopyBtn">Copy to clipboard</button>
+    <button type="button" id="bareosConfigCloseBtn">Close</button>
+  </div>
+</dialog>
+
+<dialog id="kernelModeDialog" class="bareos-config-dialog">
+  <h3 id="kernelModeTitle"></h3>
+  <p class="hint">Requires the gotochanger-kernel package installed and a systemctl command run as root. See Admin &gt; Latency's neighbor page or the wizard's step 1 for live availability on this host.</p>
+  <pre id="kernelModeText"></pre>
+  <div class="dialog-actions">
+    <button type="button" id="kernelModeCopyBtn">Copy to clipboard</button>
+    <button type="button" id="kernelModeCloseBtn">Close</button>
+  </div>
+</dialog>
+
+<dialog id="pinDialog" class="pin-dialog">
+  <h3 id="pinDialogTitle">Enter PIN</h3>
+  <div id="pinDialogDisplay" class="pin-dialog-display" aria-live="polite"></div>
+  <div id="pinDialogError" class="pin-dialog-error" role="alert"></div>
+  <div id="pinDialogKeypad" class="pin-dialog-keypad">
+    <button type="button" class="pin-key" data-digit="1">1</button>
+    <button type="button" class="pin-key" data-digit="2">2</button>
+    <button type="button" class="pin-key" data-digit="3">3</button>
+    <button type="button" class="pin-key" data-digit="4">4</button>
+    <button type="button" class="pin-key" data-digit="5">5</button>
+    <button type="button" class="pin-key" data-digit="6">6</button>
+    <button type="button" class="pin-key" data-digit="7">7</button>
+    <button type="button" class="pin-key" data-digit="8">8</button>
+    <button type="button" class="pin-key" data-digit="9">9</button>
+    <button type="button" class="pin-key pin-key-wide" data-action="cancel">Cancel</button>
+    <button type="button" class="pin-key" data-digit="0">0</button>
+    <button type="button" class="pin-key pin-key-wide" data-action="backspace">⌫</button>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" id="pinDialogOk">OK</button>
+  </div>
+</dialog>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

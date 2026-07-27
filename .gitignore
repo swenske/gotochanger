@@ -1,0 +1,20 @@
+/bin/
+.gocache/
+/debian/gotochanger/
+/debian/gotochanger-kernel/
+/debian/.debhelper/
+/debian/*.substvars
+/debian/files
+/debian/debhelper-build-stamp
+/debian/tmp/
+debian/*.debhelper
+*.deb
+*.buildinfo
+*.changes
+
+# Local-only Claude Code context and tool config - never published.
+/CLAUDE.md
+/.claude/
+
+# goreleaser build output
+/dist/

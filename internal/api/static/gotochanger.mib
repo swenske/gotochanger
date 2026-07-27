@@ -1,0 +1,2053 @@
+GOTOCHANGER-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, enterprises
+        FROM SNMPv2-SMI
+    DisplayString
+        FROM SNMPv2-TC;
+
+gotochanger MODULE-IDENTITY
+    LAST-UPDATED "202607090000Z"
+    ORGANIZATION "gotochanger"
+    CONTACT-INFO "https://github.com/swenske/gotochanger"
+    DESCRIPTION
+        "MIB module for gotochanger SNMPv2c traps.\
+        \
+        The daemon emits notifications under 1.3.6.1.4.1.55555.1.<event-id>.\
+        For each event-id, the payload objects are:\
+          .1      message\
+          .2.1    event code\
+          .2.2    category\
+          .2.3    severity\
+          .2.4    outcome\
+          .2.5    operation\
+          .3      detail string (key=value pairs, '; ' separated)."
+    ::= { enterprises 55555 }
+
+gotochangerVtl OBJECT IDENTIFIER ::= { gotochanger 1 }
+
+gcEventMessageType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Human-readable event message."
+    ::= { gotochanger 2 }
+
+gcEventCodeType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code (for example AUTH.LOGIN.SUCCESS)."
+    ::= { gotochanger 3 }
+
+gcEventCategoryType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category (auth, media, robotic, configuration, system, ...)."
+    ::= { gotochanger 4 }
+
+gcEventSeverityType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity (information, warning, error, configuration)."
+    ::= { gotochanger 5 }
+
+gcEventOutcomeType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome (success or failure)."
+    ::= { gotochanger 6 }
+
+gcEventOperationType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Operation extracted from the event code."
+    ::= { gotochanger 7 }
+
+gcEventDetailType OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Optional event details as key=value pairs."
+    ::= { gotochanger 8 }
+
+genericEvent OBJECT IDENTIFIER ::= { gotochangerVtl 0 }
+genericEventFields OBJECT IDENTIFIER ::= { genericEvent 2 }
+
+genericEventMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { genericEvent 1 }
+
+genericEventCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { genericEventFields 1 }
+
+genericEventCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { genericEventFields 2 }
+
+genericEventSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { genericEventFields 3 }
+
+genericEventOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { genericEventFields 4 }
+
+genericEventOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { genericEventFields 5 }
+
+genericEventDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { genericEvent 3 }
+
+roboticsLoadSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 1 }
+roboticsLoadSuccessFields OBJECT IDENTIFIER ::= { roboticsLoadSuccess 2 }
+
+roboticsLoadSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsLoadSuccess 1 }
+
+roboticsLoadSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsLoadSuccessFields 1 }
+
+roboticsLoadSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsLoadSuccessFields 2 }
+
+roboticsLoadSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsLoadSuccessFields 3 }
+
+roboticsLoadSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsLoadSuccessFields 4 }
+
+roboticsLoadSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsLoadSuccessFields 5 }
+
+roboticsLoadSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsLoadSuccess 3 }
+
+roboticsUnloadSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 2 }
+roboticsUnloadSuccessFields OBJECT IDENTIFIER ::= { roboticsUnloadSuccess 2 }
+
+roboticsUnloadSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsUnloadSuccess 1 }
+
+roboticsUnloadSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsUnloadSuccessFields 1 }
+
+roboticsUnloadSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsUnloadSuccessFields 2 }
+
+roboticsUnloadSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsUnloadSuccessFields 3 }
+
+roboticsUnloadSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsUnloadSuccessFields 4 }
+
+roboticsUnloadSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsUnloadSuccessFields 5 }
+
+roboticsUnloadSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsUnloadSuccess 3 }
+
+roboticsMoveSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 3 }
+roboticsMoveSuccessFields OBJECT IDENTIFIER ::= { roboticsMoveSuccess 2 }
+
+roboticsMoveSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsMoveSuccess 1 }
+
+roboticsMoveSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsMoveSuccessFields 1 }
+
+roboticsMoveSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsMoveSuccessFields 2 }
+
+roboticsMoveSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsMoveSuccessFields 3 }
+
+roboticsMoveSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsMoveSuccessFields 4 }
+
+roboticsMoveSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsMoveSuccessFields 5 }
+
+roboticsMoveSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsMoveSuccess 3 }
+
+mediaImportSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 4 }
+mediaImportSuccessFields OBJECT IDENTIFIER ::= { mediaImportSuccess 2 }
+
+mediaImportSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaImportSuccess 1 }
+
+mediaImportSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaImportSuccessFields 1 }
+
+mediaImportSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaImportSuccessFields 2 }
+
+mediaImportSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaImportSuccessFields 3 }
+
+mediaImportSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaImportSuccessFields 4 }
+
+mediaImportSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaImportSuccessFields 5 }
+
+mediaImportSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaImportSuccess 3 }
+
+mediaEjectSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 5 }
+mediaEjectSuccessFields OBJECT IDENTIFIER ::= { mediaEjectSuccess 2 }
+
+mediaEjectSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaEjectSuccess 1 }
+
+mediaEjectSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaEjectSuccessFields 1 }
+
+mediaEjectSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaEjectSuccessFields 2 }
+
+mediaEjectSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaEjectSuccessFields 3 }
+
+mediaEjectSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaEjectSuccessFields 4 }
+
+mediaEjectSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaEjectSuccessFields 5 }
+
+mediaEjectSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaEjectSuccess 3 }
+
+driveFaultSetSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 6 }
+driveFaultSetSuccessFields OBJECT IDENTIFIER ::= { driveFaultSetSuccess 2 }
+
+driveFaultSetSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { driveFaultSetSuccess 1 }
+
+driveFaultSetSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { driveFaultSetSuccessFields 1 }
+
+driveFaultSetSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { driveFaultSetSuccessFields 2 }
+
+driveFaultSetSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { driveFaultSetSuccessFields 3 }
+
+driveFaultSetSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { driveFaultSetSuccessFields 4 }
+
+driveFaultSetSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { driveFaultSetSuccessFields 5 }
+
+driveFaultSetSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { driveFaultSetSuccess 3 }
+
+mediaVolumeFullWarning OBJECT IDENTIFIER ::= { gotochangerVtl 7 }
+mediaVolumeFullWarningFields OBJECT IDENTIFIER ::= { mediaVolumeFullWarning 2 }
+
+mediaVolumeFullWarningMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaVolumeFullWarning 1 }
+
+mediaVolumeFullWarningCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaVolumeFullWarningFields 1 }
+
+mediaVolumeFullWarningCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaVolumeFullWarningFields 2 }
+
+mediaVolumeFullWarningSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaVolumeFullWarningFields 3 }
+
+mediaVolumeFullWarningOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaVolumeFullWarningFields 4 }
+
+mediaVolumeFullWarningOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaVolumeFullWarningFields 5 }
+
+mediaVolumeFullWarningDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaVolumeFullWarning 3 }
+
+mediaVolumeCreateSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 8 }
+mediaVolumeCreateSuccessFields OBJECT IDENTIFIER ::= { mediaVolumeCreateSuccess 2 }
+
+mediaVolumeCreateSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaVolumeCreateSuccess 1 }
+
+mediaVolumeCreateSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaVolumeCreateSuccessFields 1 }
+
+mediaVolumeCreateSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaVolumeCreateSuccessFields 2 }
+
+mediaVolumeCreateSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaVolumeCreateSuccessFields 3 }
+
+mediaVolumeCreateSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaVolumeCreateSuccessFields 4 }
+
+mediaVolumeCreateSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaVolumeCreateSuccessFields 5 }
+
+mediaVolumeCreateSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaVolumeCreateSuccess 3 }
+
+mediaVolumeDeleteSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 9 }
+mediaVolumeDeleteSuccessFields OBJECT IDENTIFIER ::= { mediaVolumeDeleteSuccess 2 }
+
+mediaVolumeDeleteSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaVolumeDeleteSuccess 1 }
+
+mediaVolumeDeleteSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaVolumeDeleteSuccessFields 1 }
+
+mediaVolumeDeleteSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaVolumeDeleteSuccessFields 2 }
+
+mediaVolumeDeleteSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaVolumeDeleteSuccessFields 3 }
+
+mediaVolumeDeleteSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaVolumeDeleteSuccessFields 4 }
+
+mediaVolumeDeleteSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaVolumeDeleteSuccessFields 5 }
+
+mediaVolumeDeleteSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaVolumeDeleteSuccess 3 }
+
+mediaOutsideCreateSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 10 }
+mediaOutsideCreateSuccessFields OBJECT IDENTIFIER ::= { mediaOutsideCreateSuccess 2 }
+
+mediaOutsideCreateSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaOutsideCreateSuccess 1 }
+
+mediaOutsideCreateSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaOutsideCreateSuccessFields 1 }
+
+mediaOutsideCreateSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaOutsideCreateSuccessFields 2 }
+
+mediaOutsideCreateSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaOutsideCreateSuccessFields 3 }
+
+mediaOutsideCreateSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaOutsideCreateSuccessFields 4 }
+
+mediaOutsideCreateSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaOutsideCreateSuccessFields 5 }
+
+mediaOutsideCreateSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaOutsideCreateSuccess 3 }
+
+mediaOutsideDeleteSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 11 }
+mediaOutsideDeleteSuccessFields OBJECT IDENTIFIER ::= { mediaOutsideDeleteSuccess 2 }
+
+mediaOutsideDeleteSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { mediaOutsideDeleteSuccess 1 }
+
+mediaOutsideDeleteSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { mediaOutsideDeleteSuccessFields 1 }
+
+mediaOutsideDeleteSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { mediaOutsideDeleteSuccessFields 2 }
+
+mediaOutsideDeleteSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { mediaOutsideDeleteSuccessFields 3 }
+
+mediaOutsideDeleteSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { mediaOutsideDeleteSuccessFields 4 }
+
+mediaOutsideDeleteSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { mediaOutsideDeleteSuccessFields 5 }
+
+mediaOutsideDeleteSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { mediaOutsideDeleteSuccess 3 }
+
+roboticsDoorIoOpenSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 12 }
+roboticsDoorIoOpenSuccessFields OBJECT IDENTIFIER ::= { roboticsDoorIoOpenSuccess 2 }
+
+roboticsDoorIoOpenSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsDoorIoOpenSuccess 1 }
+
+roboticsDoorIoOpenSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsDoorIoOpenSuccessFields 1 }
+
+roboticsDoorIoOpenSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsDoorIoOpenSuccessFields 2 }
+
+roboticsDoorIoOpenSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsDoorIoOpenSuccessFields 3 }
+
+roboticsDoorIoOpenSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsDoorIoOpenSuccessFields 4 }
+
+roboticsDoorIoOpenSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsDoorIoOpenSuccessFields 5 }
+
+roboticsDoorIoOpenSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsDoorIoOpenSuccess 3 }
+
+roboticsDoorIoCloseSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 13 }
+roboticsDoorIoCloseSuccessFields OBJECT IDENTIFIER ::= { roboticsDoorIoCloseSuccess 2 }
+
+roboticsDoorIoCloseSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsDoorIoCloseSuccess 1 }
+
+roboticsDoorIoCloseSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsDoorIoCloseSuccessFields 1 }
+
+roboticsDoorIoCloseSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsDoorIoCloseSuccessFields 2 }
+
+roboticsDoorIoCloseSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsDoorIoCloseSuccessFields 3 }
+
+roboticsDoorIoCloseSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsDoorIoCloseSuccessFields 4 }
+
+roboticsDoorIoCloseSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsDoorIoCloseSuccessFields 5 }
+
+roboticsDoorIoCloseSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsDoorIoCloseSuccess 3 }
+
+roboticsDoorStorageOpenSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 14 }
+roboticsDoorStorageOpenSuccessFields OBJECT IDENTIFIER ::= { roboticsDoorStorageOpenSuccess 2 }
+
+roboticsDoorStorageOpenSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsDoorStorageOpenSuccess 1 }
+
+roboticsDoorStorageOpenSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsDoorStorageOpenSuccessFields 1 }
+
+roboticsDoorStorageOpenSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsDoorStorageOpenSuccessFields 2 }
+
+roboticsDoorStorageOpenSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsDoorStorageOpenSuccessFields 3 }
+
+roboticsDoorStorageOpenSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsDoorStorageOpenSuccessFields 4 }
+
+roboticsDoorStorageOpenSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsDoorStorageOpenSuccessFields 5 }
+
+roboticsDoorStorageOpenSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsDoorStorageOpenSuccess 3 }
+
+roboticsDoorStorageCloseSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 15 }
+roboticsDoorStorageCloseSuccessFields OBJECT IDENTIFIER ::= { roboticsDoorStorageCloseSuccess 2 }
+
+roboticsDoorStorageCloseSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { roboticsDoorStorageCloseSuccess 1 }
+
+roboticsDoorStorageCloseSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { roboticsDoorStorageCloseSuccessFields 1 }
+
+roboticsDoorStorageCloseSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { roboticsDoorStorageCloseSuccessFields 2 }
+
+roboticsDoorStorageCloseSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { roboticsDoorStorageCloseSuccessFields 3 }
+
+roboticsDoorStorageCloseSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { roboticsDoorStorageCloseSuccessFields 4 }
+
+roboticsDoorStorageCloseSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { roboticsDoorStorageCloseSuccessFields 5 }
+
+roboticsDoorStorageCloseSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { roboticsDoorStorageCloseSuccess 3 }
+
+authLoginSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 20 }
+authLoginSuccessFields OBJECT IDENTIFIER ::= { authLoginSuccess 2 }
+
+authLoginSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authLoginSuccess 1 }
+
+authLoginSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authLoginSuccessFields 1 }
+
+authLoginSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authLoginSuccessFields 2 }
+
+authLoginSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authLoginSuccessFields 3 }
+
+authLoginSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authLoginSuccessFields 4 }
+
+authLoginSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authLoginSuccessFields 5 }
+
+authLoginSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authLoginSuccess 3 }
+
+authLoginFailure OBJECT IDENTIFIER ::= { gotochangerVtl 21 }
+authLoginFailureFields OBJECT IDENTIFIER ::= { authLoginFailure 2 }
+
+authLoginFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authLoginFailure 1 }
+
+authLoginFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authLoginFailureFields 1 }
+
+authLoginFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authLoginFailureFields 2 }
+
+authLoginFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authLoginFailureFields 3 }
+
+authLoginFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authLoginFailureFields 4 }
+
+authLoginFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authLoginFailureFields 5 }
+
+authLoginFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authLoginFailure 3 }
+
+authLogoutSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 22 }
+authLogoutSuccessFields OBJECT IDENTIFIER ::= { authLogoutSuccess 2 }
+
+authLogoutSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authLogoutSuccess 1 }
+
+authLogoutSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authLogoutSuccessFields 1 }
+
+authLogoutSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authLogoutSuccessFields 2 }
+
+authLogoutSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authLogoutSuccessFields 3 }
+
+authLogoutSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authLogoutSuccessFields 4 }
+
+authLogoutSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authLogoutSuccessFields 5 }
+
+authLogoutSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authLogoutSuccess 3 }
+
+authBootstrapSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 23 }
+authBootstrapSuccessFields OBJECT IDENTIFIER ::= { authBootstrapSuccess 2 }
+
+authBootstrapSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authBootstrapSuccess 1 }
+
+authBootstrapSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authBootstrapSuccessFields 1 }
+
+authBootstrapSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authBootstrapSuccessFields 2 }
+
+authBootstrapSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authBootstrapSuccessFields 3 }
+
+authBootstrapSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authBootstrapSuccessFields 4 }
+
+authBootstrapSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authBootstrapSuccessFields 5 }
+
+authBootstrapSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authBootstrapSuccess 3 }
+
+authBootstrapFailure OBJECT IDENTIFIER ::= { gotochangerVtl 24 }
+authBootstrapFailureFields OBJECT IDENTIFIER ::= { authBootstrapFailure 2 }
+
+authBootstrapFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authBootstrapFailure 1 }
+
+authBootstrapFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authBootstrapFailureFields 1 }
+
+authBootstrapFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authBootstrapFailureFields 2 }
+
+authBootstrapFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authBootstrapFailureFields 3 }
+
+authBootstrapFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authBootstrapFailureFields 4 }
+
+authBootstrapFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authBootstrapFailureFields 5 }
+
+authBootstrapFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authBootstrapFailure 3 }
+
+authChangePasswordSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 25 }
+authChangePasswordSuccessFields OBJECT IDENTIFIER ::= { authChangePasswordSuccess 2 }
+
+authChangePasswordSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authChangePasswordSuccess 1 }
+
+authChangePasswordSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authChangePasswordSuccessFields 1 }
+
+authChangePasswordSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authChangePasswordSuccessFields 2 }
+
+authChangePasswordSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authChangePasswordSuccessFields 3 }
+
+authChangePasswordSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authChangePasswordSuccessFields 4 }
+
+authChangePasswordSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authChangePasswordSuccessFields 5 }
+
+authChangePasswordSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authChangePasswordSuccess 3 }
+
+authChangePasswordFailure OBJECT IDENTIFIER ::= { gotochangerVtl 26 }
+authChangePasswordFailureFields OBJECT IDENTIFIER ::= { authChangePasswordFailure 2 }
+
+authChangePasswordFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { authChangePasswordFailure 1 }
+
+authChangePasswordFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { authChangePasswordFailureFields 1 }
+
+authChangePasswordFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { authChangePasswordFailureFields 2 }
+
+authChangePasswordFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { authChangePasswordFailureFields 3 }
+
+authChangePasswordFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { authChangePasswordFailureFields 4 }
+
+authChangePasswordFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { authChangePasswordFailureFields 5 }
+
+authChangePasswordFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { authChangePasswordFailure 3 }
+
+configSettingsUpdateSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 30 }
+configSettingsUpdateSuccessFields OBJECT IDENTIFIER ::= { configSettingsUpdateSuccess 2 }
+
+configSettingsUpdateSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configSettingsUpdateSuccess 1 }
+
+configSettingsUpdateSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configSettingsUpdateSuccessFields 1 }
+
+configSettingsUpdateSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configSettingsUpdateSuccessFields 2 }
+
+configSettingsUpdateSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configSettingsUpdateSuccessFields 3 }
+
+configSettingsUpdateSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configSettingsUpdateSuccessFields 4 }
+
+configSettingsUpdateSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configSettingsUpdateSuccessFields 5 }
+
+configSettingsUpdateSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configSettingsUpdateSuccess 3 }
+
+configSettingsUpdateFailure OBJECT IDENTIFIER ::= { gotochangerVtl 31 }
+configSettingsUpdateFailureFields OBJECT IDENTIFIER ::= { configSettingsUpdateFailure 2 }
+
+configSettingsUpdateFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configSettingsUpdateFailure 1 }
+
+configSettingsUpdateFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configSettingsUpdateFailureFields 1 }
+
+configSettingsUpdateFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configSettingsUpdateFailureFields 2 }
+
+configSettingsUpdateFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configSettingsUpdateFailureFields 3 }
+
+configSettingsUpdateFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configSettingsUpdateFailureFields 4 }
+
+configSettingsUpdateFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configSettingsUpdateFailureFields 5 }
+
+configSettingsUpdateFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configSettingsUpdateFailure 3 }
+
+configUserCreateSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 32 }
+configUserCreateSuccessFields OBJECT IDENTIFIER ::= { configUserCreateSuccess 2 }
+
+configUserCreateSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserCreateSuccess 1 }
+
+configUserCreateSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserCreateSuccessFields 1 }
+
+configUserCreateSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserCreateSuccessFields 2 }
+
+configUserCreateSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserCreateSuccessFields 3 }
+
+configUserCreateSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserCreateSuccessFields 4 }
+
+configUserCreateSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserCreateSuccessFields 5 }
+
+configUserCreateSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserCreateSuccess 3 }
+
+configUserCreateFailure OBJECT IDENTIFIER ::= { gotochangerVtl 33 }
+configUserCreateFailureFields OBJECT IDENTIFIER ::= { configUserCreateFailure 2 }
+
+configUserCreateFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserCreateFailure 1 }
+
+configUserCreateFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserCreateFailureFields 1 }
+
+configUserCreateFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserCreateFailureFields 2 }
+
+configUserCreateFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserCreateFailureFields 3 }
+
+configUserCreateFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserCreateFailureFields 4 }
+
+configUserCreateFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserCreateFailureFields 5 }
+
+configUserCreateFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserCreateFailure 3 }
+
+configUserDeleteSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 34 }
+configUserDeleteSuccessFields OBJECT IDENTIFIER ::= { configUserDeleteSuccess 2 }
+
+configUserDeleteSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserDeleteSuccess 1 }
+
+configUserDeleteSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserDeleteSuccessFields 1 }
+
+configUserDeleteSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserDeleteSuccessFields 2 }
+
+configUserDeleteSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserDeleteSuccessFields 3 }
+
+configUserDeleteSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserDeleteSuccessFields 4 }
+
+configUserDeleteSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserDeleteSuccessFields 5 }
+
+configUserDeleteSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserDeleteSuccess 3 }
+
+configUserDeleteFailure OBJECT IDENTIFIER ::= { gotochangerVtl 35 }
+configUserDeleteFailureFields OBJECT IDENTIFIER ::= { configUserDeleteFailure 2 }
+
+configUserDeleteFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserDeleteFailure 1 }
+
+configUserDeleteFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserDeleteFailureFields 1 }
+
+configUserDeleteFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserDeleteFailureFields 2 }
+
+configUserDeleteFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserDeleteFailureFields 3 }
+
+configUserDeleteFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserDeleteFailureFields 4 }
+
+configUserDeleteFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserDeleteFailureFields 5 }
+
+configUserDeleteFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserDeleteFailure 3 }
+
+configUserRoleSetSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 36 }
+configUserRoleSetSuccessFields OBJECT IDENTIFIER ::= { configUserRoleSetSuccess 2 }
+
+configUserRoleSetSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserRoleSetSuccess 1 }
+
+configUserRoleSetSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserRoleSetSuccessFields 1 }
+
+configUserRoleSetSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserRoleSetSuccessFields 2 }
+
+configUserRoleSetSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserRoleSetSuccessFields 3 }
+
+configUserRoleSetSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserRoleSetSuccessFields 4 }
+
+configUserRoleSetSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserRoleSetSuccessFields 5 }
+
+configUserRoleSetSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserRoleSetSuccess 3 }
+
+configUserRoleSetFailure OBJECT IDENTIFIER ::= { gotochangerVtl 37 }
+configUserRoleSetFailureFields OBJECT IDENTIFIER ::= { configUserRoleSetFailure 2 }
+
+configUserRoleSetFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserRoleSetFailure 1 }
+
+configUserRoleSetFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserRoleSetFailureFields 1 }
+
+configUserRoleSetFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserRoleSetFailureFields 2 }
+
+configUserRoleSetFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserRoleSetFailureFields 3 }
+
+configUserRoleSetFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserRoleSetFailureFields 4 }
+
+configUserRoleSetFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserRoleSetFailureFields 5 }
+
+configUserRoleSetFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserRoleSetFailure 3 }
+
+configUserPasswordResetSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 38 }
+configUserPasswordResetSuccessFields OBJECT IDENTIFIER ::= { configUserPasswordResetSuccess 2 }
+
+configUserPasswordResetSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserPasswordResetSuccess 1 }
+
+configUserPasswordResetSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserPasswordResetSuccessFields 1 }
+
+configUserPasswordResetSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserPasswordResetSuccessFields 2 }
+
+configUserPasswordResetSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserPasswordResetSuccessFields 3 }
+
+configUserPasswordResetSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserPasswordResetSuccessFields 4 }
+
+configUserPasswordResetSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserPasswordResetSuccessFields 5 }
+
+configUserPasswordResetSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserPasswordResetSuccess 3 }
+
+configUserPasswordResetFailure OBJECT IDENTIFIER ::= { gotochangerVtl 39 }
+configUserPasswordResetFailureFields OBJECT IDENTIFIER ::= { configUserPasswordResetFailure 2 }
+
+configUserPasswordResetFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configUserPasswordResetFailure 1 }
+
+configUserPasswordResetFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configUserPasswordResetFailureFields 1 }
+
+configUserPasswordResetFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configUserPasswordResetFailureFields 2 }
+
+configUserPasswordResetFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configUserPasswordResetFailureFields 3 }
+
+configUserPasswordResetFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configUserPasswordResetFailureFields 4 }
+
+configUserPasswordResetFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configUserPasswordResetFailureFields 5 }
+
+configUserPasswordResetFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configUserPasswordResetFailure 3 }
+
+configTokenCreateSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 40 }
+configTokenCreateSuccessFields OBJECT IDENTIFIER ::= { configTokenCreateSuccess 2 }
+
+configTokenCreateSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configTokenCreateSuccess 1 }
+
+configTokenCreateSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configTokenCreateSuccessFields 1 }
+
+configTokenCreateSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configTokenCreateSuccessFields 2 }
+
+configTokenCreateSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configTokenCreateSuccessFields 3 }
+
+configTokenCreateSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configTokenCreateSuccessFields 4 }
+
+configTokenCreateSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configTokenCreateSuccessFields 5 }
+
+configTokenCreateSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configTokenCreateSuccess 3 }
+
+configTokenCreateFailure OBJECT IDENTIFIER ::= { gotochangerVtl 41 }
+configTokenCreateFailureFields OBJECT IDENTIFIER ::= { configTokenCreateFailure 2 }
+
+configTokenCreateFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configTokenCreateFailure 1 }
+
+configTokenCreateFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configTokenCreateFailureFields 1 }
+
+configTokenCreateFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configTokenCreateFailureFields 2 }
+
+configTokenCreateFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configTokenCreateFailureFields 3 }
+
+configTokenCreateFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configTokenCreateFailureFields 4 }
+
+configTokenCreateFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configTokenCreateFailureFields 5 }
+
+configTokenCreateFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configTokenCreateFailure 3 }
+
+configTokenRevokeSuccess OBJECT IDENTIFIER ::= { gotochangerVtl 42 }
+configTokenRevokeSuccessFields OBJECT IDENTIFIER ::= { configTokenRevokeSuccess 2 }
+
+configTokenRevokeSuccessMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configTokenRevokeSuccess 1 }
+
+configTokenRevokeSuccessCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configTokenRevokeSuccessFields 1 }
+
+configTokenRevokeSuccessCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configTokenRevokeSuccessFields 2 }
+
+configTokenRevokeSuccessSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configTokenRevokeSuccessFields 3 }
+
+configTokenRevokeSuccessOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configTokenRevokeSuccessFields 4 }
+
+configTokenRevokeSuccessOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configTokenRevokeSuccessFields 5 }
+
+configTokenRevokeSuccessDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configTokenRevokeSuccess 3 }
+
+configTokenRevokeFailure OBJECT IDENTIFIER ::= { gotochangerVtl 43 }
+configTokenRevokeFailureFields OBJECT IDENTIFIER ::= { configTokenRevokeFailure 2 }
+
+configTokenRevokeFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { configTokenRevokeFailure 1 }
+
+configTokenRevokeFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { configTokenRevokeFailureFields 1 }
+
+configTokenRevokeFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { configTokenRevokeFailureFields 2 }
+
+configTokenRevokeFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { configTokenRevokeFailureFields 3 }
+
+configTokenRevokeFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { configTokenRevokeFailureFields 4 }
+
+configTokenRevokeFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { configTokenRevokeFailureFields 5 }
+
+configTokenRevokeFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { configTokenRevokeFailure 3 }
+
+systemPersistFailure OBJECT IDENTIFIER ::= { gotochangerVtl 90 }
+systemPersistFailureFields OBJECT IDENTIFIER ::= { systemPersistFailure 2 }
+
+systemPersistFailureMessage OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event message."
+    ::= { systemPersistFailure 1 }
+
+systemPersistFailureCode OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Structured event code."
+    ::= { systemPersistFailureFields 1 }
+
+systemPersistFailureCategory OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event category."
+    ::= { systemPersistFailureFields 2 }
+
+systemPersistFailureSeverity OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event severity."
+    ::= { systemPersistFailureFields 3 }
+
+systemPersistFailureOutcome OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event outcome."
+    ::= { systemPersistFailureFields 4 }
+
+systemPersistFailureOperation OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event operation."
+    ::= { systemPersistFailureFields 5 }
+
+systemPersistFailureDetail OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  accessible-for-notify
+    STATUS      current
+    DESCRIPTION "Event details as key=value pairs."
+    ::= { systemPersistFailure 3 }
+END

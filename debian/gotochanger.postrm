@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  purge)
+    rm -rf /etc/gotochanger
+    rm -rf /var/lib/gotochanger
+    if getent passwd gotochanger >/dev/null; then
+      deluser --system gotochanger || true
+    fi
+    if getent group gotochanger >/dev/null; then
+      delgroup --system gotochanger || true
+    fi
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

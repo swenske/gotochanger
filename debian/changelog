@@ -1,0 +1,539 @@
+gotochanger (0.6.2) UNRELEASED; urgency=medium
+
+  * Fix kernel mode never moving a volume's end-of-data back when it is
+    overwritten, so rewinding and relabelling a recorded tape left the
+    whole previous pass on it. WRITE(6) wrote at the current position
+    without truncating, and WRITE FILEMARKS(6) only ever appended to the
+    filemark sidecar, yet end-of-data is read straight off the backing
+    file's size - so on real hardware a `mt rewind; mt weof` followed by a
+    Bareos `label barcodes` against a 3.1GB volume left all 3.1GB in place
+    behind the fresh 64512-byte label. Bareos's own space-to-end-of-data
+    before an append then landed 3.1GB in, while the label's trailing
+    filemark sat at 64512, so a job written there could not be positioned
+    to by file number; the volume also still reported 3.1GB of its 12GB
+    used immediately after being labelled, and a second attempt to erase
+    it by hand failed with "Cannot label Volume because it is already
+    labeled", because writing a filemark never touched the label block
+    either. Both commands now set end-of-data where the write ended, as
+    real tape does, which also makes the standard `mt rewind; mt weof`
+    erase idiom work. WRITE FILEMARKS with a zero transfer length is
+    excluded - it writes nothing to the medium and is the conventional
+    buffer flush.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Sun, 26 Jul 2026 22:00:00 +0000
+
+gotochanger (0.6.1) UNRELEASED; urgency=medium
+
+  * SECURITY: restrict manual backup download (GET /api/v1/backup/download)
+    to Admin - it was Operator+, on the once-correct basis that a backup
+    holds only virtual-tape-library state. That stopped being true when
+    user accounts and API tokens moved out of users.json/tokens.json and
+    into the same state.db a backup snapshots with VACUUM INTO, so any
+    operator could download every admin's PBKDF2 password hash for offline
+    cracking. Stripping those tables from the operator's copy was
+    considered and rejected: a stripped database, once restored, comes
+    back with an empty users table, which puts the daemon into "bootstrap
+    required" - i.e. whoever reaches the web UI first sets the new admin
+    password. Behavior change for operators: the Admin section was
+    previously reachable by Operator+ purely because Backup lived in it,
+    so the whole Admin nav is now Admin-only.
+  * SECURITY: require Admin on all five /api/v1/wizard* endpoints. They
+    were registered with no role requirement at all, commented "public for
+    initial setup", and nothing ever revoked that once setup finished - so
+    on a configured, running deployment any unauthenticated caller that
+    could reach the TCP listener was able to read the full library
+    topology (GET /api/v1/wizard) and rewrite it, or reset the wizard
+    (POST /api/v1/wizard/reset, which answered 204). The exemption was
+    never needed: the web UI only calls these after /api/v1/auth/state
+    reports authenticated, and both bootstrap and login establish an Admin
+    session first. gotochangerctl and the Bareos shim are unaffected - the
+    trusted Unix socket presents every request as admin.
+  * Fix every volume sent offsite being silently lost on the next daemon
+    restart. Library.State() and saveLocked() each built the persisted
+    state struct field by field, independently, and had drifted:
+    saveLocked simply omitted OffsiteVolumes. Since OffsiteSend clears the
+    source slot and moves the cartridge into the offsite list alone, the
+    persisted state recorded it as existing nowhere at all - the backing
+    file survived on disk with nothing referencing it. Stayed invisible
+    because State(), the correct one, has no non-test callers: every test
+    that round-tripped state exercised it while production used the broken
+    one. Both now share a single stateLocked() builder.
+  * Fix a drive's origin slot being dropped on daemon restart, so
+    gotochanger-changer's "loaded"/"listall" reported slot 0 to Bareos for
+    any tape still mounted at restart - losing track of which slot to
+    unload it back into. Drive.Origin was persisted correctly but never
+    copied back by restore(). Fixed alongside a second defect in the same
+    function: it matched persisted placements by array position behind an
+    all-or-nothing "only if the element counts still match" guard, so any
+    topology change while the daemon was down (a magazine resized from 5
+    to 10 slots) silently discarded *every* volume placement rather than
+    just the affected ones. It now matches by address/physical index, the
+    way Library.Reconfigure always has.
+  * Fix the reader half of the 0.6.0 "concurrent map iteration and map
+    write" crash. That release gave the SNMP notifier goroutine its own
+    copy of Event.Detail, but Events() still handed callers the stored
+    maps themselves, and Status()/LogicalLibraryStatus()/
+    ListLogicalLibraries()/GetLogicalLibrary()/UnassignedElements()/
+    AllVolumes() still returned the live slot/ioslot/drive/volume
+    pointers - all of which the HTTP handlers JSON-marshal *after*
+    releasing the library lock. A marshal could therefore read a
+    Slot.Volume pointer or a Volume's written-bytes field at the moment
+    Load/Unload/the capacity poll wrote it. These are now genuine deep
+    snapshots, as their doc comments always claimed; confirmed by tests
+    that report real data races against the previous code.
+  * Fix gotochanger-changer being unable to address an I/O (import/export)
+    slot at all: load, unload, offsite-send and offsite-recall passed a
+    hardcoded element kind of "slot" alongside an address that can just as
+    legitimately resolve to an I/O slot - storage and I/O addresses share
+    one contiguous range by design, "slots" reports the combined total,
+    and "listall" advertises the I/O ones with an I: prefix. Any Bareos
+    operation against a mail slot therefore failed with "element not
+    found", for an address this binary itself had advertised. They now
+    resolve the kind from the address, as "transfer" already did.
+  * Fix the Admin Settings API writing stale values back over the setup
+    wizard's. Settings caches the configuration it was constructed with at
+    daemon startup and persists all of it on any update, but the wizard
+    writes vtl_name/offsite_location straight to the database, and nothing
+    refreshed that cache - so the first settings save of any kind, even
+    one touching only the log level, reverted them to their boot-time
+    values (an empty VTL name, on a fresh install). The read side was
+    wrong too: Admin > Settings and a manual backup's filename both showed
+    the stale name.
+  * Raise the CLI/API client's request timeout from 15s to 10 minutes
+    (overridable). It was shorter than this project's own factory-default
+    simulated latency: closing a magazine door at stock settings takes 20s
+    (2s door + 6s arm + 12s scan) while holding the library lock, so
+    `gotochangerctl storage-door close` timed out against a completely
+    healthy daemon. No shorter value is derivable - each delay is tunable
+    up to 5m, and the single-arm model queues every other operation behind
+    whichever one holds the lock.
+  * Remove dead code (an unused static-asset predicate, a parallel
+    WizardProgress store type nothing ever called, an empty internal/web
+    directory), sort the outside-tape inventory deterministically instead
+    of leaving it in Go map order (it reshuffled in the dashboard on every
+    door close), and fix two files failing gofmt.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Sun, 26 Jul 2026 21:00:00 +0000
+
+gotochanger (0.6.0) UNRELEASED; urgency=medium
+
+  * Package the TCMU/LIO kernel-mode backend for the first time: a new
+    gotochanger-kernel binary package (Depends: gotochanger) ships
+    gotochanger-tcmud, a templated gotochanger-tcmud@.service systemd
+    unit, and a modules-load.d conf that loads target_core_mod/
+    target_core_user/tcm_loop at boot. Built and real-hardware-verified
+    in-repo since the previous session (see CLAUDE.md's "Kernel mode
+    (TCMU/LIO)" section); this is what makes it installable rather than
+    a source-only binary. Not enabled by default - an admin runs
+    `systemctl enable --now gotochanger-tcmud@<logical-library-or-
+    default>.service` once ready, per logical library (or @default for
+    the whole physical library). Unlike gotochanger.service, the new
+    unit runs unsandboxed as root, which TCMU configfs/UIO/netlink setup
+    genuinely requires.
+  * Add --logical-library scoping to gotochanger-tcmud, mirroring
+    gotochanger-changer's own flag - a deployment with multiple logical
+    libraries now runs one gotochanger-tcmud instance per logical
+    library, each with its own changer LUN and only that library's
+    drives, the kernel-mode equivalent of one Autochanger per logical
+    library in changer-script mode.
+  * Fix gotochanger-tcmud resolving a drive's SCSI identity/native speed
+    from its DriveType catalog *name* instead of its Generation field -
+    coincidentally correct against the stock drive-type catalog (every
+    entry is named after its own generation) but silently wrong for any
+    custom-named drive type, which would fall back to a generic identity
+    instead of matching its real family.
+  * Kernel mode's MOVE MEDIUM now reports cause-specific SCSI sense data
+    for a drive/robotic fault (NOT READY, manual intervention required)
+    and a cleaning-tape failure (CLEANING FAILURE), instead of the same
+    generic mechanical-positioning-or-changer-error sense for every
+    possible failure.
+  * The wizard's kernel-mode radio button (previously permanently
+    disabled) is now live-gated by a new GET /api/v1/kernel-mode/status
+    check (is the package installed, is the kernel module loaded), with
+    an inline hint when it isn't available yet. Admin > Logical
+    Libraries gained a "Kernel Mode Setup" button (next to the existing
+    "Bareos Config" one) printing the exact systemctl command for that
+    logical library, plus a whole-library equivalent for a deployment
+    with no logical libraries configured.
+  * Fix a data race between Library.emit's async SNMP-notify goroutine
+    and AnnotateEventsSince, both accessing the same Event.Detail map
+    with no synchronization - crashed gotochangerd on bareos-disk-sd-
+    int-fr1 with "concurrent map iteration and map write" (systemd
+    restarted it within 2s, no lasting outage). Fixed by giving the
+    notifier goroutine its own deep copy of Detail (cloneEventForNotify).
+  * Add gotochanger-tcmud device-path reporting: a new
+    POST/DELETE /api/v1/kernel-mode/devices/{instance} and
+    GET /api/v1/kernel-mode/devices (in-memory only, not persisted)
+    let each running gotochanger-tcmud instance report its real
+    /dev/sg*/nst* paths back to gotochangerd once discovered, so
+    Admin > Drives, Admin > Logical Libraries, and the generated Bareos
+    Config show the real kernel-assigned device instead of the
+    changer-script-mode symlink once kernel mode is actually running.
+    Also fixes a latent bug where gotochanger-tcmud built each SCSI
+    drive with its loop position instead of its real physical drive
+    index, which only ever worked by coincidence for a physically
+    contiguous-from-0 logical library.
+  * Fix two logical libraries' kernel-mode backstores/loopback WWNs
+    colliding under the shared default HBA - every instance named its
+    changer/drive backstores with bare, non-unique names ("changer0",
+    "drive0", ...), so a second logical library's instance could create
+    its own directory but could never enable it (the kernel silently
+    reused the first instance's already-registered object), retrying
+    forever. Fixed by prefixing every backstore/WWN with the owning
+    instance's own name (its logical library, or "default").
+  * Fix gotochanger-tcmud not picking up a drive reassigned between
+    logical libraries while its instance keeps running - it resolves
+    its own drive set once, at startup, so a live Admin > Logical
+    Libraries edit had no effect until someone manually restarted the
+    affected instances. The gotochangerd reconciler now compares each
+    running instance's last self-reported drive set against the live
+    topology and restarts it (stop then start, matching the existing
+    narrowly-scoped polkit grant) when they disagree. Also fixes a
+    related cross-process race in gotochanger-tcmud's own SCSI-host
+    discovery: two instances restarting at the same moment could each
+    grab the wrong newly-created /dev/sg* host, now serialized via a
+    new cross-process flock.
+  * gotochanger-kernel now depends on polkitd explicitly (Debian
+    trixie's current package name for what used to be policykit-1) -
+    without it actually installed, every systemctl call the automatic
+    gotochanger-tcmud instance start/stop reconciler makes has no
+    polkit authority to consult and silently falls back to
+    default-deny, so kernel mode would pass every "is it available"
+    check yet never actually start anything. Found on a minimal
+    bareos-disk-sd-int-fr1 install that never had polkitd for
+    unrelated reasons; the dev host this feature was built against
+    already had it, which is why this stayed hidden.
+  * Fix a real-kernel race in gotochanger-tcmud's own device-path
+    discovery: it read the device/generic symlink exactly once,
+    immediately after triggering an asynchronous SCSI bus rescan, with
+    no wait - fine on the original dev host, but a medium-changer
+    peripheral device measurably takes longer to finish registering
+    than a tape peripheral device does on at least one real kernel,
+    making the changer's own path discovery fail 100% of the time while
+    every drive succeeded. Fixed with a short, bounded retry.
+  * Implement MODE SENSE(6) page 0x1D (Element Address Assignment) for
+    the emulated changer. Real mtx (and Bareos's own bundled
+    mtx-changer script, which wraps it) queries this page as part of
+    its status probe; without it, mtx fails the query and falls back to
+    a full scan, printing a diagnostic to stderr along the way - and
+    Bareos SD's own AutochangerCmd() reads only the *first* line of the
+    combined child-process output for a "slots" command, so it parsed
+    mtx's own diagnostic text as the slot count (0) instead of the real
+    number. Found by testing with real mtx against real hardware for
+    the first time in this project's history - prior verification
+    passes only ever used hand-crafted sg_raw CDBs, which never
+    exercised this code path.
+  * Fix READ ELEMENT STATUS/REQUEST VOLUME ELEMENT ADDRESS never
+    setting the PVolTag bit in the element status page header, so
+    barcode data was genuinely present in the response bytes but any
+    real, spec-compliant initiator (including Bareos's own barcode
+    scan) correctly ignored it as absent. Found immediately after the
+    MODE SENSE fix above, via the same real-mtx testing pass.
+  * Fix internal/scsi.Drive.volume() indexing the drive list by
+    physical drive index instead of searching it by that field -
+    correct only when a gotochanger-tcmud instance happens to expose
+    the *entire* physical drive list (array position equals physical
+    index), which silently broke every real drive-level SCSI command
+    (TEST UNIT READY, LOAD/UNLOAD, READ/WRITE(6), REWIND, SPACE(6),
+    LOCATE(10)) for any --logical-library-scoped instance whose drives
+    don't start at physical index 0. The resulting NOT READY response
+    made a real initiator's own open()/TEST UNIT READY retry loop
+    (Linux's st driver, inside a real backup job) hang indefinitely
+    instead of failing - not a hang in this project's own code, but one
+    it silently caused. Found on bareos-disk-sd-int-fr1's Library2
+    (drives at physical index 4-5) after Library1 (drives at 0-3, where
+    the bug is invisible) had already tested clean.
+  * Implement filemark support for the kernel-mode drive backend:
+    WRITE FILEMARKS(6) (previously entirely unimplemented, which made
+    every real backup job fail at end-of-volume with an I/O error from
+    Bareos's own MTWEOF), SPACE(6) code=1 (filemark-count positioning,
+    needed for restore/copy jobs to seek to a specific file), and
+    filemark-aware READ(6) truncation. Filemark positions are tracked
+    in a small per-volume sidecar file, never touched by the
+    byte-for-byte backing file gotochangerd's own activity-watcher/
+    capacity-poll already depend on. Also fixed two bugs found while
+    verifying this against a real kernel: TCMU's UFLAG_READ_LEN flag
+    was never actually set on a completion, silently zeroing out any
+    short/partial read regardless of cause (not filemark-specific - it
+    affected every previously-shipped short-read/ILI response too); and
+    a plain sequential multi-file write was deleting the very filemark
+    separating it from the file before it, since that filemark sits
+    exactly at the next file's own start position.
+  * Add real, stable /dev/tape/by-id/scsi-3<wwn>[-nst] device paths for
+    kernel mode by implementing SCSI INQUIRY VPD pages 0x00 (Supported
+    Pages) and 0x83 (Device Identification) - the kernel's own raw
+    /dev/sg*/nst* numbering is not stable across a gotochanger-tcmud
+    restart, which broke Bareos config that hard-coded them. No
+    gotochanger-side udev rules were needed: systemd's own stock
+    persistent-storage-tape rules already build exactly this style of
+    symlink from a real VPD 0x83 query, the same mechanism the real ML3
+    hardware this project models already uses. Kernel-mode device
+    reporting, Admin > Drives/Logical Libraries, and the generated
+    Bareos Config now all prefer this stable path over the raw one.
+  * Fix gotochanger-tcmud@<name> instances not restarting when
+    gotochangerd itself restarts (a redeploy, a crash-and-restart),
+    leaving stale device reports and outdated code running until an
+    admin noticed and restarted them by hand. The reconciler now forces
+    a restart of an already-active, still-desired instance specifically
+    on gotochangerd's own startup, without affecting its normal,
+    narrower behavior (only touch an instance whose drive set actually
+    changed) for ordinary topology edits.
+  * Rename the Go module path from the old GitLab location
+    (gitlab.com/internal-org/foundation/products/infrastructure/packages/
+    gotochanger) to github.com/swenske/gotochanger, following the
+    repository's move - updates every internal import plus the
+    Homepage/Source metadata in debian/control, debian/copyright, and
+    the SNMP MIB's CONTACT-INFO.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Sun, 26 Jul 2026 18:30:00 +0000
+
+gotochanger (0.5.0) UNRELEASED; urgency=medium
+
+  * Rework latency simulation: replace the fixed none/low/medium/high
+    profile catalog with a fully custom set of 7 numeric delays (drive
+    load/unload, tape positioning inside the drive, robotic arm movement
+    for tape moves and for magazine scans, tape scanning after a
+    magazine is closed, door open/close movement), editable live from a
+    new Admin > Latency page (with a "Load defaults" prefill) and the
+    matching GET/PUT /api/v1/settings/latency API/gotochangerctl latency
+    subcommand - previously only settable once, during the setup wizard,
+    from 4 fixed presets, with no way to retune afterwards short of a
+    raw REST call against an undocumented field. The wizard's step 8 is
+    now just an "Enable tape library latency simulation" checkbox; the
+    actual values always come from Admin > Latency (or the seeded
+    factory defaults). Applies to the whole physical library, so every
+    logical library sharing one gotochangerd instance shares one timing
+    model, same as before. Upgrading a database that has an existing
+    latency_profile setting migrates it into the new fields instead of
+    silently resetting to disabled (see migrateLegacyLatencySetting).
+  * Add robotics fault simulation: a new POST /api/v1/robotics/fault
+    endpoint (operator+, same role as the existing per-drive fault
+    toggle) and dashboard "Robotic Arm" panel let an operator raise a
+    simulated fault on the library's single robotic arm, with a
+    realistic kind (blocked arm, mispositioned cartridge, cartridge
+    pickup failure, cartridge drop/transport failure, movement jam, or
+    other) and an optional message. While active, Move/Load/Unload are
+    rejected (409); magazine/mailbox door open/close remain available.
+    Only one robotic action can run at a time and a second one waits for
+    the first to finish (already true of the existing per-operation
+    locking, not new infrastructure). Fault state persists across a
+    daemon restart, same as the existing per-drive fault. Also available
+    via gotochangerctl robotic-fault on|off.
+  * Fix the Admin > Logical Libraries "Bareos Config" generator omitting
+    the Drive Index directive from generated Device{} blocks. Real
+    Bareos SD defaults Drive Index to 0 for any Device that doesn't set
+    it explicitly, so an Autochanger with 2+ drives had every drive
+    silently collapse to "drive 0" from Bareos's point of view. Found on
+    bareos-disk-sd-int-fr1: mounting slot 2 into drive 1 actually loaded
+    it into physical drive 0. Fixed by emitting Drive Index set to each
+    drive's 0-based rank within that logical library (matching what
+    gotochanger-changer's --logical-library scoping expects), not
+    gotochangerd's own drive index. README.md's Bareos integration
+    example had the same gap and got the same fix. Does not fix
+    bareos-disk-sd-int-fr1's live Ansible-managed config - see
+    CLAUDE.md's "Known gotchas" #13.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Thu, 16 Jul 2026 15:00:00 +0000
+
+gotochanger (0.4.0) UNRELEASED; urgency=medium
+
+  * Redesign tape/cartridge identity and creation. "Volume label" is
+    retired: Volume.Label and the old cosmetic Volume.Barcode field are
+    merged into one Barcode identifier, used everywhere (filenames,
+    uniqueness key, REST API, CLI). Every tape type now defines a real
+    per-family barcode format (new internal/barcode package): LTO/DLT/
+    SDLT follow published vendor specs, DDS/AIT/3592 use gotochanger's
+    own documented convention (no external standard exists for them).
+    The default tape-type catalog grew from 5 to 28 entries covering
+    LTO-1 through LTO-9 (+ Type M), DLT-III/IV, SDLT-220/600, DDS-1
+    through DDS-4 (+ DAT-72/160/320), AIT-1 through AIT-4, SAIT-1, and
+    IBM-3592. Every cartridge must now belong to a Tape Set; the old
+    free-standing "create an outside volume with any label" path
+    (POST /api/v1/outside, outside-create) is removed in favor of
+    tape-set-scoped creation (POST /api/v1/tape-sets with a required
+    initial_tape_count, and new POST /api/v1/tape-sets/{name}/tapes for
+    bulk auto-generation or a single manually-numbered cartridge).
+    Barcode uniqueness is enforced globally across the whole system, not
+    per tape set. A new GET /api/v1/fs/browse endpoint backs a real
+    folder-picker UI component for tape-set storage folders, replacing a
+    free-typed path input, in both Admin > Tape Sets and the setup
+    wizard. The old global "auto-generate barcodes"/"barcode prefix"
+    Settings toggle is removed, superseded by per-tape-type format.
+    Breaking change: upgrading an install with existing volumes created
+    before tape sets existed (e.g. bareos-disk-sd-int-fr1's 0001-0004)
+    will not preserve their old label/barcode identity - this was a
+    deliberate scope decision, not an oversight; see CLAUDE.md's "Real
+    deployment" section before upgrading that host.
+  * Fix a pre-existing tape-type row (e.g. "LTO-8", seeded by every
+    install prior to this release) surviving the tape_types schema
+    migration with a permissive-but-wrong generic barcode format instead
+    of its real one, so cartridges created against it got plain numeric
+    barcodes instead of the correct family shape. Found immediately on
+    first deploy to bareos-disk-sd-int-fr1. Fixed by
+    repairLegacyTapeTypeBarcodeFormats, which recognizes known legacy
+    tape-type names on every startup and upgrades them to their real
+    format; see CLAUDE.md's "Known gotchas" #12 for the full root cause.
+    Does not rename any cartridge already created under the wrong
+    format - only affects tape types going forward.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Thu, 16 Jul 2026 12:00:00 +0000
+
+gotochanger (0.3.2) UNRELEASED; urgency=medium
+
+  * Fix the drive-index companion to the 0.3.1 slot-addressing fix:
+    gotochanger-changer looked up drives by gotochangerd's global physical
+    index, but Bareos computes its "drive N" argument as the 0-based
+    position of the Device within that Autochanger's own Device list, not
+    the global index. A logical library whose drives aren't the
+    physically-lowest-indexed ones (e.g. Library2's Drive4/Drive5) got
+    "drive 0 not found" for what Bareos considers its first drive.
+    presentedAddressing now renumbers drive indices the same way it
+    already renumbers slot addresses - identical to today's behavior when
+    unscoped (global indices are already dense from 0), only different
+    when scoped to a logical library. Found immediately after deploying
+    0.3.1 to bareos-disk-sd-int-fr1's Library2/TAPES-EXPORT.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 15 Jul 2026 17:00:00 +0000
+
+gotochanger (0.3.1) UNRELEASED; urgency=medium
+
+  * Fix gotochanger-changer leaking global physical slot/I-O-slot addresses
+    to Bareos when an Autochanger is scoped to a logical library via
+    --logical-library. A logical library's elements can sit at arbitrary,
+    non-contiguous physical addresses (e.g. a second logical library
+    carved out of magazines/mailboxes added after the first), but Bareos's
+    per-Storage-resource "max slots" bookkeeping assumes element addresses
+    never exceed the total slot count, so anything beyond the first
+    logical library's own range got silently dropped ("Slot N greater
+    than max M ignored"). gotochanger-changer now renumbers every address
+    it shows to (or accepts from) Bareos into a dense 1-based range scoped
+    to whatever's in view for the current invocation - identical to the
+    existing physical addressing when unscoped (the whole library is
+    already dense from 1), only different when scoped to a logical
+    library. Found on bareos-disk-sd-int-fr1's second logical library
+    (Library2 / TAPES-EXPORT), whose slots physically sit at 41-80 with
+    I/O slots at 106-110.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 15 Jul 2026 15:30:00 +0000
+
+gotochanger (0.3.0) UNRELEASED; urgency=medium
+
+  * Move the last remaining service-level settings that used to live in
+    config.yaml (snmp, poll_interval, log_level, tokens_file, users_file)
+    into the database, editable live through the Admin Settings API/UI.
+    config.yaml is now down to just data_dir and listen - the two settings
+    that genuinely have to be known before the database can even be
+    opened. Settings.Update no longer rewrites config.yaml at all.
+  * Add database backup/restore: Admin > Backup in the web UI, a
+    `gotochangerctl backup`/`restore` CLI, and a REST API
+    (/api/v1/backup/download, /api/v1/backups, /api/v1/backup/schedule,
+    /api/v1/restore). A backup is a consistent snapshot of the whole
+    database (topology, settings, dynamic element/volume state) taken with
+    SQLite's `VACUUM INTO`, named "<vtl_name>_<timestamp>.db". Operator+
+    can trigger and download a manual backup; Admin can additionally
+    schedule recurring backups (interval + retention) and restore from an
+    uploaded backup file, both in Admin > Backup and in wizard step 1 (to
+    skip configuring from scratch). Restore replaces the database file and
+    deliberately exits non-zero so systemd's Restart=on-failure brings the
+    daemon back up against it - it does not attempt to hot-swap the
+    running Library, unlike every other topology change in this release.
+    User accounts and API tokens are intentionally out of scope for
+    backup/restore: they're not "virtual tape library" state, and stay in
+    their existing separate JSON files.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 15 Jul 2026 14:30:00 +0000
+
+gotochanger (0.2.0) UNRELEASED; urgency=medium
+
+  * Move all library topology (drive/tape types, magazines, drive
+    devices, logical libraries, tape sets, and the settings that go with
+    them) from config.yaml into the SQLite database at <data_dir>/state.db
+    (internal/store/topology.go). This is a clean break, not a migration:
+    an existing install's config.yaml topology is ignored after upgrading
+    and the setup wizard must be re-run. A fresh install now genuinely
+    starts with zero drives/magazines/I-O slots configured.
+  * Fix the wizard's most fundamental bug: UpdateWizardState set
+    CurrentStep to the step just submitted instead of advancing past it,
+    so clicking Next never actually progressed, on any step, for anyone.
+  * Wizard progress (current step + completed flag) now persists across a
+    daemon restart; each step's data is written straight into its final
+    table/setting the moment it's submitted, so a restart mid-wizard
+    resumes exactly where it left off.
+  * Wizard completion now hot-applies the new topology to the running
+    daemon (Library.Reconfigure) instead of only updating an in-memory
+    config copy that was never actually used.
+  * Add real CRUD (API, CLI, Admin UI) for drive types, tape types, tape
+    sets (grouped by tape type, each with its own storage folder), and
+    magazines - previously only settable once via the wizard, and in the
+    case of tape sets, silently discarded on completion.
+  * Add Logical Libraries as a first-class, persisted concept: partitions
+    of the physical library (drives/magazines/I-O slots + a display
+    color), enforced with exclusivity (an element belongs to at most one
+    logical library) and runtime scoping (Load/Unload/Move reject an
+    element outside the X-Logical-Library-scoped library). Add an
+    "unassigned objects" view for reassignment.
+  * gotochanger-changer: replace the ambiguous trailing-argument logical-
+    library heuristic (which could misread a load/unload volume label as
+    a library name) with an explicit --logical-library=NAME flag.
+  * Add an offsite vault: manual send/recall operations plus an optional
+    scheduled auto-rotation, simulating tape rotation/vaulting.
+  * Latency simulation is now actually applied to Move/Load/Unload
+    (previously modeled but never used to delay anything).
+  * Seed the suggested drive/tape type catalog with DDS and DLT in
+    addition to LTO-8/LTO-9/Unlimited.
+  * Enforce magazine ID and logical library name uniqueness via SQLite
+    UNIQUE constraints.
+  * Drive bandwidth throttling was evaluated and deliberately not
+    implemented: the symlink-based drive model never sees Bareos's byte
+    stream, so there's nothing to throttle without a FUSE/kernel-device
+    interception layer (the same prerequisite as the out-of-scope Kernel
+    mode).
+  * Wizard UX pass based on operator feedback: step 1 now requires a VTL
+    (Virtual Tape Library) name; step 2's drive-type checkboxes (which
+    could only pick each type once) are replaced with Add/Remove rows,
+    each with its own drive-type dropdown, so multiple drives of the same
+    type can be added. I/O slots are replaced throughout with Mailboxes,
+    a real first-class entity mirroring Magazine exactly (own ID + slot
+    count 1-5, real backend grouping, own CRUD/API/CLI/Admin UI screen)
+    instead of a flat count - step 4 is now an Add/Remove-rows UI like
+    step 3's magazines, and logical libraries are now assigned whole
+    mailboxes by ID (like magazines) instead of individual I/O slot
+    indices. Tape sets (step 6) gained a tape count field that
+    auto-generates that many cartridges on wizard completion, labeled
+    sequentially from the tape type (e.g. LTO-8 -> LTO800001, LTO800002,
+    ...).
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Fri, 10 Jul 2026 23:30:00 +0000
+
+gotochanger (0.1.2) UNRELEASED; urgency=medium
+
+  * Fix I/O (import/export) slot addressing: they were numbered as a
+    separate 1..N space, invisible to Bareos/mtx-changer, which expect a
+    single combined address range (storage slots first, I/O slots
+    continuing right after) and learn the *total* count from the
+    changer's "slots" command. gotochanger-changer's "slots" command now
+    returns storage+I/O combined, matching mtx-changer's behavior of
+    parsing real mtx's "N Slots (M Import/Export)" total. I/O slot
+    addresses are now displayed with a trailing "@" (e.g. "21@") in
+    gotochangerctl and the web UI, matching real tape library tooling.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 08 Jul 2026 20:40:00 +0000
+
+gotochanger (0.1.1) UNRELEASED; urgency=medium
+
+  * Fix systemd UMask (0027 -> 0007): it was silently stripping the
+    intentional group-write bit from volume files/directories (created
+    0660/0770), breaking real read/write sharing with a service account
+    added to the "gotochanger" group (e.g. bareos), as documented.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 08 Jul 2026 20:00:00 +0000
+
+gotochanger (0.1.0) UNRELEASED; urgency=medium
+
+  * Initial release: virtual tape autochanger simulator with storage
+    slots, I/O (import/export) slots, virtual drives, REST API, embedded
+    management web UI, gotochanger-changer (Bareos disk-changer.in
+    compatible shim), gotochangerctl admin CLI and SNMPv2c trap
+    notifications.
+
+ -- Sebastien WENSKE <sebastien@wenske.fr>  Wed, 08 Jul 2026 00:00:00 +0000

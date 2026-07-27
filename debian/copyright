@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: gotochanger
+Source: https://github.com/swenske/gotochanger
+
+Files: *
+Copyright: 2026 Sebastien WENSKE
+License: proprietary
+ This software is internal to the organization and is not distributed outside the
+ organization. All rights reserved.

@@ -1,0 +1,4 @@
+usr/sbin/gotochanger-tcmud
+usr/lib/systemd/system/gotochanger-tcmud@.service
+etc/modules-load.d/gotochanger-kernel.conf
+usr/share/polkit-1/rules.d/gotochanger-kernel.rules

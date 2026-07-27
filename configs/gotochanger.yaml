@@ -1,0 +1,24 @@
+# gotochanger daemon configuration.
+# Installed at /etc/gotochanger/config.yaml by the Debian package.
+#
+# This file is intentionally tiny: only data_dir and listen are actually
+# read from it. Everything else (topology, tokens_file/users_file, snmp,
+# poll_interval, log_level, and so on) lives in the SQLite database at
+# <data_dir>/state.db and is managed through the setup wizard, the Admin web
+# UI, or `gotochangerctl settings`/`gotochangerctl backup` - never by
+# hand-editing a file. data_dir itself can't live in the database for the
+# obvious reason that it's what tells the daemon where the database is.
+
+# Where the database, volumes, exported cartridges and drive device
+# symlinks live.
+data_dir: /var/lib/gotochanger
+
+listen:
+  # Token-authenticated REST API + web UI. Bind to 0.0.0.0:8480 (or a
+  # specific interface) if you need to reach the UI from other hosts.
+  http: "127.0.0.1:8480"
+  # Trusted local socket used by gotochanger-changer/gotochangerctl: no
+  # token needed, access is controlled by filesystem permissions instead.
+  unix_socket: "/run/gotochanger/gotochanger.sock"
+  socket_mode: "0660"
+  socket_group: "gotochanger"

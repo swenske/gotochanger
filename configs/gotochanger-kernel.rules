@@ -1,0 +1,30 @@
+// Installed by the gotochanger-kernel package to
+// /usr/share/polkit-1/rules.d/gotochanger-kernel.rules - polkitd watches
+// this directory and picks up changes automatically, no reload needed.
+//
+// Lets the gotochangerd service account (which otherwise runs fully
+// unprivileged - see systemd/gotochanger.service's NoNewPrivileges=true
+// and other hardening) start/stop exactly gotochanger-tcmud@<name>
+// instances, and nothing else - no other unit, no enable/disable (see
+// internal/api/kernelmode_reconcile.go's runSystemctl doc comment for
+// why enable/disable specifically can't be scoped this narrowly and are
+// deliberately not granted here). This is what lets gotochangerd
+// auto-start/stop kernel-mode instances to match the configured logical
+// libraries when operational_mode is "kernel", without gotochangerd
+// itself ever running as root, using sudo, or gaining any broader system
+// access - the actual privileged action runs inside systemd (already
+// root), authorized per-call by this rule inspecting the specific unit
+// name and verb systemd itself reports, not by gotochangerd gaining
+// anything.
+polkit.addRule(function(action, subject) {
+    if (action.id != "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    var verb = action.lookup("verb");
+    if (subject.user == "gotochanger" &&
+        (verb == "start" || verb == "stop") &&
+        unit && unit.match(/^gotochanger-tcmud@.*\.service$/)) {
+        return polkit.Result.YES;
+    }
+});

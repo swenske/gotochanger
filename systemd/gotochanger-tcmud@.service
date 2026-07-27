@@ -1,0 +1,48 @@
+[Unit]
+Description=gotochanger kernel-mode backend (TCMU/LIO) for %i
+Documentation=file:///usr/share/doc/gotochanger/README.md
+# Deliberately After= only, no Requires=/BindsTo= - found the hard way
+# that Requires= here causes systemd to automatically RESTART this
+# instance as part of the same transaction whenever gotochanger.service
+# itself restarts (crash, redeploy, a VTL reset - anything), completely
+# bypassing internal/api/kernelmode_reconcile.go's own start/stop
+# decisions: a reset that (correctly) leaves operational_mode no longer
+# "kernel" would still see this instance reappear seconds later, brought
+# back by systemd's own dependency engine, not by gotochangerd. Ordering
+# alone (After=) still avoids trying to start before gotochanger.service
+# exists, without systemd ever deciding on its own to start or stop this
+# unit - that decision belongs entirely to gotochangerd's reconciler
+# (or an admin's own explicit systemctl command).
+
+[Service]
+Type=simple
+# Instance name "default" means "the whole physical library, unscoped" -
+# the same shape gotochanger-changer has with no --logical-library flag
+# (see cmd/gotochanger-tcmud's own doc comment). Any other instance name
+# is passed straight through as --logical-library=%i, so
+# `systemctl enable --now gotochanger-tcmud@Library1.service` scopes this
+# instance to just that logical library's own elements - one instance per
+# logical library is how a multi-logical-library deployment runs kernel
+# mode, mirroring one Autochanger per logical library in changer-script
+# mode. Admin > Logical Libraries' "Kernel Mode Setup" button (and the
+# setup wizard) print the exact command for a given deployment.
+ExecStart=/bin/sh -c 'if [ "%i" = "default" ]; then exec /usr/sbin/gotochanger-tcmud; else exec /usr/sbin/gotochanger-tcmud --logical-library="%i"; fi'
+Restart=on-failure
+RestartSec=2
+
+# Unlike gotochanger.service, this deliberately runs as root with none of
+# that unit's sandboxing: TCMU device setup needs to create configfs
+# nodes under /sys/kernel/config/target (ProtectKernelTunables=true would
+# make that read-only), open /dev/uioN, and talk generic netlink to the
+# kernel - the same reason real TCMU userspace daemons (e.g. tcmu-runner)
+# conventionally run as root, unsandboxed, in every distro that packages
+# them. NoNewPrivileges is still safe to set (root already has every
+# privilege it could gain), everything else gotochanger.service uses to
+# sandbox itself (PrivateDevices/ProtectSystem=strict/
+# ProtectKernelModules/ReadWritePaths) is not, and is deliberately left
+# out rather than fought with case by case.
+User=root
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+usr/sbin/gotochangerd
+usr/bin/gotochanger-changer
+usr/bin/gotochangerctl
+etc/gotochanger/config.yaml
+usr/lib/systemd/system/gotochanger.service
