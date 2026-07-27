@@ -17,12 +17,6 @@ package tcmu
 
 import "encoding/binary"
 
-// alignSize mirrors the kernel's ALIGN_SIZE ("should be enough for most
-// CPUs"): struct tcmu_mailbox.cmd_tail is placed at the first offset that's
-// a multiple of this from the mailbox's own start, and every command
-// entry's length is rounded up to a multiple of opAlignSize below.
-const alignSize = 64
-
 // mailboxSize is sizeof(struct tcmu_mailbox): version(2)+flags(2)+
 // cmdr_off(4)+cmdr_size(4)+cmd_head(4) = 16 bytes, then cmd_tail forced to
 // the next 64-byte-aligned offset (64), then the whole struct's size
@@ -30,8 +24,10 @@ const alignSize = 64
 // In practice the kernel places cmdr_off at exactly this offset.
 const mailboxSize = 128
 
-// cmdTailOffset is cmd_tail's byte offset within the mailbox, per the
-// alignment derivation above.
+// cmdTailOffset is cmd_tail's byte offset within the mailbox: the
+// kernel's ALIGN_SIZE ("should be enough for most CPUs") is 64, and
+// cmd_tail is placed at the first offset that's a multiple of it from the
+// mailbox's own start.
 const cmdTailOffset = 64
 
 // cmdEntryHdrSize is sizeof(struct tcmu_cmd_entry_hdr): len_op(4) +

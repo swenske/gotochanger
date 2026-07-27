@@ -390,12 +390,11 @@ func TestChangerMoveMediumSourceEmpty(t *testing.T) {
 }
 
 func TestChangerMoveMediumDestFull(t *testing.T) {
-	c := &Changer{Client: &fakeClient{st: testStatus()}}
 	// unified 2 (slot 1, occupied) -> unified 2 itself is occupied; use a
 	// second occupied element as destination instead.
 	fc := &fakeClient{st: testStatus()}
 	fc.st.Drives[0].Volume = vol("INDRIVE")
-	c = &Changer{Client: fc}
+	c := &Changer{Client: fc}
 	resp := c.Handle(entryWithCDB(buildMoveMediumCDB(2, 5)))
 	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscMediumDestinationElementFull {
 		t.Fatalf("resp = %+v", resp)
