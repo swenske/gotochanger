@@ -1,0 +1,204 @@
+# goreleaser config for gotochanger's manual release pipeline (see
+# .github/workflows/release.yml, workflow_dispatch only). Builds all four
+# binaries, packages them into the same two Debian binary packages
+# (gotochanger / gotochanger-kernel) the hand-maintained debian/ directory
+# already produces via dpkg-buildpackage, generates a commit-based
+# changelog, and creates a GitHub Release with the binaries + both .debs
+# as assets. The release workflow's own last step pushes the produced
+# .debs into the internal aptly mirror - that part isn't goreleaser's job.
+version: 2
+
+project_name: gotochanger
+
+# Every build shares these settings; captured once as a YAML anchor so the
+# four entries below don't repeat themselves.
+# - linux/amd64 only: matches every real deployment host and the runner
+#   itself - there is no cross-compiling need here.
+# - CGO_ENABLED=1: github.com/mattn/go-sqlite3 is cgo-based.
+# - GOFLAGS=-mod=vendor: this module vendors its two dependencies
+#   (go-sqlite3, yaml.v3) and is built offline everywhere else (see
+#   debian/rules) - stay consistent with that.
+# - -trimpath / buildmode: pie / -s -w ldflags: mirrors the Makefile's own
+#   build exactly (GOFLAGS/BUILDMODE/LDFLAGS in ./Makefile), just
+#   goreleaser-driven instead of `make build`.
+# - main.version is set from the git tag goreleaser is building against
+#   (e.g. v0.7.0), the same injection point ./Makefile already uses.
+builds:
+  - id: gotochangerd
+    main: ./cmd/gotochangerd
+    binary: gotochangerd
+    <<: &build_defaults
+      goos: [linux]
+      goarch: [amd64]
+      env:
+        - CGO_ENABLED=1
+        - GOFLAGS=-mod=vendor
+      flags:
+        - -trimpath
+      buildmode: pie
+      ldflags:
+        - -s -w -X main.version={{.Version}}
+  - id: gotochanger-changer
+    main: ./cmd/gotochanger-changer
+    binary: gotochanger-changer
+    <<: *build_defaults
+  - id: gotochangerctl
+    main: ./cmd/gotochangerctl
+    binary: gotochangerctl
+    <<: *build_defaults
+  - id: gotochanger-tcmud
+    main: ./cmd/gotochanger-tcmud
+    binary: gotochanger-tcmud
+    <<: *build_defaults
+
+# Plain tar.gz of all four binaries, attached to the GitHub Release
+# alongside the two .debs below - covers "the binary" as an asset for
+# anyone not installing via apt.
+archives:
+  - id: gotochanger-binaries
+    formats: [tar.gz]
+    name_template: "gotochanger_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# sha256 checksums file for every release artifact - goreleaser default,
+# useful for verifying downloads independent of the aptly/GPG trust path.
+checksum:
+  name_template: "checksums.txt"
+
+# Two nfpm-built .deb packages, translating debian/control,
+# debian/*.install, debian/*.postinst/.postrm, debian/gotochanger.dirs/
+# .docs 1:1 so installing either one behaves the same as the
+# dpkg-buildpackage-built package this project has always shipped.
+nfpms:
+  - id: gotochanger
+    package_name: gotochanger
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+    # gotochangerd is deliberately NOT listed here - nfpm's "ids"-driven
+    # auto-content always lands a binary at this package's "bindir"
+    # (default /usr/bin), but systemd/gotochanger.service hardcodes
+    # ExecStart=/usr/sbin/gotochangerd. It's still built (every entry
+    # under top-level "builds:" always runs regardless of nfpm "ids"),
+    # just placed explicitly below via "contents" instead. Confirmed by
+    # an actual `goreleaser release --snapshot` run that skipping this
+    # would silently put the daemon in /usr/bin and break the unit file.
+    ids: [gotochanger-changer, gotochangerctl]
+    vendor: "Sebastien WENSKE"
+    maintainer: "Sebastien WENSKE <sebastien@wenske.fr>"
+    homepage: "https://github.com/swenske/gotochanger"
+    license: MIT
+    section: admin
+    priority: optional
+    formats: [deb]
+    description: |
+      gotochanger simulates a tape autochanger (virtual library) for staging
+      and development environments, similar to what a real Dell ML3 or
+      comparable tape library provides, but backed entirely by regular
+      files: storage slots, import/export elements and multiple virtual
+      drives; a REST API covering every action; an embedded web management
+      UI; a drop-in replacement for Bareos's disk-changer.in Changer Command
+      script (gotochanger-changer) plus a general admin CLI
+      (gotochangerctl); SNMPv2c trap notifications on library events.
+      This package does not create real kernel SCSI devices - see the
+      gotochanger-kernel package for that.
+    # debhelper's ${shlibs:Depends} would resolve to libc6 for a cgo
+    # binary like this; nfpm has no automatic shared-library dependency
+    # detection, so it's spelled out explicitly. adduser matches
+    # debian/control's existing Depends.
+    dependencies:
+      - libc6
+      - adduser
+    contents:
+      # gotochangerd's real binary output path - see the "ids" comment
+      # above. goreleaser always builds into
+      # dist/<build-id>_<goos>_<goarch>[_<goamd64-level>]/<binary>; this
+      # project never overrides GOAMD64, so the level is always "v1".
+      - src: dist/gotochangerd_linux_amd64_v1/gotochangerd
+        dst: /usr/sbin/gotochangerd
+        file_info:
+          mode: 0755
+      # Conffile - "config|noreplace" matches dpkg's own conffile
+      # semantics (local edits survive an upgrade).
+      - src: configs/gotochanger.yaml
+        dst: /etc/gotochanger/config.yaml
+        type: "config|noreplace"
+        file_info:
+          mode: 0640
+      - src: systemd/gotochanger.service
+        dst: /usr/lib/systemd/system/gotochanger.service
+      - src: README.md
+        dst: /usr/share/doc/gotochanger/README.md
+      - src: debian/copyright
+        dst: /usr/share/doc/gotochanger/copyright
+      - dst: /var/lib/gotochanger
+        type: dir
+    scripts:
+      postinstall: packaging/nfpm/gotochanger-postinstall.sh
+      postremove: packaging/nfpm/gotochanger-postremove.sh
+
+  - id: gotochanger-kernel
+    package_name: gotochanger-kernel
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+    # This package ships exactly one binary, so (unlike the "gotochanger"
+    # package above, which needs two different bindirs) the whole
+    # package's bindir can just be overridden to /usr/sbin directly -
+    # gotochanger-tcmud@.service hardcodes ExecStart=/usr/sbin/gotochanger-tcmud.
+    # NOTE: confirmed via a real snapshot build that "ids: []" does NOT
+    # mean "include nothing" - it behaves the same as omitting "ids"
+    # entirely, i.e. "no filter, include every build", which silently
+    # bundled all four project binaries into this package. A non-empty,
+    # explicit id list is required to filter at all.
+    ids: [gotochanger-tcmud]
+    bindir: /usr/sbin
+    vendor: "Sebastien WENSKE"
+    maintainer: "Sebastien WENSKE <sebastien@wenske.fr>"
+    homepage: "https://github.com/swenske/gotochanger"
+    license: MIT
+    section: admin
+    priority: optional
+    formats: [deb]
+    description: |
+      Optional add-on for gotochanger that exposes real kernel SCSI medium-
+      changer and tape-drive devices (/dev/sg*) via the kernel's TCMU/LIO
+      (target_core_user) subsystem, instead of the base package's plain-
+      file/symlink Changer Command Script mode. Ships gotochanger-tcmud and
+      a templated gotochanger-tcmud@.service systemd unit (one instance per
+      logical library, or @default for the whole physical library) - not
+      started or enabled automatically on install, since it requires the
+      target_core_user kernel module and root.
+    # gotochanger-kernel should really depend on the exact same version of
+    # gotochanger it was built alongside (debian/control does, via
+    # dpkg-gencontrol's ${binary:Version} substitution) - but confirmed via
+    # a real snapshot build that goreleaser's nfpm integration does not
+    # template the "dependencies" field ({{ .Version }} came through
+    # completely literal, unlike description/maintainer/homepage). An
+    # unpinned dependency is the honest fallback: both packages are always
+    # built and released together from this same pipeline, so version
+    # skew would only happen if someone manually mixed .debs from
+    # different releases. polkitd is required for gotochangerd's
+    # kernel-mode reconciler to start/stop gotochanger-tcmud instances
+    # (see configs/gotochanger-kernel.rules).
+    dependencies:
+      - libc6
+      - gotochanger
+      - polkitd
+    contents:
+      - src: systemd/gotochanger-tcmud@.service
+        dst: /usr/lib/systemd/system/gotochanger-tcmud@.service
+      - src: configs/gotochanger-kernel-modules.conf
+        dst: /etc/modules-load.d/gotochanger-kernel.conf
+      - src: configs/gotochanger-kernel.rules
+        dst: /usr/share/polkit-1/rules.d/gotochanger-kernel.rules
+    scripts:
+      postinstall: packaging/nfpm/gotochanger-kernel-postinstall.sh
+
+# Changelog covers every commit since the last tag (or, for the first
+# release, every commit since the repo's initial commit) - satisfies
+# "must cover all commits on main since the last tag" directly. Merge
+# commits are excluded as noise; nothing else is filtered.
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge "
+
+release:
+  name_template: "v{{ .Version }}"

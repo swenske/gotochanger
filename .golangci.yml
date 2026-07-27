@@ -1,0 +1,25 @@
+# Reasonable-default lint config for a Go project. No prior golangci-lint
+# config existed in this repo, so this isn't overriding an established
+# convention - it's a standard, not-too-opinionated baseline.
+run:
+  timeout: 5m
+  # vendor/ is third-party code (go-sqlite3, yaml.v3) - never ours to fix.
+  # golangci-lint already skips vendor/ by default, but this is explicit
+  # so the intent survives if that default ever changes.
+  modules-download-mode: vendor
+
+linters:
+  disable-all: true
+  enable:
+    - govet       # correctness: suspicious constructs, printf checks, etc.
+    - staticcheck  # SA*/S*/ST* checks: bugs, simplifications, style
+    - errcheck    # unchecked error return values
+    - ineffassign # assignments that are never used
+    - unused      # unused identifiers
+    - gosimple    # code that could be simpler
+    - misspell    # comment/string typos
+
+issues:
+  # Don't cap the number of issues reported per-linter/total - see them all.
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,80 @@
+# Continuous integration: lint, test, and build gotochanger on every push to
+# main and every pull request (including from forks). Always runs on
+# GitHub-hosted runners - free/unlimited on a public repo, and this is the
+# one workflow that MUST accept untrusted fork PRs, so it never touches the
+# self-hosted runner or any secret.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # No branch filter - PRs from any branch, including forks, run these
+    # checks. Nothing here needs a secret or the self-hosted runner.
+
+# Cancel a still-running run for the same ref when a new commit arrives, so
+# pushes to a PR branch don't queue up redundant runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # go vet / staticcheck / errcheck / etc. - see .golangci.yml for the exact
+  # linter set. Independent of test/build, so it runs in parallel with them.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Reads the "go" directive straight out of go.mod, so this never
+          # drifts out of sync with the module's own declared version.
+          go-version-file: go.mod
+          cache: false # golangci-lint-action manages its own cache
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+        env:
+          # This project vendors its two dependencies (go-sqlite3, yaml.v3)
+          # and builds offline via -mod=vendor everywhere else (see
+          # debian/rules) - keep linting consistent with that.
+          GOFLAGS: -mod=vendor
+
+  # Full test suite with the race detector and coverage, matching how this
+  # project's own concurrency invariants (single-arm locking, snapshot
+  # reads) are expected to be verified.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # go-sqlite3 is cgo-based; ubuntu-latest images ship gcc by default,
+      # so no extra toolchain setup is needed here.
+      - name: go test
+        env:
+          GOFLAGS: -mod=vendor
+          CGO_ENABLED: "1"
+        run: go test ./... -race -cover
+
+  # Plain compile check for every package/binary, independent of the test
+  # job so a build-only regression is never masked by a test being skipped.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go build
+        env:
+          GOFLAGS: -mod=vendor
+          CGO_ENABLED: "1"
+        run: go build ./...
