@@ -1,0 +1,121 @@
+# Manual, versioned release: builds gotochangerd/gotochanger-changer/
+# gotochangerctl/gotochanger-tcmud, packages them into the gotochanger and
+# gotochanger-kernel .deb packages (see .goreleaser.yaml), creates a GitHub
+# Release with a commit-based changelog, and pushes both .debs into the
+# internal aptly mirror at apt.int.sw-servers.net.
+#
+# Manual-only, on purpose: this runs on the self-hosted runner (needs its
+# persistent Go/gcc/dpkg toolchain and its dedicated aptly-publish SSH key),
+# which must never be reachable from a pull_request trigger.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version part to bump from the latest vX.Y.Z tag"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+# Never let two releases run at once - both mutate tags and the same
+# aptly repo.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to create the version tag and the GitHub Release
+
+jobs:
+  release:
+    # This project's own self-hosted runner - has the persistent Go/gcc/
+    # dpkg-dev/debhelper/fakeroot toolchain (installed once, not
+    # per-job like a GitHub-hosted runner) and the dedicated,
+    # forced-command-restricted SSH key used below to reach the aptly
+    # server. Never used for pull_request-triggered jobs (see ci.yml).
+    runs-on: [self-hosted, docker, aptly]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full tag history, needed for both version-bump and changelog
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Computes the next vX.Y.Z tag from the highest existing "v*" tag,
+      # bumped per the chosen bump_type input. First-ever release (no tag
+      # yet) is v0.7.0, continuing from debian/changelog's own version
+      # history (0.6.2) rather than restarting at v0.1.0/v0.0.0.
+      - name: Compute next version
+        id: version
+        run: |
+          set -euo pipefail
+          latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+
+          if [ -z "$latest" ]; then
+            new_version="v0.7.0"
+          else
+            ver="${latest#v}"
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            patch="${rest#*.}"
+            case "${{ inputs.bump_type }}" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+            esac
+            new_version="v${major}.${minor}.${patch}"
+          fi
+
+          echo "Previous tag: ${latest:-<none>}"
+          echo "New version:  $new_version"
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+      # Builds all four binaries, packages the two .debs, generates the
+      # changelog (every commit since the previous tag), and creates the
+      # GitHub Release with binaries + .debs + checksums as assets. See
+      # .goreleaser.yaml for the full build/package definition.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOFLAGS: -mod=vendor
+
+      # Pushes both .debs into the internal aptly mirror using the
+      # restricted, forced-command SSH access set up on apt.int.sw-servers.net
+      # (see /usr/local/sbin/gotochanger-publish-dispatch.sh and
+      # /usr/local/sbin/gotochanger-aptly-publish.sh on that host). The
+      # private key lives only on this runner
+      # (~/.ssh/id_gotochanger_aptly, generated locally, never uploaded) -
+      # deliberately not a GitHub secret, so trust stays local between
+      # these two machines.
+      - name: Publish .deb packages to the internal apt repository
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          KEY="$HOME/.ssh/id_gotochanger_aptly"
+          HOST="gotochanger-publish@apt.int.sw-servers.net"
+          VER="${VERSION#v}"
+
+          for name in "gotochanger_${VER}_amd64.deb" "gotochanger-kernel_${VER}_amd64.deb"; do
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" "$HOST" \
+              "upload $name" < "dist/$name"
+          done
+          ssh -o BatchMode=yes -i "$KEY" "$HOST" "publish"
