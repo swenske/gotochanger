@@ -4,7 +4,14 @@ set -e
 case "$1" in
   purge)
     rm -rf /etc/gotochanger
-    rm -rf /var/lib/gotochanger
+    if [ -d /var/lib/gotochanger ]; then
+      if mountpoint -q /var/lib/gotochanger/volumes 2>/dev/null; then
+        echo "gotochanger: /var/lib/gotochanger/volumes is a separate mounted filesystem; leaving it in place (unmount and remove it manually if no longer needed)." >&2
+        find /var/lib/gotochanger -mindepth 1 -maxdepth 1 ! -name volumes -exec rm -rf {} +
+      else
+        rm -rf /var/lib/gotochanger
+      fi
+    fi
     if getent passwd gotochanger >/dev/null; then
       deluser --system gotochanger || true
     fi
