@@ -1,3 +1,15 @@
+gotochanger (0.7.1) UNRELEASED; urgency=medium
+
+  * debian/changelog: backfill the v0.7.0 entry
+  * release.yml: auto-update debian/changelog on every release
+  * README: add "Install from repository" section
+  * Fix stale SNMP docs; fix gotochangerctl settings set for bool/int fields
+  * Update README: add badges for CI, latest release, GitHub repo, stars, license, Go version, and Go report card
+  * Improve purge cleanup in post-remove scripts to handle mounted volumes
+  * release.yml: fix changelog auto-update via PR instead of direct push
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Mon, 27 Jul 2026 12:34:04 +0000
+
 gotochanger (0.7.0) UNRELEASED; urgency=medium
 
   * Initial commit: gotochanger virtual tape autochanger simulator
