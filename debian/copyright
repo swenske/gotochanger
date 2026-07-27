@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: gotochanger
+Source: https://github.com/swenske/gotochanger
+
+Files: *
+Copyright: 2026 Veepee
+License: proprietary
+ This software is internal to Veepee and is not distributed outside the
+ organization. All rights reserved.

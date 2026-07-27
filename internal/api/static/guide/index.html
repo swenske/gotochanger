@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gotochanger &mdash; User Guide</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="stylesheet" href="/assets/guide/guide.css">
+</head>
+<body>
+
+<div class="guide-shell">
+  <nav class="guide-toc" id="guideToc">
+    <div class="guide-toc-brand">
+      <svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3"/><circle cx="11" cy="16" r="4.2"/><circle cx="21" cy="16" r="4.2"/><circle cx="11" cy="16" r="1.1" fill="currentColor" stroke="none"/><circle cx="21" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M2 22h28"/></svg>
+      gotochanger
+      <span>User Guide</span>
+    </div>
+    <a class="guide-toc-back" href="/">&larr; Back to the app</a>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Overview</div>
+      <a href="#welcome">Welcome</a>
+      <a href="#getting-started">Getting Started</a>
+    </div>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Dashboard</div>
+      <a href="#dashboard-tour">Dashboard Tour</a>
+      <a href="#dt-outside">Outside Library Tapes</a>
+      <a href="#dt-offsite">Offsite Vault</a>
+      <a href="#dt-robot">Robotic Arm</a>
+      <a href="#dt-drives">Drives</a>
+      <a href="#dt-ioslots">I/O Slots</a>
+      <a href="#dt-slots">Storage Slots</a>
+      <a href="#led-behavior">Drive Indicator Lights</a>
+    </div>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Concepts</div>
+      <a href="#concepts">Core Concepts</a>
+      <a href="#c-magazines">Magazines &amp; Storage Slots</a>
+      <a href="#c-mailboxes">Mailboxes &amp; I/O Slots</a>
+      <a href="#c-drives">Drives</a>
+      <a href="#c-tapesets">Tape Sets &amp; Barcodes</a>
+      <a href="#c-logical-libraries">Logical Libraries</a>
+      <a href="#c-offsite">Offsite Vaulting</a>
+    </div>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Using gotochanger</div>
+      <a href="#workflows">Common Workflows</a>
+      <a href="#wizard">Setup Wizard</a>
+    </div>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Administration</div>
+      <a href="#admin-guide">Admin Guide</a>
+      <a href="#admin-access-control">Access Control</a>
+      <a href="#admin-topology">Library Topology</a>
+      <a href="#admin-operations">Operations</a>
+    </div>
+
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Help</div>
+      <a href="#faq">Troubleshooting &amp; FAQ</a>
+    </div>
+  </nav>
+
+  <main class="guide-content">
+
+    <section id="welcome">
+      <h1><svg class="icon" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>&nbsp;Welcome to gotochanger</h1>
+      <p class="lead">A virtual tape library you can operate, break, and repair without touching real hardware.</p>
+      <p>gotochanger simulates a SCSI tape autochanger &mdash; storage slots, import/export (mail) slots, robotics, and
+      multiple tape drives &mdash; behind a REST API and a web dashboard. It's most often used as a drop-in
+      <code>Changer Command</code> target for <strong>Bareos</strong>, replacing a bare disk-staging setup with something
+      that behaves like a real tape library: slots fill up, cartridges have real barcodes, drives can fault, and
+      operations take realistic amounts of time if you turn latency simulation on.</p>
+      <p>This guide covers the parts a day-to-day operator or administrator needs: the dashboard, the concepts behind
+      slots/drives/tape sets, common step-by-step workflows, the first-run setup wizard, and the Admin section. If
+      you're integrating gotochanger with Bareos itself (SCSI addressing, <code>bareos-sd</code> config, SNMP traps),
+      see the REST API reference at <a href="/docs" target="_blank" rel="noopener">API Docs</a> instead &mdash; this guide
+      is about using the tool, not wiring it into Bareos.</p>
+      <div class="callout callout-tip">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 11h1v5h1"/></svg>
+        <div>Everything in gotochanger is simulated: no real kernel SCSI device is created. Loads, unloads, faults, and
+        even drive timing are all software state you can freely experiment with.</div>
+      </div>
+    </section>
+
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+
+      <h3 id="gs-bootstrap">First run: bootstrap and sign in</h3>
+      <p>The first time you open gotochanger, you'll be asked to set a password for the built-in <strong>Admin</strong>
+      account &mdash; there's no default password to guess. After that, sign in with username <code>Admin</code> and the
+      password you just set. Sessions are cookie-based and held in memory by the daemon, so signing everyone out is as
+      simple as restarting the service.</p>
+      <p>If this is a brand-new install with no topology configured yet (no drives, magazines, or mailboxes), you'll be
+      dropped straight into the <a href="#wizard">Setup Wizard</a> instead of the dashboard.</p>
+
+      <h3 id="gs-roles">Roles</h3>
+      <p>Every user account and API token has exactly one role, checked on every request:</p>
+      <ul>
+        <li><strong>Viewer</strong> &mdash; read-only. Can see the dashboard and Admin screens but can't load/unload tapes,
+        open doors, or change anything.</li>
+        <li><strong>Operator</strong> &mdash; everything a Viewer can do, plus day-to-day operation: load/unload/move
+        tapes, open and close doors, raise/clear drive and robotic-arm faults, download a manual backup.</li>
+        <li><strong>Admin</strong> &mdash; everything, including all of Admin &gt; Library Topology, user/token
+        management, scheduled backups, and restore.</li>
+      </ul>
+      <p>The dashboard adapts to your role automatically &mdash; action buttons (Load, Unload, Move, Raise fault, &hellip;)
+      only appear if you're an Operator or Admin, and the Admin nav button itself is hidden entirely for a Viewer.</p>
+    </section>
+
+    <section id="dashboard-tour">
+      <h2>Dashboard Tour</h2>
+      <p>The dashboard is a set of independent panels, each mirroring one physical part of the library. Every panel can
+      be <strong>dragged by its <code>::</code> handle</strong> to reorder it, and <strong>collapsed</strong> with the
+      &#9660; button in its header &mdash; both the order and which panels are collapsed are remembered per-browser
+      (saved to local storage), so your layout survives a reload. The toolbar above the panels has two more options:
+      <em>Show library colors</em> (tints each element by which Logical Library it belongs to) and <em>Hide unassigned</em>
+      (hide elements that aren't part of any Logical Library yet), plus a <em>Collapse all</em> shortcut.</p>
+      <p>The dashboard polls <code>GET /api/v1/status</code> every 4 seconds and re-renders automatically &mdash; you never
+      need to manually refresh the page to see a change made from another tab, another operator, or the API.</p>
+
+      <div class="panel-tour">
+        <div class="panel-tour-item" id="dt-outside">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>Outside Library Tapes</h4>
+          <p>Cartridges that exist as real files on disk but aren't in any slot, drive, or the offsite vault right now
+          &mdash; think of it as the loading dock. This is also where new cartridges are born: the <strong>Create tape</strong>
+          button walks you through picking a Tape Set and either auto-generating the next barcode in sequence or typing
+          one in by hand. From here, tapes get loaded into a drive, a storage slot, or an I/O slot.</p>
+        </div>
+        <div class="panel-tour-item" id="dt-offsite">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Vault</h4>
+          <p>Volumes that have been sent offsite &mdash; simulating tape rotation to a physical vault. <strong>Send to
+          offsite</strong> picks a full storage slot to vault; each vaulted volume gets a <strong>Recall</strong> button
+          to bring it back into an empty storage slot. See <a href="#c-offsite">Offsite Vaulting</a> for the concept and
+          how scheduled rotation works.</p>
+        </div>
+        <div class="panel-tour-item" id="dt-robot">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2"/><path d="M5 17V11h6l4-4h4"/><circle cx="19" cy="7" r="1.6"/><path d="M11 11l2 2"/></svg>Robotic Arm</h4>
+          <p>There's exactly one robotic arm in the physical library, shared by every Logical Library. This panel shows
+          its status &mdash; idle, moving, or in a simulated fault &mdash; with an indicator light using the same
+          convention as the drives (see <a href="#led-behavior">Drive Indicator Lights</a>). Operators can <strong>Raise
+          fault</strong> (choosing a realistic failure mode: blocked arm, mispositioned cartridge, pickup/drop failure,
+          movement jam, or other) to test how their backup software reacts, then <strong>Clear fault</strong> once done.
+          A raised fault rejects Load/Unload/Move (but not door open/close) library-wide until cleared.</p>
+        </div>
+        <div class="panel-tour-item" id="dt-drives">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives</h4>
+          <p>Every physical tape drive, each with an indicator light (see below), the cartridge currently loaded (if
+          any) rendered as a real-looking barcode label, and how full it is. Loaded drives get an <strong>Unload
+          to&hellip;</strong> button; every drive gets a <strong>Raise fault / Clear fault</strong> toggle to simulate a
+          hardware problem on that specific drive.</p>
+        </div>
+      </div>
+
+      <h3 id="dt-drives-leds">Drive indicator lights, at a glance</h3>
+      <p>Full explanation, priority order, and the one caveat worth knowing (the "writing" light needs a real write, not
+      just a Load) is in its own section: <a href="#led-behavior">Drive Indicator Lights</a>.</p>
+
+      <div class="panel-tour">
+        <div class="panel-tour-item" id="dt-ioslots">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>I/O Slots (mail slots)</h4>
+          <p>Import/export elements, grouped into <strong>Mailboxes</strong>. Each mailbox group has its own door: click
+          <strong>Open mail slot</strong> to start staging tapes in or out, then use each slot's <strong>Load</strong>
+          (bring an outside tape in) or <strong>Pickup</strong> (queue a tape to come out) button, and finally
+          <strong>Close mail slot</strong> to commit every queued action at once &mdash; just like closing a real mail
+          slot door triggers the robot to do the actual moves. See <a href="#wf-import">Import via mailbox</a> and
+          <a href="#wf-export">Export via mailbox</a>.</p>
+        </div>
+        <div class="panel-tour-item" id="dt-slots">
+          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Storage Slots</h4>
+          <p>The main body of the library, grouped into <strong>Magazines</strong>. Each occupied slot can
+          <strong>Move</strong> its cartridge to an empty drive, another slot, or an I/O slot. Open a magazine's storage
+          door to get <strong>Bulk load&hellip;</strong> (load several outside tapes into empty slots in one dialog) and
+          <strong>Move all to outside&hellip;</strong> (queue several loaded slots for pickup at once) &mdash; handy for
+          seeding a fresh magazine or clearing one out.</p>
+        </div>
+      </div>
+
+      <p>Below the panels, the <strong>Activity Log</strong> dock (bottom of the screen, also collapsible) shows a
+      running feed of everything that's happened &mdash; loads, unloads, faults, configuration changes &mdash; each
+      tagged with a status pill (success/failure/warning/&hellip;), useful for spotting what an automated job or another
+      operator just did.</p>
+    </section>
+
+    <section id="concepts">
+      <h2>Core Concepts</h2>
+      <p>gotochanger's data model mirrors a real tape library fairly literally. If you've operated a physical autochanger
+      or an LTO library before, most of this will already be familiar.</p>
+
+      <h3 id="c-magazines">Magazines &amp; Storage Slots</h3>
+      <p>A <strong>Magazine</strong> is a named group of 5&ndash;20 storage slots (in increments of 5) &mdash; the
+      removable cartridge racks a real library holds internally. Storage slots are what hold the bulk of your tape
+      inventory between backup jobs. Slots are addressed contiguously across the whole physical library (all magazines'
+      slots first, in creation order), which only matters if you're scripting against the raw API &mdash; the dashboard
+      always shows you slots grouped back into their magazine.</p>
+
+      <h3 id="c-mailboxes">Mailboxes &amp; I/O Slots</h3>
+      <p>A <strong>Mailbox</strong> is the import/export equivalent of a magazine &mdash; a named group of 1&ndash;5 I/O
+      (mail) slots. I/O slots are numbered right after every storage slot, matching how real SCSI medium changers and
+      Bareos itself report a combined "N slots (M import/export)" total. This is the normal door operators use to bring
+      new cartridges in or send full ones out without opening the whole library.</p>
+
+      <h3 id="c-drives">Drives</h3>
+      <p>Each physical tape drive (a "Data Transfer Element") can hold at most one cartridge at a time. A drive can be
+      individually put into a simulated fault state to test failure handling, independent of every other drive and of
+      the robotic arm.</p>
+
+      <h3 id="c-tapesets">Tape Sets &amp; Barcodes</h3>
+      <p>Every cartridge belongs to exactly one <strong>Tape Set</strong> &mdash; a named group of cartridges that share
+      a <strong>Tape Type</strong> (the media family: LTO, DLT, SDLT, DDS/DAT, AIT/SAIT, IBM 3592, or a non-physical
+      "generic" type) and a storage folder on disk. A cartridge's <strong>barcode</strong> is its one and only
+      identifier &mdash; there's no separate "volume label" concept &mdash; and it's always unique across the entire
+      library, not just within its own tape set. Barcodes auto-generate in sequence per tape type (skipping past any
+      already in use), or you can type one in by hand as long as it matches the tape type's format.</p>
+      <table class="ref-table">
+        <thead><tr><th>Family</th><th>Shape</th><th>Example</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>LTO</td><td>6-digit volser + 2-char media id</td><td><code>000001L8</code></td><td>Media id like <code>L8</code>/<code>L9</code> per LTO generation; real published vendor format.</td></tr>
+          <tr><td>DLT</td><td>6-digit volser + 0&ndash;1 char media id</td><td><code>0000034</code></td><td>7 characters total for DLT-IV; real published vendor format.</td></tr>
+          <tr><td>SDLT</td><td>6-digit volser + 1&ndash;2 char media id</td><td><code>000007S2</code></td><td>Real published vendor format.</td></tr>
+          <tr><td>DDS / AIT / 3592</td><td>6-digit volser + 2-char media id</td><td><code>000001D6</code></td><td>No official external barcode standard for these &mdash; gotochanger's own convention, for consistency with LTO/SDLT.</td></tr>
+          <tr><td>Generic</td><td>Configurable length, no media id</td><td><code>00000001</code></td><td>Used by the built-in "Unlimited"-capacity type, for non-physical/test tapes.</td></tr>
+        </tbody>
+      </table>
+      <p>Barcodes render as real Code&nbsp;39 bars throughout the dashboard (the same symbology real tape libraries and
+      barcode scanners use) rather than as plain text &mdash; purely cosmetic, but it makes a slot full of cartridges look
+      like an actual tape library.</p>
+
+      <h3 id="c-logical-libraries">Logical Libraries</h3>
+      <p>A <strong>Logical Library</strong> partitions the physical library into an independent slice &mdash; its own
+      subset of drives, magazines, and mailboxes &mdash; the same way a Dell ML3 or similar real library can be split
+      into two logical autochangers sharing one chassis. Each drive/magazine/mailbox can belong to at most one Logical
+      Library at a time (an element already assigned to one can't be added to another). This is what lets one
+      gotochangerd instance stand in for two completely separate Bareos Autochanger resources. Elements not yet assigned
+      to any Logical Library show up under Admin &gt; Logical Libraries &gt; Unassigned.</p>
+
+      <h3 id="c-offsite">Offsite Vaulting</h3>
+      <p>Simulates rotating full tapes to a physical offsite vault: sending a volume moves it out of its storage slot
+      into the vault; recalling brings it back into an empty slot. This can also happen on a schedule (Admin &gt;
+      Settings &gt; Offsite rotation) &mdash; a chosen number of full volumes get sent offsite automatically at a
+      configured interval, simulating routine tape rotation without a human doing it by hand every time.</p>
+    </section>
+
+    <section id="workflows">
+      <h2>Common Workflows</h2>
+
+      <h3 id="wf-load">Load a tape into a drive</h3>
+      <ol class="step-list">
+        <li>Find the cartridge &mdash; in Outside Library Tapes, a Storage Slot, or an I/O Slot &mdash; and click its
+        <strong>Move</strong> button (or, from Outside, use whichever panel currently holds it).</li>
+        <li>Pick an empty drive as the destination.</li>
+        <li>Confirm. The drive's indicator light goes green and blinks while the (simulated) load happens, then settles
+        to a steady dim green once the tape is ready.</li>
+      </ol>
+
+      <h3 id="wf-unload">Unload a drive</h3>
+      <ol class="step-list">
+        <li>On the Drives panel, click <strong>Unload to&hellip;</strong> on the loaded drive.</li>
+        <li>Pick a destination &mdash; any empty storage slot or I/O slot.</li>
+        <li>Confirm. The drive empties and its light returns to off.</li>
+      </ol>
+
+      <h3 id="wf-move">Move a tape between slots</h3>
+      <p>Same idea as loading a drive: click <strong>Move</strong> on the source slot, then pick any empty destination
+      (another storage slot, an I/O slot, or a drive).</p>
+
+      <h3 id="wf-import">Import tapes via a mailbox</h3>
+      <ol class="step-list">
+        <li>On I/O Slots, click <strong>Open mail slot</strong> for the mailbox you want to use.</li>
+        <li>For each empty I/O slot, click <strong>Load</strong> and pick which outside tape goes there &mdash; this only
+        queues the action.</li>
+        <li>Click <strong>Close mail slot</strong> once you're done staging &mdash; every queued load happens at once,
+        just like closing a real mail slot door signals the robot to go get the tapes.</li>
+      </ol>
+
+      <h3 id="wf-export">Export tapes via a mailbox</h3>
+      <p>Same door, opposite direction: open the mailbox, click <strong>Pickup</strong> on each occupied I/O slot you
+      want to send out, then <strong>Close mail slot</strong> to commit. The same open/queue/close pattern also works on
+      Storage Slots directly via <strong>Bulk load&hellip;</strong> and <strong>Move all to outside&hellip;</strong> on
+      an open magazine, for moving several tapes at once without a mailbox.</p>
+
+      <h3 id="wf-tapeset">Create a tape set and add cartridges</h3>
+      <p>From the dashboard, the fastest path is Outside Library Tapes &rarr; <strong>Create tape</strong>, which lets
+      you pick an existing tape set and either auto-generate the next barcode or type one in. To create a brand-new
+      tape set (a new tape type + storage folder combination), use
+      <a href="#admin-topology">Admin &gt; Tape Sets</a> &mdash; see that section for the full New/Add tapes flow.</p>
+
+      <h3 id="wf-offsite-send">Send a tape offsite</h3>
+      <p>On Offsite Vault, click <strong>Send to offsite</strong>, pick a storage slot with a volume in it, and confirm.</p>
+
+      <h3 id="wf-offsite-recall">Recall a tape from offsite</h3>
+      <p>On Offsite Vault, click <strong>Recall</strong> next to the volume you want back, and pick an empty storage
+      slot to receive it.</p>
+
+      <h3 id="wf-drive-fault">Raise or clear a drive fault</h3>
+      <p>On the Drives panel, every drive has a <strong>Raise fault</strong> / <strong>Clear fault</strong> toggle.
+      A faulted drive rejects further Load/Unload attempts until cleared &mdash; useful for testing how your backup
+      software reports and recovers from a hardware failure on one specific drive.</p>
+
+      <h3 id="wf-robot-fault">Raise or clear a robotic arm fault</h3>
+      <p>On the Robotic Arm panel, click <strong>Raise fault</strong>, pick a realistic failure mode (blocked arm,
+      mispositioned cartridge, pickup failure, drop failure, movement jam, or other) and an optional message, then
+      confirm. This affects the whole library (there's only one arm) &mdash; every Load/Unload/Move is rejected until
+      you click <strong>Clear fault</strong>. Door open/close is unaffected, since an operator can still physically
+      handle media while the arm itself is down.</p>
+
+      <h3 id="wf-restore">Restore from a backup</h3>
+      <p>Admin &gt; Backup &gt; Restore accepts a previously-downloaded backup file and replaces the entire database
+      (topology, settings, and current slot/drive/volume state) with it. This briefly restarts the service and signs
+      everyone out &mdash; see <a href="#admin-operations">Operations</a> for the full picture, including what a backup
+      does and doesn't include.</p>
+    </section>
+
+    <section id="wizard">
+      <h2>Setup Wizard</h2>
+      <p>A fresh install with no topology yet walks you through 8 steps before handing you the dashboard. You can always
+      go back with Previous without losing what you've already entered, and everything you submit is saved immediately
+      (not just at the end) &mdash; so closing the browser mid-wizard doesn't lose earlier steps.</p>
+      <ol class="step-list">
+        <li><strong>Operational Mode</strong> &mdash; name your virtual tape library (the VTL name shown throughout the
+        UI) and confirm the operational mode (Changer Command Script mode is the only one currently available).</li>
+        <li><strong>Drives</strong> &mdash; choose how many physical drives to create and which drive type each one is.</li>
+        <li><strong>Magazines</strong> &mdash; define one or more magazines (storage slot groups).</li>
+        <li><strong>Mailboxes</strong> &mdash; define one or more mailboxes (I/O slot groups).</li>
+        <li><strong>Offsite Location</strong> &mdash; a simple on/off toggle for whether offsite vaulting is available at
+        all; rotation scheduling itself is configured later, in Admin &gt; Settings.</li>
+        <li><strong>Tape Sets</strong> &mdash; create at least one tape set (tape type + storage folder + how many
+        cartridges to generate up front).</li>
+        <li><strong>Logical Libraries</strong> &mdash; optionally partition your drives/magazines/mailboxes into one or
+        more Logical Libraries; you can also leave everything unassigned and do this later from Admin.</li>
+        <li><strong>Latency Simulation</strong> &mdash; a single checkbox: enable realistic timing delays or not. The
+        actual delay values always start at sensible factory defaults and are tuned afterwards from
+        <a href="#admin-operations">Admin &gt; Latency</a>, never from the wizard itself.</li>
+      </ol>
+      <p>Finishing the wizard hot-applies everything immediately &mdash; no restart, and the dashboard reflects your new
+      topology the instant you land on it.</p>
+    </section>
+
+    <section id="admin-guide">
+      <h2>Admin Guide</h2>
+      <p>The Admin section is organized into three groups, in the order you'll typically need them: who can get in,
+      what the library is made of, and how it behaves day to day.</p>
+
+      <h3 id="admin-access-control">Access Control</h3>
+      <p><strong>Users</strong> &mdash; create additional accounts beyond the built-in Admin, each with one of the three
+      roles. <strong>API Tokens</strong> &mdash; role-scoped tokens for scripts/automation to authenticate with, via
+      either an <code>X-Api-Key</code> header or a bearer token; managing tokens is Admin-only, but a token itself can be
+      scoped down to Viewer or Operator.</p>
+
+      <h3 id="admin-topology">Library Topology</h3>
+      <p>Everything that defines the physical (and logical) shape of the library. All of it hot-applies immediately
+      &mdash; no daemon restart, ever &mdash; when you add, edit, or remove something here.</p>
+      <ul>
+        <li><strong>Drive Types</strong> &mdash; the catalog of drive hardware models offered during setup and used by
+        Logical Libraries.</li>
+        <li><strong>Tape Types</strong> &mdash; the catalog of media families (LTO/DLT/SDLT/DDS/AIT/3592/generic), each
+        defining its own barcode format (see the <a href="#c-tapesets">barcode reference table</a> above).</li>
+        <li><strong>Tape Sets</strong> &mdash; groups of cartridges by tape type, each stored under its own folder on
+        disk. <strong>New tape set</strong> creates the set and its first batch of cartridges in one step;
+        <strong>Add tapes</strong> on an existing set tops it up later (auto-generated or a manually-typed barcode).</li>
+        <li><strong>Drives</strong> &mdash; the physical drive device list. Removing anything other than the
+        highest-indexed drive shifts every later drive's index, so double-check which drive you mean to remove if
+        there's more than one.</li>
+        <li><strong>Magazines</strong> / <strong>Mailboxes</strong> &mdash; storage-slot and I/O-slot groups,
+        respectively.</li>
+        <li><strong>Logical Libraries</strong> &mdash; create/edit partitions of drives, magazines, and mailboxes; the
+        Unassigned list at the bottom shows anything not yet claimed by one.</li>
+      </ul>
+
+      <h3 id="admin-operations">Operations</h3>
+      <ul>
+        <li><strong>Latency</strong> &mdash; seven independently-tunable simulated delays (drive load/unload, tape
+        positioning, robotic arm movement for tape moves vs. magazine scans, post-close magazine scanning, door
+        open/close) applied library-wide, editable live with a "Load defaults" prefill. Turning this on is what makes
+        the <a href="#led-behavior">busy indicator light</a> actually visible for more than an instant.</li>
+        <li><strong>Settings</strong> &mdash; default volume capacity, offsite rotation schedule, daemon-level knobs
+        (log level, capacity poll interval, tokens/users file paths), and SNMP trap configuration.</li>
+        <li><strong>Backup</strong> &mdash; a backup is a full snapshot of the database: topology, every setting above,
+        current slot/drive/volume state, and &mdash; since user accounts and API tokens moved out of separate JSON
+        files and into that same database &mdash; the stored credentials too. Because a backup file therefore carries
+        password hashes, every action here is Admin-only: taking and downloading a manual backup, scheduling recurring
+        backups, browsing previously stored ones, and restoring.
+        <strong>Restoring replaces the entire database</strong> and briefly restarts the service &mdash; expect a short
+        unreachable window and to have to sign in again afterwards.</li>
+      </ul>
+    </section>
+
+    <section id="led-behavior">
+      <h2>Drive Indicator Lights</h2>
+      <p>Each drive (and the robotic arm) shows a small colored light modeled on a real tape drive's front panel, so the
+      dashboard reads at a glance instead of requiring you to parse text on every card.</p>
+      <div class="led-legend">
+        <div class="led-legend-row"><span class="led led-fault"></span><strong>Amber, pulsing</strong><span class="desc">Fault &mdash; the drive (or the robotic arm) is in a simulated fault state. Takes priority over everything else.</span></div>
+        <div class="led-legend-row"><span class="led led-writing"></span><strong>Red, pulsing</strong><span class="desc">Writing &mdash; the loaded cartridge's backing file just grew between two dashboard polls, meaning something is actually writing data to it right now (e.g. a real attached backup job).</span></div>
+        <div class="led-legend-row"><span class="led led-busy"></span><strong>Green, blinking</strong><span class="desc">Active operation &mdash; this browser tab has a Load/Unload/Move in flight for this drive (or the arm generally, for the Robotic Arm panel).</span></div>
+        <div class="led-legend-row"><span class="led led-idle"></span><strong>Green, steady/dim</strong><span class="desc">Ready &mdash; a cartridge is loaded and idle.</span></div>
+        <div class="led-legend-row"><span class="led led-off"></span><strong>Dark</strong><span class="desc">Empty &mdash; no cartridge loaded, nothing happening.</span></div>
+      </div>
+      <p>Priority order when more than one condition is true, highest first: <strong>Fault &gt; Writing &gt; Active
+      operation &gt; Ready &gt; Empty</strong>. A faulted drive always shows amber even mid-operation, for instance.</p>
+      <div class="callout callout-warn">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+        <div><strong>The "Writing" light needs a real write, not just a Load.</strong> gotochanger doesn't simulate the
+        byte stream of a backup job &mdash; a loaded drive is just a symlink at a device path, and nothing writes to it
+        unless something external actually does (typically a real attached Bareos SD job, or a manual test write). So
+        clicking Load and watching the drive sit at steady green with no red flash is completely normal, not a bug
+        &mdash; it just means nothing has written any bytes to that cartridge yet.</div>
+      </div>
+      <p>Two more details worth knowing if you're timing things precisely: the "busy" light only reflects an operation
+      <em>this browser tab</em> started &mdash; there's no way to see another tab's or another operator's in-flight
+      action as "busy" (it just means an operation is happening somewhere; a status refresh from any tab will briefly
+      pause until it finishes, since only one physical robotic arm exists). And the "writing" light, once triggered,
+      stays lit for a few seconds after the write is detected (longer than one poll interval) so a brief burst of
+      activity remains visible instead of flickering for a single frame.</p>
+    </section>
+
+    <section id="faq">
+      <h2>Troubleshooting &amp; FAQ</h2>
+
+      <div class="faq-item">
+        <h4>I forgot the Admin password.</h4>
+        <p>There's no in-app recovery flow for the built-in account by design (sessions and credentials are kept
+        deliberately simple). Whoever manages the host running gotochangerd will need to reset it at the data-store
+        level, or create a new Admin user via <code>gotochangerctl</code> against the trusted local socket, which
+        bypasses web login entirely.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Why don't I see an Admin button?</h4>
+        <p>You're signed in as a Viewer. Viewer accounts see the dashboard and read-only Admin screens are hidden
+        entirely, not just disabled &mdash; ask an Admin to change your role if you need Operator or Admin access.</p>
+      </div>
+      <div class="faq-item">
+        <h4>A Load/Unload/Move button gave me an error about "no destination available".</h4>
+        <p>That means every eligible destination (an empty drive, slot, or I/O slot, depending on the action) is
+        currently occupied. Free one up &mdash; unload a drive, move a tape out of a slot &mdash; and try again.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Everything is rejected with a 409 / "robotic arm is in fault state".</h4>
+        <p>The robotic arm has an active simulated fault. Clear it from the Robotic Arm panel (<a href="#wf-robot-fault">Raise
+        or clear a robotic arm fault</a>) &mdash; door open/close still work while a fault is active, but Load/Unload/Move
+        are rejected library-wide until it's cleared.</p>
+      </div>
+      <div class="faq-item">
+        <h4>My cartridge got a barcode I didn't expect.</h4>
+        <p>Barcodes come entirely from the tape set's tape type format &mdash; check Admin &gt; Tape Types for the tape
+        set's type to see its exact family/media-id/length, or Admin &gt; Tape Sets to confirm which tape type the set
+        actually uses.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Operations feel instantaneous &mdash; is latency simulation on?</h4>
+        <p>Check Admin &gt; Latency &gt; Enable. It's off by default on a fresh install; turning it on (with the "Load
+        defaults" prefill, or your own tuned values) is also what makes the drive's "active operation" light visibly
+        blink for more than an instant &mdash; see <a href="#led-behavior">Drive Indicator Lights</a>.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Does gotochanger create a real <code>/dev/sg*</code> or <code>/dev/nst*</code> device?</h4>
+        <p>No, and it never will in Changer Command Script mode (the only mode this build supports) &mdash; Bareos
+        never needs a kernel SCSI device for this integration, it just calls a Changer Command script, which is exactly
+        what gotochanger provides. A loaded drive is a plain symlink at a configured device path.</p>
+      </div>
+      <div class="faq-item">
+        <h4>Where do I configure Bareos itself to talk to gotochanger?</h4>
+        <p>That's outside the scope of this guide &mdash; see the project README for <code>bareos-sd</code>/<code>bareos-dir</code>
+        configuration, or generate a ready-to-paste config skeleton from Admin &gt; Logical Libraries &gt; "Bareos Config".</p>
+      </div>
+    </section>
+
+    <footer class="guide-footer">
+      gotochanger User Guide &middot; also see <a href="/docs" target="_blank" rel="noopener">API Docs</a> for the full REST reference &middot; <a href="/">back to the dashboard</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.guide-toc a[href^="#"]'));
+  var sections = links
+    .map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  if (!sections.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var current = null;
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      if (id === current) return;
+      current = id;
+      links.forEach(function (a) { a.classList.remove('active'); });
+      if (byId[id]) {
+        byId[id].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+  sections.forEach(function (s) { observer.observe(s); });
+})();
+</script>
+</body>
+</html>

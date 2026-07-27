@@ -1,0 +1,40 @@
+[Unit]
+Description=gotochanger - fake tape autochanger simulator
+Documentation=file:///usr/share/doc/gotochanger/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gotochanger
+Group=gotochanger
+ExecStart=/usr/sbin/gotochangerd -config /etc/gotochanger/config.yaml
+Restart=on-failure
+RestartSec=2
+
+# Runtime/state directories, created and secured by systemd.
+RuntimeDirectory=gotochanger
+RuntimeDirectoryMode=0750
+StateDirectory=gotochanger
+StateDirectoryMode=0770
+
+# Hardening.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/gotochanger /run/gotochanger /etc/gotochanger
+# 0007 (not 0027): volume files/dirs are deliberately created 0660/0770 by
+# the daemon so a service account added to the "gotochanger" group (e.g.
+# bareos, per the postinst hint) can read/write them for real integration.
+# A umask stripping the group-write bit would silently break that.
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target

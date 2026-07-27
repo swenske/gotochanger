@@ -1,0 +1,576 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "gotochanger API",
+    "version": "1.0.0",
+    "description": "REST API for the gotochanger virtual tape autochanger simulator: library status, load/unload/move operations, volumes, users, API tokens and application settings."
+  },
+  "servers": [
+    { "url": "/" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-Api-Key" },
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "cookieAuth": { "type": "apiKey", "in": "cookie", "name": "gotochanger_session" }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } }
+      },
+      "BackupSchedule": {
+        "type": "object",
+        "properties": {
+          "interval": { "type": "string" },
+          "retention": { "type": "integer" },
+          "last_run": { "type": "string", "format": "date-time" }
+        }
+      },
+      "BackupFile": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "size_bytes": { "type": "integer", "format": "int64" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "LatencySettings": {
+        "type": "object",
+        "description": "Simulated timing delays for the whole virtual tape library (all logical libraries share one timing model). Duration fields accept human-friendly strings like \"500ms\"/\"2s\"/\"1m\", 0s to 5m. These are simulation delays, not physical hardware measurements.",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "drive_load": { "type": "string", "description": "mechanical load of a cartridge into a drive" },
+          "drive_unload": { "type": "string", "description": "mechanical unload of a cartridge from a drive" },
+          "tape_positioning": { "type": "string", "description": "seek/positioning inside the drive after load, before ready" },
+          "robot_move_tape": { "type": "string", "description": "arm movement for a slot/ioslot/drive tape move" },
+          "robot_move_scan": { "type": "string", "description": "arm movement while scanning a magazine after it's closed" },
+          "magazine_scan": { "type": "string", "description": "barcode/inventory scan time after a magazine is closed" },
+          "door_action": { "type": "string", "description": "mailbox/storage door open or close movement time" }
+        },
+        "required": ["enabled", "drive_load", "drive_unload", "tape_positioning", "robot_move_tape", "robot_move_scan", "magazine_scan", "door_action"]
+      },
+      "LatencySettingsResult": {
+        "type": "object",
+        "properties": {
+          "settings": { "$ref": "#/components/schemas/LatencySettings" },
+          "defaults": { "$ref": "#/components/schemas/LatencySettings", "description": "Factory-default values, used by the Admin > Latency UI's \"Load defaults\" button to prefill the form." }
+        }
+      },
+      "Volume": {
+        "type": "object",
+        "properties": {
+          "barcode": { "type": "string", "description": "The sole identifier for this cartridge: filesystem name, uniqueness key, and format-validated per its tape set's tape type (see TapeType)." },
+          "tape_set": { "type": "string", "description": "Name of the tape set this cartridge belongs to." },
+          "path": { "type": "string" },
+          "capacity_bytes": { "type": "integer", "format": "int64" },
+          "written_bytes": { "type": "integer", "format": "int64" },
+          "full": { "type": "boolean" },
+          "write_protected": { "type": "boolean", "description": "Simulates a physical write-protect tab; toggled via POST /api/v1/volumes/{barcode}/write-protect. Does not affect Move/Load/Unload - only enforced on an actual write attempt." },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TapeType": {
+        "type": "object",
+        "description": "A tape/media type (e.g. LTO-8): capacity plus the barcode format its tape sets' cartridges must conform to.",
+        "properties": {
+          "name": { "type": "string" },
+          "capacity": { "type": "string", "description": "e.g. \"12TB\" or \"unlimited\"" },
+          "description": { "type": "string" },
+          "barcode_family": { "type": "string", "enum": ["lto", "dlt", "sdlt", "dds", "ait", "3592", "generic"] },
+          "media_id": { "type": "string", "description": "Fixed barcode suffix for this generation, e.g. \"L8\" for LTO-8; empty for the generic family." },
+          "volser_length": { "type": "integer", "description": "Length of the free/sequential portion of the barcode preceding media_id." }
+        },
+        "required": ["name", "capacity", "barcode_family", "volser_length"]
+      },
+      "TapeSet": {
+        "type": "object",
+        "description": "A named group of cartridges of one tape type, stored under a dedicated folder on disk.",
+        "properties": {
+          "name": { "type": "string" },
+          "tape_type": { "type": "string", "description": "Must name an existing TapeType." },
+          "storage_folder": { "type": "string", "description": "Absolute path; created if it doesn't exist." }
+        },
+        "required": ["name", "tape_type", "storage_folder"]
+      },
+      "Slot": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "integer" },
+          "volume": { "$ref": "#/components/schemas/Volume" }
+        }
+      },
+      "IOSlot": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "integer" },
+          "volume": { "$ref": "#/components/schemas/Volume" }
+        }
+      },
+      "ElementRef": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["slot", "ioslot", "drive"] },
+          "address": { "type": "integer" }
+        }
+      },
+      "Drive": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer" },
+          "device_path": { "type": "string" },
+          "volume": { "$ref": "#/components/schemas/Volume" },
+          "fault": { "type": "boolean" },
+          "origin": { "$ref": "#/components/schemas/ElementRef" }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/components/schemas/Slot" } },
+          "ioslots": { "type": "array", "items": { "$ref": "#/components/schemas/IOSlot" } },
+          "drives": { "type": "array", "items": { "$ref": "#/components/schemas/Drive" } },
+          "outside_volumes": { "type": "array", "items": { "$ref": "#/components/schemas/Volume" } },
+          "doors": { "$ref": "#/components/schemas/DoorStatus" },
+          "robotic_fault": { "$ref": "#/components/schemas/RoboticFault" }
+        }
+      },
+      "RoboticFault": {
+        "type": "object",
+        "description": "Simulated fault state of the library's single robotic arm. While active, Move/Load/Unload are rejected.",
+        "properties": {
+          "active": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["blocked_arm", "mispositioned_cartridge", "pickup_failure", "drop_failure", "movement_jam", "other"] },
+          "message": { "type": "string" },
+          "set_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DoorStatus": {
+        "type": "object",
+        "properties": {
+          "open_magazines": { "type": "array", "items": { "type": "string" }, "description": "IDs of magazines whose storage door is currently open" },
+          "open_mailboxes": { "type": "array", "items": { "type": "string" }, "description": "IDs of mailboxes whose I/O door is currently open" }
+        }
+      },
+      "DoorAction": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "enum": ["load", "pickup"] },
+          "address": { "type": "integer" },
+          "barcode": { "type": "string", "description": "Required for action \"load\": the outside volume's barcode to load." }
+        },
+        "required": ["action", "address"]
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "time": { "type": "string", "format": "date-time" },
+          "code": { "type": "string", "description": "Structured event code, e.g. ROBOTICS.LOAD.SUCCESS" },
+          "type": { "type": "string" },
+          "category": { "type": "string" },
+          "severity": { "type": "string", "enum": ["information", "warning", "error", "configuration"] },
+          "outcome": { "type": "string", "enum": ["success", "failure"] },
+          "actor": { "type": "string" },
+          "source": { "type": "string" },
+          "operation": { "type": "string" },
+          "message": { "type": "string" },
+          "detail": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "Role": { "type": "string", "enum": ["admin", "operator", "viewer"] },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "must_change_password": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TokenRecord": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuthState": {
+        "type": "object",
+        "properties": {
+          "bootstrap_required": { "type": "boolean" },
+          "authenticated": { "type": "boolean" },
+          "username": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "must_change_password": { "type": "boolean" }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid credentials",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Authenticated but insufficient role",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  },
+  "security": [ { "cookieAuth": [] }, { "apiKeyAuth": [] }, { "bearerAuth": [] } ],
+  "paths": {
+    "/api/v1/auth/state": {
+      "get": {
+        "summary": "Check whether the caller is logged in and whether initial setup is needed",
+        "security": [],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthState" } } } } }
+      }
+    },
+    "/api/v1/auth/bootstrap": {
+      "post": {
+        "summary": "Set the initial Admin password (only works once, before any password is set)",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "password": { "type": "string" }, "confirm_password": { "type": "string" } }, "required": ["password", "confirm_password"] } } } },
+        "responses": { "200": { "description": "Logged in as Admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthState" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Log in with username and password",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "password": { "type": "string" } }, "required": ["username", "password"] } } } },
+        "responses": { "200": { "description": "Logged in", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthState" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "description": "Bootstrap required" }, "429": { "description": "Account temporarily locked" } }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": { "summary": "Log out and clear the session cookie", "responses": { "204": { "description": "Logged out" } } }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "summary": "Change the current user's own password",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "current_password": { "type": "string" }, "new_password": { "type": "string" } }, "required": ["current_password", "new_password"] } } } },
+        "responses": { "204": { "description": "Password changed" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/kernel-mode/status": {
+      "get": { "summary": "Whether this host can run gotochanger-tcmud (package installed, kernel module loaded)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "available": { "type": "boolean" }, "missing_package": { "type": "boolean" }, "missing_kernel_module": { "type": "boolean" } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } }
+    },
+    "/api/v1/status": {
+      "get": { "summary": "Full library snapshot (slots, ioslots, drives)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } }
+    },
+    "/api/v1/events": {
+      "get": { "summary": "Recent activity log", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } } } } } } }
+    },
+    "/api/v1/volumes": {
+      "get": { "summary": "List all volumes", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Volume" } } } } } } }
+    },
+    "/api/v1/outside": {
+      "get": { "summary": "List outside-library tapes (tracked cartridges not currently in a slot/drive)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Volume" } } } } } } }
+    },
+    "/api/v1/outside/{barcode}": {
+      "delete": {
+        "summary": "Delete an outside-library tape (operator+)",
+        "parameters": [ { "name": "barcode", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/api/v1/tape-types": {
+      "get": { "summary": "List the tape type catalog (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TapeType" } } } } } } },
+      "post": {
+        "summary": "Create a tape type (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeType" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeType" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Already exists" } }
+      }
+    },
+    "/api/v1/tape-types/{name}": {
+      "put": {
+        "summary": "Update a tape type (admin only)",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeType" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeType" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete a tape type (admin only)",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/tape-sets": {
+      "get": { "summary": "List tape sets (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TapeSet" } } } } } } },
+      "post": {
+        "summary": "Create a tape set and immediately generate its initial cartridges (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {
+          "name": { "type": "string" },
+          "tape_type": { "type": "string" },
+          "storage_folder": { "type": "string" },
+          "initial_tape_count": { "type": "integer", "description": "Must be at least 1; cartridges are auto-barcoded per the tape type's format." }
+        }, "required": ["name", "tape_type", "storage_folder", "initial_tape_count"] } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "allOf": [ { "$ref": "#/components/schemas/TapeSet" }, { "type": "object", "properties": { "cartridges": { "type": "array", "items": { "$ref": "#/components/schemas/Volume" } } } } ] } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "description": "Already exists" }
+        }
+      }
+    },
+    "/api/v1/tape-sets/{name}": {
+      "put": {
+        "summary": "Update a tape set (admin only)",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeSet" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TapeSet" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete a tape set (admin only); refused if it still has cartridges",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" }, "409": { "description": "Tape set still has cartridges" } }
+      }
+    },
+    "/api/v1/tape-sets/{name}/tapes": {
+      "post": {
+        "summary": "Add cartridges to an existing tape set (operator+): bulk auto-generate (count) or a single manually-barcoded cartridge (barcode)",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {
+          "count": { "type": "integer", "description": "Bulk mode: auto-generate this many cartridges." },
+          "barcode": { "type": "string", "description": "Manual mode: create exactly one cartridge with this barcode, validated against the tape set's tape type's format and checked for global uniqueness." }
+        } } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Volume" } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "description": "Tape set not found" },
+          "409": { "description": "Barcode already in use" }
+        }
+      }
+    },
+    "/api/v1/fs/browse": {
+      "get": {
+        "summary": "List a directory's immediate children (admin only); backs the Admin UI's tape-set storage-folder picker",
+        "parameters": [ { "name": "path", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Absolute path to list; defaults to the daemon's data directory" } ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": {
+            "path": { "type": "string" },
+            "parent": { "type": "string" },
+            "entries": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "is_dir": { "type": "boolean" } } } }
+          } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/load": {
+      "post": {
+        "summary": "Load a slot/ioslot's volume into a drive (operator+)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "from_kind": { "type": "string", "enum": ["slot", "ioslot"] }, "from_address": { "type": "integer" }, "drive": { "type": "integer" } }, "required": ["from_kind", "from_address", "drive"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/unload": {
+      "post": {
+        "summary": "Unload a drive back to a slot/ioslot (operator+)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "drive": { "type": "integer" }, "to_kind": { "type": "string", "enum": ["slot", "ioslot"] }, "to_address": { "type": "integer" } }, "required": ["drive", "to_kind", "to_address"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/move": {
+      "post": {
+        "summary": "Move a volume between two slot/ioslot elements (operator+)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "from_kind": { "type": "string" }, "from_address": { "type": "integer" }, "to_kind": { "type": "string" }, "to_address": { "type": "integer" } } } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/doors/io/{id}/open": {
+      "post": {
+        "summary": "Open a mailbox's I/O door to stage load/pickup actions (operator+)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Mailbox ID" } ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/doors/io/{id}/close": {
+      "post": {
+        "summary": "Close a mailbox's I/O door and process staged actions (operator+)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Mailbox ID" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "actions": { "type": "array", "items": { "$ref": "#/components/schemas/DoorAction" } } } } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/doors/storage/{id}/open": {
+      "post": {
+        "summary": "Open a magazine's storage door to stage load/pickup actions (operator+)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Magazine ID" } ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/doors/storage/{id}/close": {
+      "post": {
+        "summary": "Close a magazine's storage door and process staged actions (operator+)",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Magazine ID" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "actions": { "type": "array", "items": { "$ref": "#/components/schemas/DoorAction" } } } } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/drives/{index}/fault": {
+      "post": {
+        "summary": "Inject or clear a simulated drive fault (operator+)",
+        "parameters": [ { "name": "index", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "fault": { "type": "boolean" } }, "required": ["fault"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/volumes/{barcode}/write-protect": {
+      "post": {
+        "summary": "Set or clear the simulated write-protect tab on a cartridge; only reachable while the cartridge is physically accessible (outside/offsite, or in a storage/mailbox slot whose door is open) - never while mounted in a drive or behind a closed door; does not affect Move/Load/Unload, only enforced on an actual write attempt (operator+)",
+        "parameters": [ { "name": "barcode", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "write_protected": { "type": "boolean" } }, "required": ["write_protected"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "404": { "description": "Not found" }, "409": { "description": "Volume is not physically accessible (mounted in a drive, or behind a closed magazine/mailbox door)" } }
+      }
+    },
+    "/api/v1/robotics/fault": {
+      "post": {
+        "summary": "Inject or clear a simulated robotic-arm fault; while active, Move/Load/Unload are rejected (operator+)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {
+          "active": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["blocked_arm", "mispositioned_cartridge", "pickup_failure", "drop_failure", "movement_jam", "other"], "description": "required when active is true" },
+          "message": { "type": "string" }
+        }, "required": ["active"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/users": {
+      "get": { "summary": "List user accounts (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/UserInfo" } } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } },
+      "post": {
+        "summary": "Create a user account (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "role": { "$ref": "#/components/schemas/Role" }, "password": { "type": "string" } }, "required": ["username", "role", "password"] } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInfo" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/users/{username}": {
+      "delete": {
+        "summary": "Delete a user account (admin only)",
+        "parameters": [ { "name": "username", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Deleted" }, "409": { "description": "Cannot delete the last admin" } }
+      }
+    },
+    "/api/v1/users/{username}/role": {
+      "post": {
+        "summary": "Change a user's role (admin only)",
+        "parameters": [ { "name": "username", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "role": { "$ref": "#/components/schemas/Role" } }, "required": ["role"] } } } },
+        "responses": { "204": { "description": "Updated" }, "409": { "description": "Cannot demote the last admin" } }
+      }
+    },
+    "/api/v1/users/{username}/reset-password": {
+      "post": {
+        "summary": "Admin-reset a user's password; they must change it at next login (admin only)",
+        "parameters": [ { "name": "username", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "new_password": { "type": "string" } }, "required": ["new_password"] } } } },
+        "responses": { "204": { "description": "Reset" } }
+      }
+    },
+    "/api/v1/tokens": {
+      "get": { "summary": "List API tokens (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TokenRecord" } } } } } } },
+      "post": {
+        "summary": "Create a scoped API token (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "role": { "$ref": "#/components/schemas/Role" } }, "required": ["name", "role"] } } } },
+        "responses": { "201": { "description": "Created (plaintext token shown once)" } }
+      }
+    },
+    "/api/v1/tokens/{name}": {
+      "delete": {
+        "summary": "Revoke an API token (admin only)",
+        "parameters": [ { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Revoked" } }
+      }
+    },
+    "/api/v1/settings": {
+      "get": { "summary": "View effective application settings (admin only)", "responses": { "200": { "description": "OK" } } },
+      "put": {
+        "summary": "Update application settings; some fields require a service restart to take effect (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {
+          "default_capacity": { "type": "string" },
+          "poll_interval": { "type": "string" },
+          "log_level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+          "snmp_enabled": { "type": "boolean" },
+          "snmp_enterprise_oid": { "type": "string" },
+          "snmp_agent_address": { "type": "string" },
+          "snmp_targets": { "type": "array", "items": { "type": "object", "properties": { "host": { "type": "string" }, "port": { "type": "integer" }, "community": { "type": "string" }, "version": { "type": "string" } } } },
+          "tokens_file": { "type": "string", "description": "Restart required to take effect" },
+          "users_file": { "type": "string", "description": "Restart required to take effect" }
+        } } } } },
+        "responses": { "200": { "description": "Updated" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/settings/latency": {
+      "get": { "summary": "View effective and factory-default latency simulation delays (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LatencySettingsResult" } } } } } },
+      "put": {
+        "summary": "Replace the full set of latency simulation delays; applies to the whole virtual tape library, all logical libraries (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LatencySettings" } } } },
+        "responses": { "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LatencySettingsResult" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/backup/download": {
+      "get": {
+        "summary": "Trigger and download a manual database backup (admin) - the snapshot includes the users/tokens tables, so this is not operator-accessible",
+        "responses": { "200": { "description": "SQLite database file, Content-Disposition: attachment; filename=\"<vtl_name>_<timestamp>.db\"" } }
+      }
+    },
+    "/api/v1/backup/schedule": {
+      "get": { "summary": "View the scheduled-backup configuration (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BackupSchedule" } } } } } },
+      "put": {
+        "summary": "Update the scheduled-backup interval/retention (admin only)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "interval": { "type": "string", "description": "duration string e.g. \"24h\"; empty disables scheduling" }, "retention": { "type": "integer", "description": "how many scheduled backups to keep; 0 = unlimited" } } } } } },
+        "responses": { "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BackupSchedule" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/backups": {
+      "get": { "summary": "List previously scheduled backup files (admin only)", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BackupFile" } } } } } } }
+    },
+    "/api/v1/backups/{filename}/download": {
+      "get": {
+        "summary": "Download a previously scheduled backup file (admin only)",
+        "parameters": [ { "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "SQLite database file" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/backups/{filename}": {
+      "delete": {
+        "summary": "Delete a stored backup file (admin only)",
+        "parameters": [ { "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/restore": {
+      "post": {
+        "summary": "Restore the database from an uploaded backup file (admin only). The service restarts to apply it.",
+        "requestBody": { "required": true, "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": { "200": { "description": "Restore accepted; service is restarting" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/v1/reset": {
+      "post": {
+        "summary": "Wipe the entire VTL back to factory defaults - topology, settings, dynamic state, user accounts and API tokens (admin only). Gated on confirm_name matching the VTL's current name (or \"RESET\" if it has none yet). A safety backup is taken automatically first. The service restarts to apply it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["confirm_name"],
+                "properties": {
+                  "confirm_name": { "type": "string", "description": "must equal the VTL's current name, or \"RESET\" if it has none yet" },
+                  "delete_volumes": { "type": "boolean", "description": "also permanently delete every cartridge's backing file on disk" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Reset accepted; service is restarting" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/healthz": {
+      "get": { "summary": "Liveness check", "security": [], "responses": { "200": { "description": "OK" } } }
+    }
+  }
+}

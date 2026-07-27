@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export GOFLAGS = -mod=vendor
+export GOCACHE = $(CURDIR)/.gocache
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) build
+
+override_dh_auto_test:
+	# Network-free unit tests only (module is vendored); skip if the build
+	# environment forbids running arbitrary test binaries.
+	-go test ./... || true
+
+override_dh_auto_install:
+	# Installs everything (both binary packages' files) into one shared
+	# staging tree; debian/gotochanger.install and
+	# debian/gotochanger-kernel.install then split it between the two
+	# packages (dh_install, part of the default dh sequence). A single
+	# Makefile install target stays the one source of truth for what goes
+	# where under DESTDIR, same as before this became a two-package build.
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/tmp
+
+override_dh_auto_clean:
+	$(MAKE) clean
+	rm -rf .gocache

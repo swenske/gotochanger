@@ -1,0 +1,59 @@
+Source: gotochanger
+Section: admin
+Priority: optional
+Maintainer: Sebastien WENSKE <sebastien@wenske.fr>
+Build-Depends: debhelper-compat (= 13), golang-go (>= 2:1.22~)
+Standards-Version: 4.6.2
+Homepage: https://github.com/swenske/gotochanger
+Rules-Requires-Root: no
+
+Package: gotochanger
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Description: Fake SCSI tape autochanger simulator for testing backup software
+ gotochanger simulates a tape autochanger (virtual library) for staging and
+ development environments, similar to what a real Dell ML3 or comparable
+ tape library provides, but backed entirely by regular files:
+ .
+  * Storage slots, Import/Export (I/O / "mail slot") elements and multiple
+    virtual drives, modeled after the SCSI Medium Changer (SMC) element
+    types.
+  * A REST API covering every action (load, unload, move, import, export,
+    eject, volume creation/deletion, drive fault injection, token
+    management).
+  * An embedded web management UI to inspect and operate the library
+    (move cartridges, insert/eject media) without a CLI.
+  * A drop-in replacement for Bareos's disk-changer.in "Changer Command"
+    script (gotochanger-changer), plus a general admin CLI
+    (gotochangerctl).
+ .
+  * SNMPv2c trap notifications on library events (load/unload/move/
+    import/eject/drive fault/volume full), for testing NMS integrations.
+ .
+ This package does not create real kernel SCSI devices; it is a userspace
+ simulation intended for testing backup software configuration, alerting
+ and automation against a realistic virtual autochanger. See the
+ gotochanger-kernel package for an optional add-on that does expose real
+ kernel SCSI devices.
+
+Package: gotochanger-kernel
+Architecture: any
+Depends: gotochanger (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, polkitd
+Description: Real kernel SCSI devices (TCMU/LIO) for gotochanger
+ Optional add-on for gotochanger that exposes real kernel SCSI medium-
+ changer and tape-drive devices (/dev/sg*) via the kernel's TCMU/LIO
+ (target_core_user) subsystem, instead of the base package's plain-file/
+ symlink "Changer Command Script" mode - so backup software sees an
+ actual SCSI autochanger and tape drives, not a userspace script
+ convention.
+ .
+ Ships gotochanger-tcmud and a templated gotochanger-tcmud@.service
+ systemd unit (one instance per logical library, or @default for the
+ whole physical library) - not started or enabled automatically on
+ install, since it requires the target_core_user kernel module and root.
+ .
+ Requires the target_core_user kernel module (loaded automatically at
+ boot via a shipped modules-load.d entry once this package is installed;
+ a running system may need `modprobe target_core_user` or a reboot
+ before that takes effect) and must run as root, unlike the base
+ gotochanger service.
