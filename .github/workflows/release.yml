@@ -26,6 +26,7 @@ concurrency:
 
 permissions:
   contents: write # to create the version tag and the GitHub Release
+  pull-requests: write # to open/merge the debian/changelog update PR below
 
 jobs:
   release:
@@ -82,19 +83,30 @@ jobs:
       # locally-built package, so it needs to track every tagged release
       # too. Adds one new entry, mechanically generated from every commit
       # since the previous tag (matching goreleaser's own changelog
-      # range), never rewriting history. Pushed to main *before* the tag
-      # is created, so the tagged tree already contains its own entry.
+      # range), never rewriting history.
       #
-      # NOTE: this is a direct push to main, which has required-status-
-      # checks branch protection. Untested against a real release yet
-      # whether github-actions[bot] has bypass rights the same way an
-      # admin's own push does - if this step ever fails here, the fix is
-      # to open a small PR with just this change instead of pushing
-      # directly (works under any branch protection config).
-      - name: Update debian/changelog
+      # A direct push to main was tried first and confirmed (on a real
+      # release attempt) to fail: main's branch protection requires the 3
+      # CI checks to have passed for a commit before it can land there,
+      # and only the repo owner's own account has a bypass for that -
+      # github-actions[bot] does not. So instead: push the change to a
+      # throwaway branch, open a PR, wait for its checks, then merge it
+      # via the API - the tag is created afterward, against the resulting
+      # main tip, so the tagged tree still ends up containing this entry.
+      #
+      # Opening the PR needs a real token (the RELEASE_PAT secret, a
+      # fine-grained PAT), not the default GITHUB_TOKEN - GitHub
+      # deliberately does not trigger other workflows (like ci.yml's
+      # pull_request checks) for events created by GITHUB_TOKEN itself,
+      # to prevent recursive workflow runs. Everything after the PR is
+      # opened (reading check-run status, merging, deleting the branch)
+      # uses the ordinary GITHUB_TOKEN.
+      - name: Update debian/changelog via PR
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -102,6 +114,7 @@ jobs:
 
           ver="${VERSION#v}"
           range="${PREVIOUS_TAG:+$PREVIOUS_TAG..}HEAD"
+          branch="chore/changelog-$ver"
 
           {
             printf 'gotochanger (%s) UNRELEASED; urgency=medium\n\n' "$ver"
@@ -111,9 +124,63 @@ jobs:
           } > debian/changelog.new
           mv debian/changelog.new debian/changelog
 
+          git checkout -b "$branch"
           git add debian/changelog
           git commit -m "debian/changelog: add $ver entry"
-          git push origin HEAD:main
+          # A plain new-branch push, not to the protected "main" ref, so
+          # the default GITHUB_TOKEN is sufficient here. --force so a
+          # retry after a previous failed run doesn't trip over a
+          # same-named leftover branch.
+          git push --force origin "$branch"
+
+          pr_number="$(curl -sf -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls" \
+            -d "$(jq -n --arg title "debian/changelog: add $ver entry" \
+                        --arg head "$branch" --arg base "main" \
+                        --arg body "Automated changelog entry for release $VERSION." \
+                  '{title:$title, head:$head, base:$base, body:$body}')" \
+            | jq -r '.number')"
+          echo "Opened PR #$pr_number ($branch -> main)"
+
+          head_sha="$(git rev-parse HEAD)"
+          echo "Waiting for required checks on $head_sha..."
+          checks="{}"
+          for _ in $(seq 1 60); do
+            checks="$(curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs")"
+            total="$(echo "$checks" | jq '.total_count')"
+            incomplete="$(echo "$checks" | jq '[.check_runs[] | select(.status != "completed")] | length')"
+            if [ "$total" -gt 0 ] && [ "$incomplete" = "0" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          failed="$(echo "$checks" | jq '[.check_runs[] | select(.conclusion != "success")] | length')"
+          if [ "$total" = "0" ] || [ "$failed" != "0" ]; then
+            echo "checks did not all complete successfully, aborting release:" >&2
+            echo "$checks" | jq -r '.check_runs[] | "\(.name): \(.status)/\(.conclusion)"' >&2
+            exit 1
+          fi
+
+          curl -sf -X PUT \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$pr_number/merge" \
+            -d '{"merge_method":"squash"}'
+
+          curl -sf -X DELETE \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+
+          # Sync the local checkout to the just-merged main tip, so the
+          # tag created next actually includes this changelog entry.
+          # "-B" (not a plain checkout) since it's not guaranteed main
+          # already exists as a real local branch at this point.
+          git fetch origin main
+          git checkout -B main origin/main
 
       - name: Create and push tag
         env:
