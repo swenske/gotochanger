@@ -1,0 +1,37 @@
+# Claude-powered issue triage: runs once when an issue is opened, posting
+# a summary/categorization/label suggestion - GitHub-hosted runner, no
+# permission beyond commenting and labeling issues.
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A new issue was just opened on gotochanger, a Bareos tape-
+            autochanger simulator written in Go. Read the issue and post a
+            single comment with:
+
+            1. A one-paragraph summary of what's being reported or requested.
+            2. A category: bug, feature request, question, documentation, or
+               infra/CI/release.
+            3. Suggested labels from the repository's existing label set (if
+               none fit well, suggest new ones to create).
+            4. If the issue is missing information needed to act on it (e.g.
+               a bug report with no repro steps, no version, no logs), ask
+               specific clarifying questions rather than guessing.
+
+            Do not attempt to fix the issue or write code - this is triage
+            only.
