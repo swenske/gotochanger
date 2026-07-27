@@ -213,6 +213,14 @@ function nextSequentialName(existingNames, prefix) {
   return `${prefix}${next}`;
 }
 
+// ==================== Logical library color helpers (shared by Admin > Logical Libraries and wizard step 7) ====================
+
+const LOGICAL_LIBRARY_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#34A853", "#9C27B0", "#00ACC1", "#FF7043", "#5C6BC0"];
+
+function nextLogicalLibraryColor(existingCount) {
+  return LOGICAL_LIBRARY_COLORS[existingCount % LOGICAL_LIBRARY_COLORS.length];
+}
+
 // ==================== Tape set helpers (shared by Admin > Tape Sets and wizard step 6) ====================
 
 async function loadTapeTypeOptions() {
@@ -694,7 +702,8 @@ function attachWizardStepEditors(step, state, options, refresh) {
     document.getElementById("addLogicalLib").addEventListener("click", () => {
       state.logical_libraries = state.logical_libraries || [];
       const name = nextSequentialName(state.logical_libraries.map((l) => l.name), "Library");
-      state.logical_libraries.push({ name, drives: [], magazines: [], mailboxes: [], color: "#4285F4" });
+      const color = nextLogicalLibraryColor(state.logical_libraries.length);
+      state.logical_libraries.push({ name, drives: [], magazines: [], mailboxes: [], color });
       refresh();
     });
     document.querySelectorAll('input[name="logicalLibName"]').forEach((el) => {
@@ -3932,7 +3941,7 @@ document.getElementById("newLogicalLibBtn").addEventListener("click", async () =
   const kinds = logicalLibraryAssignmentKinds(picker, owners, { drives: [], magazines: [], mailboxes: [] });
   const v = await openDialog("New logical library", [
     { name: "name", label: "Name" },
-    { name: "color", label: "Color", type: "color", value: "#4285F4" },
+    { name: "color", label: "Color", type: "color", value: nextLogicalLibraryColor(picker.logicalLibraries.length) },
     { name: "membership", type: "assignmentboard", rightLabel: "New library", kinds },
   ]);
   if (!v || !v.name) return;

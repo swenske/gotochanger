@@ -19,7 +19,7 @@ type WizardState struct {
 	Magazines        []config.MagazineConfig       `json:"magazines,omitempty"`
 	Mailboxes        []config.MailboxConfig        `json:"mailboxes,omitempty"`
 	OffsiteLocation  bool                          `json:"offsite_location,omitempty"`
-	TapeSets         []config.TapeSetConfig        `json:"tape_sets,omitempty"`
+	TapeSets         []WizardTapeSetRequest        `json:"tape_sets,omitempty"`
 	LogicalLibraries []config.LogicalLibraryConfig `json:"logical_libraries,omitempty"`
 	LatencyEnabled   bool                          `json:"latency_enabled,omitempty"`
 }
@@ -126,10 +126,35 @@ func (s *Server) fillWizardStateFromTopology(ws WizardState) WizardState {
 	ws.Magazines, _ = s.topology.ListMagazines()
 	ws.Mailboxes, _ = s.topology.ListMailboxes()
 	ws.OffsiteLocation, _ = offsiteSetting(s.topology)
-	ws.TapeSets, _ = s.topology.ListTapeSets()
+	ws.TapeSets = wizardTapeSetsWithCounts(s.topology)
 	ws.LogicalLibraries, _ = s.topology.ListLogicalLibraries()
 	ws.LatencyEnabled, _ = latencyEnabledSetting(s.topology)
 	return ws
+}
+
+// wizardTapeSetsWithCounts reattaches each tape set's pending TapeCount
+// directive (persisted separately by saveWizardTapeCounts, since it's not
+// part of config.TapeSetConfig) so the wizard state response round-trips
+// step 6 data losslessly. Without this, any later request that resends a
+// previous WizardState response's tape_sets - e.g. clicking "Previous" from
+// step 7 - has every TapeCount reset to zero, and case 6 above rejects it as
+// "at least one tape is required" even though it was already valid.
+func wizardTapeSetsWithCounts(t TopologyStore) []WizardTapeSetRequest {
+	tapeSets, err := t.ListTapeSets()
+	if err != nil {
+		return nil
+	}
+	counts := loadWizardTapeCounts(t)
+	out := make([]WizardTapeSetRequest, len(tapeSets))
+	for i, ts := range tapeSets {
+		out[i] = WizardTapeSetRequest{
+			Name:          ts.Name,
+			TapeType:      ts.TapeType,
+			StorageFolder: ts.StorageFolder,
+			TapeCount:     counts[ts.Name],
+		}
+	}
+	return out
 }
 
 // selectedDriveTypes reconstructs the drive types picked in wizard step 2,
