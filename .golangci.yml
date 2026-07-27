@@ -18,6 +18,14 @@ linters:
     - unused      # unused identifiers
     - gosimple    # code that could be simpler
     - misspell    # comment/string typos
+  settings:
+    errcheck:
+      exclude-functions:
+        # A deferred/bare Tx.Rollback() after a successful Commit() is the
+        # standard Go database idiom - its error (typically sql.ErrTxDone)
+        # is expected and inherent to the pattern, not something callers
+        # are meant to act on.
+        - (*database/sql.Tx).Rollback
 
 issues:
   # Don't cap the number of issues reported per-linter/total - see them all.

@@ -40,7 +40,7 @@ func TestAcquireHostDiscoveryLockExcludesConcurrentHolder(t *testing.T) {
 	}
 	defer f.Close()
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		t.Fatal("expected a concurrent non-blocking flock to fail while the lock is held")
 	}
 
@@ -51,7 +51,7 @@ func TestAcquireHostDiscoveryLockExcludesConcurrentHolder(t *testing.T) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		t.Fatalf("expected the lock to be free after release, got: %v", err)
 	}
-	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 }
 
 // TestAcquireHostDiscoveryLockBlocksUntilReleased proves a second real
@@ -75,7 +75,7 @@ func TestAcquireHostDiscoveryLockBlocksUntilReleased(t *testing.T) {
 			return
 		}
 		close(acquired)
-		release2()
+		_ = release2()
 	}()
 
 	select {
