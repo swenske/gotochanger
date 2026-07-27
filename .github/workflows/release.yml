@@ -73,6 +73,47 @@ jobs:
           echo "Previous tag: ${latest:-<none>}"
           echo "New version:  $new_version"
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$latest" >> "$GITHUB_OUTPUT"
+
+      # debian/changelog is otherwise untouched by this pipeline (see
+      # .goreleaser.yaml's own changelog, generated independently from
+      # commits) - but it's also this project's single source of truth
+      # for the version dpkg-buildpackage/scripts/redeploy.sh embed in a
+      # locally-built package, so it needs to track every tagged release
+      # too. Adds one new entry, mechanically generated from every commit
+      # since the previous tag (matching goreleaser's own changelog
+      # range), never rewriting history. Pushed to main *before* the tag
+      # is created, so the tagged tree already contains its own entry.
+      #
+      # NOTE: this is a direct push to main, which has required-status-
+      # checks branch protection. Untested against a real release yet
+      # whether github-actions[bot] has bypass rights the same way an
+      # admin's own push does - if this step ever fails here, the fix is
+      # to open a small PR with just this change instead of pushing
+      # directly (works under any branch protection config).
+      - name: Update debian/changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          ver="${VERSION#v}"
+          range="${PREVIOUS_TAG:+$PREVIOUS_TAG..}HEAD"
+
+          {
+            printf 'gotochanger (%s) UNRELEASED; urgency=medium\n\n' "$ver"
+            git log --reverse --no-merges --pretty=format:'  * %s' "$range"
+            printf '\n\n -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  %s\n\n' "$(date -u -R)"
+            cat debian/changelog
+          } > debian/changelog.new
+          mv debian/changelog.new debian/changelog
+
+          git add debian/changelog
+          git commit -m "debian/changelog: add $ver entry"
+          git push origin HEAD:main
 
       - name: Create and push tag
         env:
