@@ -479,6 +479,32 @@ Outcome suffix convention:
 - `*.FAILURE` for rejected/failed actions
 - `*.WARNING` for non-fatal alerts (for example simulated end-of-tape)
 
+## Install from repository
+
+Pre-built `.deb` packages (`gotochanger` and the optional
+`gotochanger-kernel` add-on) are published to an apt repository after
+every release:
+
+```sh
+# 1. Import the repository's signing key
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.sw-servers.net/apt-sw-servers.net.gpg.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/apt-sw-servers.net.gpg
+
+# 2. Add the repository
+echo "deb [signed-by=/etc/apt/keyrings/apt-sw-servers.net.gpg] https://apt.sw-servers.net/gotochanger trixie main" \
+  | sudo tee /etc/apt/sources.list.d/gotochanger.list
+
+# 3. Install
+sudo apt-get update
+sudo apt-get install gotochanger
+# optional, for real kernel SCSI devices (see "Kernel mode" below):
+sudo apt-get install gotochanger-kernel
+```
+
+Targets Debian trixie (amd64). Released versions and their changelogs are
+also available as [GitHub Releases](https://github.com/swenske/gotochanger/releases).
+
 ## Building from source
 
 ```sh
