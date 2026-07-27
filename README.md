@@ -424,17 +424,22 @@ requests).
 
 ## SNMP traps
 
-Disabled by default. Enable in `/etc/gotochanger/config.yaml`:
+Disabled by default. Like the rest of the daemon's configuration (see
+"Concepts" above), SNMP settings live in the database and are edited
+live, with no config file and no restart:
 
-```yaml
-snmp:
-  enabled: true
-  enterprise_oid: "1.3.6.1.4.1.55555.1"   # replace with a real IANA PEN if desired
-  targets:
-    - host: 192.0.2.10
-      port: 162
-      community: public
-```
+- Web UI: Admin -> Settings -> "SNMP traps" panel (Enabled, Enterprise
+  OID, Agent address, and Targets - one per line, `host:port:community`).
+- CLI, for the scalar fields:
+
+  ```sh
+  gotochangerctl settings set snmp_enabled=true snmp_enterprise_oid=1.3.6.1.4.1.55555.1
+  ```
+
+  Targets are a list, which the CLI's simple `key=value` form can't
+  express - set them via the web UI, or with a direct
+  `PUT /api/v1/settings` call (`snmp_targets`, an array of
+  `{host, port, community}`).
 
 Every state-changing action emits:
 

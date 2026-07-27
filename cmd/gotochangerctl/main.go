@@ -935,7 +935,28 @@ func runSettings(c *apiclient.Client, args []string, jsonOut bool) error {
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid key=value pair %q", kv)
 		}
-		req[parts[0]] = parts[1]
+		key, val := parts[0], parts[1]
+		// Most UpdateSettingsRequest fields are plain strings, but a few
+		// aren't - sending those as a bare string (e.g. {"snmp_enabled":
+		// "true"}) fails server-side JSON unmarshaling into *bool/*int.
+		switch key {
+		case "snmp_enabled", "offsite_location":
+			b, err := strconv.ParseBool(val)
+			if err != nil {
+				return fmt.Errorf("invalid boolean for %q: %w", key, err)
+			}
+			req[key] = b
+		case "offsite_rotation_count":
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("invalid integer for %q: %w", key, err)
+			}
+			req[key] = n
+		case "snmp_targets":
+			return fmt.Errorf("snmp_targets is a list, not settable via key=value - use the web UI (Admin -> Settings) or a direct PUT /api/v1/settings call")
+		default:
+			req[key] = val
+		}
 	}
 	out, err := c.UpdateSettings(req)
 	if err != nil {
