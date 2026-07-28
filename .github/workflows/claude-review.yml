@@ -1,7 +1,3 @@
-# Claude-powered PR review: runs on every PR open/update, on a
-# GitHub-hosted runner with the minimum permissions needed to read the
-# diff and post review comments - never on the self-hosted runner, and
-# never with any permission beyond what posting a review requires.
 name: Claude PR Review
 
 on:
@@ -22,12 +18,15 @@ permissions:
 
 jobs:
   review:
-    if: contains(github.event.comment.body, '@claude')
+    if: >
+      contains(github.event.comment.body, '@claude') &&
+      github.event.issue.pull_request != null
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1 # full history so Claude can see the diff against the PR's base
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -35,35 +34,39 @@ jobs:
           claude_args: |
             --model claude-haiku-4-5-20251001
             --allowedTools "Read,Grep,Glob,Bash(gh pr comment:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment"
-          show_full_output: true   # temporary for debug
           prompt: |
-            Review this pull request to gotochanger, a Bareos tape-autochanger simulator
-            written in Go.
-            
-            Start by running `gh pr diff` to see exactly what changed. Only read
-            additional files when you need surrounding context to judge whether a
-            change is safe.
-            
+            Review pull request #${{ github.event.issue.number }} on gotochanger,
+            a Bareos tape-autochanger simulator written in Go.
+
+            Run `gh pr diff ${{ github.event.issue.number }}` to see exactly what
+            changed. Only read additional files when you need surrounding context
+            to judge whether a change is safe.
+
             Focus exclusively on:
             - Correctness bugs: off-by-one errors, incorrect error handling,
               nil-pointer/bounds issues, edge cases in element/slot/drive addressing.
-            - Concurrency issues: anything touching the shared `Library` state must go
-              through its `sync.RWMutex` correctly; watch for values (especially maps
-              or pointers to live elements) escaping that lock into a goroutine, an
-              HTTP response, or an SNMP notification without being copied first.
+            - Concurrency issues: anything touching the shared `Library` state must
+              go through its `sync.RWMutex` correctly; watch for values (especially
+              maps or pointers to live elements) escaping that lock into a
+              goroutine, an HTTP response, or an SNMP notification without being
+              copied first.
             - Idiomatic Go error handling: wrapped errors with context, consistent
               sentinel-error usage, no swallowed errors.
             - Edge cases: empty/zero-value inputs, restart/reload paths, anything
               changing on-disk or database state.
-            
+
             Skip anything already covered by golangci-lint (govet, staticcheck,
             errcheck, ineffassign, unused, gosimple, misspell).
-            
+
             Report at most the 5 most significant findings, tagged [Critical] /
-            [Major] / [Minor]. Use inline comments only for line-specific findings;
-            reserve broader concerns for the summary. If you find nothing significant,
-            say so explicitly rather than inventing minor nitpicks.
-            
+            [Major] / [Minor]. Use inline comments only for line-specific
+            findings; reserve broader concerns for the summary. If you find
+            nothing significant, say so explicitly rather than inventing minor
+            nitpicks.
+
             Be specific and reference exact file/line locations.
+
+            Post your summary using exactly:
+            gh pr comment ${{ github.event.issue.number }} --body "<your summary>"
         env:
           GH_TOKEN: ${{ github.token }}
