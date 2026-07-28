@@ -1,6 +1,7 @@
-# Claude-powered issue triage: runs once when an issue is opened, posting
-# a summary/categorization/label suggestion - GitHub-hosted runner, no
-# permission beyond commenting and labeling issues.
+# Claude-powered issue triage: triggered by an explicit @claude mention on
+# an issue comment (never automatic on issue creation), on a GitHub-hosted
+# runner, with the minimum permissions needed to read the issue and post
+# a triage comment.
 name: Claude Issue Triage
 
 on:
@@ -24,24 +25,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--model claude-haiku-4-5-20251001"
+          claude_args: |
+            --model claude-haiku-4-5-20251001
+            --allowedTools "Read,Grep,Glob,Bash(gh issue comment:*),Bash(gh label list:*)"
           prompt: |
-            A new issue was just opened on gotochanger, a Bareos tape-
-            autochanger simulator written in Go. Read the issue and post a
-            single comment with:
+            Triage this issue on gotochanger, a Bareos tape-autochanger
+            simulator written in Go.
 
-            1. A one-paragraph summary of what's being reported or requested.
-            2. A category: bug, feature request, question, documentation, or
-               infra/CI/release.
-            3. Suggested labels from the repository's existing label set (if
-               none fit well, suggest new ones to create).
-            4. If the issue is missing information needed to act on it (e.g.
-               a bug report with no repro steps, no version, no logs), ask
-               specific clarifying questions rather than guessing.
+            Start by reading the issue title and body only. Only search the
+            codebase (Read/Grep/Glob) if you need to verify a specific
+            technical claim in the issue (e.g. confirm a function or file
+            actually exists as described) — do not do a general exploration
+            of the repo.
 
-            Do not attempt to fix the issue or write code - this is triage
-            only.
+            Run `gh label list` to see the project's existing labels before
+            suggesting any.
+
+            Post a single comment via `gh issue comment` containing:
+            - A one-sentence summary of the issue in your own words.
+            - Category: Bug / Feature request / Question / Documentation.
+            - Suggested labels: 1-3 labels from the existing list only (do
+              not invent new labels). Do not apply them yourself — suggest
+              only, the maintainer will apply them.
+            - Missing information: if the issue lacks reproduction steps,
+              expected vs actual behavior, environment details, or other
+              info needed to act on it, list exactly what's missing as
+              questions. If nothing is missing, omit this section entirely
+              rather than inventing questions.
+
+            Keep the whole comment under 150 words. Do not repeat the issue
+            content back at length.
+        env:
+          GH_TOKEN: ${{ github.token }}
