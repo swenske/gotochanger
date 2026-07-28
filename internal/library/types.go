@@ -154,6 +154,14 @@ type ArmPosition struct {
 	// to be zero would make the JSON field vanish exactly for that
 	// legitimate value, indistinguishable from "no address at all".
 	Address int `json:"address"`
+	// Label is the referenced slot/ioslot's human-facing, magazine/
+	// mailbox-relative address (see Slot.Label/IOSlot.Label) - empty for
+	// Kind "drive"/ArmPositionParked, which have no such label. Set by
+	// Library.armPositionFor at the moment the arm's position is recorded,
+	// not derived client-side, since by the time it's displayed the
+	// referenced slot's Label may have since changed (a later topology
+	// change) or the slot may no longer exist at all.
+	Label string `json:"label,omitempty"`
 }
 
 // ArmPositionParked is the one ArmPosition.Kind with no corresponding

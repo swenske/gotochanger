@@ -64,12 +64,14 @@ func TestArmPositionUpdatesOnMoveLoadUnload(t *testing.T) {
 	lib := newTestLibrary(t)
 	placeVolumeInFirstSlot(lib, "VOLA0001")
 	fromAddr := lib.slots[0].Address
+	fromLabel := lib.slots[0].Label
 	toAddr := lib.slots[1].Address
+	toLabel := lib.slots[1].Label
 
 	if err := lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, ""); err != nil {
 		t.Fatalf("move: %v", err)
 	}
-	want := ArmPosition{Kind: "slot", Address: toAddr}
+	want := ArmPosition{Kind: "slot", Address: toAddr, Label: toLabel}
 	if got := lib.ArmState().Position; got != want {
 		t.Fatalf("after Move: expected position %+v, got %+v", want, got)
 	}
@@ -85,9 +87,31 @@ func TestArmPositionUpdatesOnMoveLoadUnload(t *testing.T) {
 	if err := lib.Unload(0, ElementRef{Kind: KindSlot, Address: fromAddr}, ""); err != nil {
 		t.Fatalf("unload: %v", err)
 	}
-	want = ArmPosition{Kind: "slot", Address: fromAddr}
+	want = ArmPosition{Kind: "slot", Address: fromAddr, Label: fromLabel}
 	if got := lib.ArmState().Position; got != want {
 		t.Fatalf("after Unload: expected position %+v, got %+v", want, got)
+	}
+}
+
+// TestArmPositionLabelsIOSlotDestination is a direct regression test for a
+// reported bug: after moving a tape into an I/O slot, the arm's reported
+// live position showed the mailbox slot's flat Address (e.g. "slot 26")
+// instead of its magazine/mailbox-relative Label (e.g. "1.1") - and with
+// the wrong Kind-derived prefix, since ArmPosition.Label wasn't populated
+// at all before this fix (armPositionFor only ever set Kind/Address).
+func TestArmPositionLabelsIOSlotDestination(t *testing.T) {
+	lib := newTestLibrary(t)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.ioslots[0].Address
+	toLabel := lib.ioslots[0].Label
+
+	if err := lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindIOSlot, Address: toAddr}, ""); err != nil {
+		t.Fatalf("move to ioslot: %v", err)
+	}
+	want := ArmPosition{Kind: "ioslot", Address: toAddr, Label: toLabel}
+	if got := lib.ArmState().Position; got != want {
+		t.Fatalf("after Move to ioslot: expected position %+v, got %+v", want, got)
 	}
 }
 
@@ -152,7 +176,8 @@ func TestArmParkedWhileAnyDoorOpen(t *testing.T) {
 	// passes it - that scan happens chronologically after the Move, so
 	// it correctly wins as the arm's most recent real position, exactly
 	// like a second Move would.
-	want := ArmPosition{Kind: "slot", Address: mag1Slots[len(mag1Slots)-1].Address}
+	lastMag1Slot := mag1Slots[len(mag1Slots)-1]
+	want := ArmPosition{Kind: "slot", Address: lastMag1Slot.Address, Label: lastMag1Slot.Label}
 	if got := lib.ArmState().Position; got != want {
 		t.Fatalf("expected position to reflect Magazine1's own post-close scan once its door closes, got %+v want %+v", got, want)
 	}
@@ -258,7 +283,7 @@ func TestArmPositionReflectsLastScannedSlotAfterDoorCloses(t *testing.T) {
 	}
 
 	lastSlot := lib.slots[len(lib.slots)-1] // newTestLibrary has only Magazine1, so this is its last slot
-	want := ArmPosition{Kind: "slot", Address: lastSlot.Address}
+	want := ArmPosition{Kind: "slot", Address: lastSlot.Address, Label: lastSlot.Label}
 	if got := lib.ArmState().Position; got != want {
 		t.Fatalf("expected position to reflect the last-scanned slot %+v after the magazine door closes, got %+v", want, got)
 	}

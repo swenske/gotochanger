@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -1265,11 +1266,23 @@ func (l *Library) DoorPhases() map[string]string {
 	return out
 }
 
-// armPositionFor converts an ElementRef into the equivalent ArmPosition -
+// armPositionFor converts an ElementRef into the equivalent ArmPosition,
+// including the referenced slot/ioslot's current Label where one exists -
 // ElementRef.Kind's string values ("slot"/"ioslot"/"drive") are exactly
-// the non-parked ArmPosition.Kind values.
-func armPositionFor(ref ElementRef) ArmPosition {
-	return ArmPosition{Kind: string(ref.Kind), Address: ref.Address}
+// the non-parked ArmPosition.Kind values. Callers must hold l.mu.
+func (l *Library) armPositionFor(ref ElementRef) ArmPosition {
+	pos := ArmPosition{Kind: string(ref.Kind), Address: ref.Address}
+	switch ref.Kind {
+	case KindSlot:
+		if s, err := l.findSlot(ref.Address); err == nil {
+			pos.Label = s.Label
+		}
+	case KindIOSlot:
+		if s, err := l.findIOSlot(ref.Address); err == nil {
+			pos.Label = s.Label
+		}
+	}
+	return pos
 }
 
 // currentArmStateLocked computes the arm's current reported state:
@@ -1632,6 +1645,17 @@ func (l *Library) findOffsite(label string) (*Volume, int) {
 	return nil, -1
 }
 
+// displayLabel prefers a slot/ioslot's human-facing Label over its flat
+// Address for narration/audit-log/error text, falling back to the address
+// if Label is somehow empty (shouldn't happen for a real slot, but this
+// must never crash on one that lacks it).
+func displayLabel(label string, address int) string {
+	if label != "" {
+		return label
+	}
+	return strconv.Itoa(address)
+}
+
 // volumeAt returns the *Volume currently sitting at ref, and a setter to
 // clear/replace it, unifying slot/ioslot/drive handling for Move/Load/Unload.
 func (l *Library) volumeSlot(ref ElementRef) (get func() *Volume, set func(*Volume), label string, err error) {
@@ -1641,13 +1665,13 @@ func (l *Library) volumeSlot(ref ElementRef) (get func() *Volume, set func(*Volu
 		if e != nil {
 			return nil, nil, "", e
 		}
-		return func() *Volume { return s.Volume }, func(v *Volume) { s.Volume = v }, fmt.Sprintf("slot %d", ref.Address), nil
+		return func() *Volume { return s.Volume }, func(v *Volume) { s.Volume = v }, fmt.Sprintf("slot %s", displayLabel(s.Label, ref.Address)), nil
 	case KindIOSlot:
 		s, e := l.findIOSlot(ref.Address)
 		if e != nil {
 			return nil, nil, "", e
 		}
-		return func() *Volume { return s.Volume }, func(v *Volume) { s.Volume = v }, fmt.Sprintf("ioslot %d", ref.Address), nil
+		return func() *Volume { return s.Volume }, func(v *Volume) { s.Volume = v }, fmt.Sprintf("ioslot %s", displayLabel(s.Label, ref.Address)), nil
 	case KindDrive:
 		d, e := l.findDrive(ref.Address)
 		if e != nil {
@@ -1726,7 +1750,7 @@ func (l *Library) Move(from, to ElementRef, logicalLibrary string) error {
 
 	setFrom(nil)
 	setTo(vol)
-	l.setArmPosition(armPositionFor(to))
+	l.setArmPosition(l.armPositionFor(to))
 	l.emit("move", fmt.Sprintf("moved volume %q from %s to %s", vol.Barcode, fromLabel, toLabel),
 		map[string]string{"volume": vol.Barcode, "from": fromLabel, "to": toLabel})
 	l.saveLocked()
@@ -1887,7 +1911,7 @@ func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) erro
 			// this magazine's door remains open (armOpenDoors > 0,
 			// currentArmStateLocked), so this has no visible effect until
 			// the door actually closes.
-			l.recordArmStepAndPosition(fmt.Sprintf("scanning slot %d: %s", s.Address, status), ArmPosition{Kind: "slot", Address: s.Address})
+			l.recordArmStepAndPosition(fmt.Sprintf("scanning slot %s: %s", displayLabel(s.Label, s.Address), status), ArmPosition{Kind: "slot", Address: s.Address, Label: s.Label})
 		}
 	} else if l.magazineScanLatency > 0 {
 		time.Sleep(l.magazineScanLatency)
@@ -2007,14 +2031,14 @@ func (l *Library) applyIOActionsLocked(mailboxID string, actions []DoorAction) e
 				return simErr(err.Error())
 			}
 			if io.MailboxID != mailboxID {
-				return simErr(fmt.Sprintf("ioslot %d does not belong to mailbox %q", a.Address, mailboxID))
+				return simErr(fmt.Sprintf("ioslot %s does not belong to mailbox %q", displayLabel(io.Label, a.Address), mailboxID))
 			}
 			vol, ok := outside[a.Barcode]
 			if !ok {
 				return simErr(fmt.Sprintf("outside volume %q not found", a.Barcode))
 			}
 			if ios[a.Address] != nil {
-				return simErr(fmt.Sprintf("ioslot %d: %s", a.Address, ErrFull))
+				return simErr(fmt.Sprintf("ioslot %s: %s", displayLabel(io.Label, a.Address), ErrFull))
 			}
 			ios[a.Address] = vol
 			delete(outside, a.Barcode)
@@ -2024,11 +2048,11 @@ func (l *Library) applyIOActionsLocked(mailboxID string, actions []DoorAction) e
 				return simErr(err.Error())
 			}
 			if io.MailboxID != mailboxID {
-				return simErr(fmt.Sprintf("ioslot %d does not belong to mailbox %q", a.Address, mailboxID))
+				return simErr(fmt.Sprintf("ioslot %s does not belong to mailbox %q", displayLabel(io.Label, a.Address), mailboxID))
 			}
 			vol := ios[a.Address]
 			if vol == nil {
-				return simErr(fmt.Sprintf("ioslot %d: %s", a.Address, ErrEmpty))
+				return simErr(fmt.Sprintf("ioslot %s: %s", displayLabel(io.Label, a.Address), ErrEmpty))
 			}
 			if _, exists := outside[vol.Barcode]; exists {
 				return simErr(fmt.Sprintf("outside volume %q already exists", vol.Barcode))
@@ -2053,10 +2077,14 @@ func (l *Library) applyIOActionsLocked(mailboxID string, actions []DoorAction) e
 		io.Volume = ios[io.Address]
 	}
 	for _, a := range actions {
+		label := strconv.Itoa(a.Address)
+		if io, err := l.findIOSlot(a.Address); err == nil {
+			label = displayLabel(io.Label, a.Address)
+		}
 		if a.Action == "load" {
-			l.emit("io-load", fmt.Sprintf("loaded outside volume %q into ioslot %d", a.Barcode, a.Address), map[string]string{"volume": a.Barcode, "ioslot": fmt.Sprint(a.Address)})
+			l.emit("io-load", fmt.Sprintf("loaded outside volume %q into ioslot %s", a.Barcode, label), map[string]string{"volume": a.Barcode, "ioslot": fmt.Sprint(a.Address)})
 		} else {
-			l.emit("io-pickup", fmt.Sprintf("picked up volume from ioslot %d", a.Address), map[string]string{"ioslot": fmt.Sprint(a.Address)})
+			l.emit("io-pickup", fmt.Sprintf("picked up volume from ioslot %s", label), map[string]string{"ioslot": fmt.Sprint(a.Address)})
 		}
 	}
 	return nil
@@ -2086,14 +2114,14 @@ func (l *Library) applyStorageActionsLocked(magazineID string, actions []DoorAct
 				return simErr(err.Error())
 			}
 			if slot.MagazineID != magazineID {
-				return simErr(fmt.Sprintf("slot %d does not belong to magazine %q", a.Address, magazineID))
+				return simErr(fmt.Sprintf("slot %s does not belong to magazine %q", displayLabel(slot.Label, a.Address), magazineID))
 			}
 			vol, ok := outside[a.Barcode]
 			if !ok {
 				return simErr(fmt.Sprintf("outside volume %q not found", a.Barcode))
 			}
 			if slots[a.Address] != nil {
-				return simErr(fmt.Sprintf("slot %d: %s", a.Address, ErrFull))
+				return simErr(fmt.Sprintf("slot %s: %s", displayLabel(slot.Label, a.Address), ErrFull))
 			}
 			slots[a.Address] = vol
 			delete(outside, a.Barcode)
@@ -2103,11 +2131,11 @@ func (l *Library) applyStorageActionsLocked(magazineID string, actions []DoorAct
 				return simErr(err.Error())
 			}
 			if slot.MagazineID != magazineID {
-				return simErr(fmt.Sprintf("slot %d does not belong to magazine %q", a.Address, magazineID))
+				return simErr(fmt.Sprintf("slot %s does not belong to magazine %q", displayLabel(slot.Label, a.Address), magazineID))
 			}
 			vol := slots[a.Address]
 			if vol == nil {
-				return simErr(fmt.Sprintf("slot %d: %s", a.Address, ErrEmpty))
+				return simErr(fmt.Sprintf("slot %s: %s", displayLabel(slot.Label, a.Address), ErrEmpty))
 			}
 			if _, exists := outside[vol.Barcode]; exists {
 				return simErr(fmt.Sprintf("outside volume %q already exists", vol.Barcode))
@@ -2132,10 +2160,14 @@ func (l *Library) applyStorageActionsLocked(magazineID string, actions []DoorAct
 		s.Volume = slots[s.Address]
 	}
 	for _, a := range actions {
+		label := strconv.Itoa(a.Address)
+		if slot, err := l.findSlot(a.Address); err == nil {
+			label = displayLabel(slot.Label, a.Address)
+		}
 		if a.Action == "load" {
-			l.emit("storage-load", fmt.Sprintf("loaded outside volume %q into slot %d", a.Barcode, a.Address), map[string]string{"volume": a.Barcode, "slot": fmt.Sprint(a.Address)})
+			l.emit("storage-load", fmt.Sprintf("loaded outside volume %q into slot %s", a.Barcode, label), map[string]string{"volume": a.Barcode, "slot": fmt.Sprint(a.Address)})
 		} else {
-			l.emit("storage-pickup", fmt.Sprintf("picked up volume from slot %d", a.Address), map[string]string{"slot": fmt.Sprint(a.Address)})
+			l.emit("storage-pickup", fmt.Sprintf("picked up volume from slot %s", label), map[string]string{"slot": fmt.Sprint(a.Address)})
 		}
 	}
 	return nil
@@ -2778,7 +2810,7 @@ func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int
 	}
 	setTo(vol)
 	l.recordArmStep(fmt.Sprintf("placed tape %s into %s", vol.Barcode, toLabel))
-	l.setArmPosition(armPositionFor(origin))
+	l.setArmPosition(l.armPositionFor(origin))
 	l.emit("unload", fmt.Sprintf("unloaded volume %q from drive %d into %s", vol.Barcode, driveIndex, toLabel),
 		map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex), "to": toLabel})
 }
@@ -2856,7 +2888,7 @@ func (l *Library) Unload(driveIndex int, to ElementRef, logicalLibrary string) e
 	drive.Origin = nil
 	drive.Activity = ""
 	setTo(vol)
-	l.setArmPosition(armPositionFor(to))
+	l.setArmPosition(l.armPositionFor(to))
 	if vol.Cleaning {
 		drive.MountsSinceCleaning = 0
 		if vol.CleaningState != CleaningTapeExpired {

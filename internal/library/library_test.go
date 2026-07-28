@@ -1141,8 +1141,8 @@ func TestStorageDoorCloseEmitsPerSlotScanEvents(t *testing.T) {
 	if len(slotSteps) != 2 {
 		t.Fatalf("expected 2 per-slot scan steps (one per Magazine1 slot), got %d: %+v", len(slotSteps), slotSteps)
 	}
-	wantSlot0 := fmt.Sprintf("scanning slot %d:", lib.slots[0].Address)
-	wantSlot1 := fmt.Sprintf("scanning slot %d:", lib.slots[1].Address)
+	wantSlot0 := fmt.Sprintf("scanning slot %s:", lib.slots[0].Label)
+	wantSlot1 := fmt.Sprintf("scanning slot %s:", lib.slots[1].Label)
 	if !strings.HasPrefix(slotSteps[0].Message, wantSlot0) || !strings.HasPrefix(slotSteps[1].Message, wantSlot1) {
 		t.Fatalf("expected slot scan steps in address order, got %+v", slotSteps)
 	}

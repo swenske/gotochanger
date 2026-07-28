@@ -2208,7 +2208,7 @@ function renderIOSlots(ioslots, status, maps) {
       const card = document.createElement("div");
       card.className = "card" + (io.volume ? "" : " empty");
       if (state.showLibraryColors) applyLibraryBorder(card, maps.ioslotColor[io.address]);
-      let html = `<div class="addr">Slot ${io.label || io.address}</div>`;
+      let html = `<div class="addr">I/O Slot ${io.label || io.address}</div>`;
       // Only reachable to toggle while the mailbox door is open, matching
       // Library.findAccessibleVolumeForWriteProtectLocked's rule - a real
       // tab can't be flipped while sealed behind a closed door.
