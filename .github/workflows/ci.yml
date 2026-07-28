@@ -42,6 +42,19 @@ jobs:
           # debian/rules) - keep linting consistent with that.
           GOFLAGS: -mod=vendor
 
+      # internal/api/static/guide/index.html (embedded via go:embed for
+      # /guide) is generated from docs/guide/**.md by `make guide`, but
+      # must stay committed to git since this job's own `go build`/`go
+      # test` (like goreleaser's) never runs `make` and so never
+      # regenerates it. Catch anyone who edited the Markdown source
+      # without regenerating/committing the HTML.
+      - name: Check generated guide is up to date
+        env:
+          GOFLAGS: -mod=vendor
+        run: |
+          make guide
+          git diff --exit-code -- internal/api/static/guide
+
   # Full test suite with the race detector and coverage, matching how this
   # project's own concurrency invariants (single-arm locking, snapshot
   # reads) are expected to be verified.

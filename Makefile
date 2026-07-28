@@ -7,11 +7,30 @@ BUILDMODE := pie
 BIN_DIR  := bin
 BINARIES := gotochangerd gotochanger-changer gotochangerctl gotochanger-tcmud
 
-.PHONY: all build test vet fmt clean install
+GUIDE_SRC   := docs/guide
+GUIDE_EMBED := internal/api/static/guide
+SITE_OUT    := site
+
+.PHONY: all build test vet fmt clean install guide site
 
 all: build
 
-build:
+# Regenerates the embedded User Guide (internal/api/static/guide/index.html)
+# from docs/guide/**.md before every build, so a local build is never stale
+# relative to the Markdown source. CI's build/test/lint jobs call `go
+# build`/`go test` directly (never through make), so they instead rely on
+# that generated file being committed and check it's not stale via the
+# "guide" drift-check step in .github/workflows/ci.yml's lint job.
+guide:
+	go run ./tools/docgen -target=embed -src=$(GUIDE_SRC) -out=$(GUIDE_EMBED)
+
+# Exports the same guide content as a self-contained static site (relative
+# asset links, no dependency on a running gotochangerd) for external
+# publishing - see .github/workflows/docs.yml.
+site: guide
+	go run ./tools/docgen -target=site -src=$(GUIDE_SRC) -out=$(SITE_OUT)
+
+build: guide
 	mkdir -p $(BIN_DIR)
 	for b in $(BINARIES); do \
 		go build $(GOFLAGS) -buildmode=$(BUILDMODE) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$$b ./cmd/$$b ; \
@@ -27,7 +46,7 @@ fmt:
 	gofmt -l .
 
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) $(SITE_OUT)
 
 # Used by debian/rules; installs binaries, config, and the systemd units
 # under DESTDIR following FHS/Debian conventions. Everything here lands in

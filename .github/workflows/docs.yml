@@ -1,0 +1,56 @@
+# Publishes the User Guide (docs/guide/**.md, rendered by tools/docgen via
+# `make site`) to GitHub Pages. The embedded /guide copy in
+# internal/api/static/guide/ is a separate, committed artifact checked for
+# staleness by ci.yml's lint job - this workflow only builds and deploys
+# the external static-site export, from the same Markdown source.
+name: Publish User Guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/guide/**"
+      - "tools/docgen/**"
+      - "internal/api/static/guide/guide.css"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build static site
+        env:
+          GOFLAGS: -mod=vendor
+        run: make site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

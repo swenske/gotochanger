@@ -16,460 +16,1578 @@
       gotochanger
       <span>User Guide</span>
     </div>
-    <a class="guide-toc-back" href="/">&larr; Back to the app</a>
-
+    <a class="guide-toc-back" href="/">← Back to the app</a>
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Overview</div>
-      <a href="#welcome">Welcome</a>
-      <a href="#getting-started">Getting Started</a>
+      <div class="guide-toc-group-label">Getting Started</div>
+      <a href="#first-run-bootstrap-and-sign-in">First run: bootstrap and sign in</a>
+      <a href="#roles">Roles</a>
     </div>
-
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Dashboard</div>
-      <a href="#dashboard-tour">Dashboard Tour</a>
-      <a href="#dt-outside">Outside Library Tapes</a>
-      <a href="#dt-offsite">Offsite Vault</a>
-      <a href="#dt-robot">Robotic Arm</a>
-      <a href="#dt-drives">Drives</a>
-      <a href="#dt-ioslots">I/O Slots</a>
-      <a href="#dt-slots">Storage Slots</a>
-      <a href="#led-behavior">Drive Indicator Lights</a>
+      <div class="guide-toc-group-label">Dashboard Tour</div>
+      <a href="#outside-library-tapes">Outside Library Tapes</a>
+      <a href="#offsite-vault">Offsite Vault</a>
+      <a href="#robotic-arm">Robotic Arm</a>
+      <a href="#drives">Drives</a>
+      <a href="#drive-indicator-lights">Drive Indicator Lights</a>
+      <a href="#io-slots-mail-slots">I/O Slots (mail slots)</a>
+      <a href="#storage-slots">Storage Slots</a>
     </div>
-
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Concepts</div>
-      <a href="#concepts">Core Concepts</a>
-      <a href="#c-magazines">Magazines &amp; Storage Slots</a>
-      <a href="#c-mailboxes">Mailboxes &amp; I/O Slots</a>
-      <a href="#c-drives">Drives</a>
-      <a href="#c-tapesets">Tape Sets &amp; Barcodes</a>
-      <a href="#c-logical-libraries">Logical Libraries</a>
-      <a href="#c-offsite">Offsite Vaulting</a>
+      <div class="guide-toc-group-label">Core Concepts</div>
+      <a href="#magazines--storage-slots">Magazines &amp; Storage Slots</a>
+      <a href="#mailboxes--io-slots">Mailboxes &amp; I/O Slots</a>
+      <a href="#tape-drives">Tape Drives</a>
+      <a href="#tape-sets--barcodes">Tape Sets &amp; Barcodes</a>
+      <a href="#logical-libraries">Logical Libraries</a>
+      <a href="#offsite-vaulting">Offsite Vaulting</a>
     </div>
-
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Using gotochanger</div>
-      <a href="#workflows">Common Workflows</a>
-      <a href="#wizard">Setup Wizard</a>
+      <div class="guide-toc-group-label">Install from a .deb package</div>
     </div>
-
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Administration</div>
-      <a href="#admin-guide">Admin Guide</a>
-      <a href="#admin-access-control">Access Control</a>
-      <a href="#admin-topology">Library Topology</a>
-      <a href="#admin-operations">Operations</a>
+      <div class="guide-toc-group-label">Build from source</div>
     </div>
-
     <div class="guide-toc-group">
-      <div class="guide-toc-group-label">Help</div>
-      <a href="#faq">Troubleshooting &amp; FAQ</a>
+      <div class="guide-toc-group-label">Build the Debian package directly</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">First start</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Bootstrap</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">The wizard</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Autochanger and Device resources</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Scoping an Autochanger to one logical library</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Migrating from disk-changer.in</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">When to enable it</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Enabling it</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Scope and limitations</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Access Control</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Library Topology</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Operations</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Event codes</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">SNMP traps</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">The dynamic MIB</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">gotochangerctl</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">REST API</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Cookbook</div>
+      <a href="#migrate-from-disk-changerin">Migrate from disk-changer.in</a>
+      <a href="#partition-one-physical-robot-into-two-logical-libraries">Partition one physical robot into two logical libraries</a>
+      <a href="#configure-multiple-drives-without-the-drive-index-trap">Configure multiple drives without the Drive Index trap</a>
+      <a href="#scheduled-offsite-rotation">Scheduled offsite rotation</a>
+      <a href="#bareos-resilience-testing-fault-injection">Bareos resilience testing: fault injection</a>
+      <a href="#switch-to-kernel-mode-for-a-third-party-scsi-tool">Switch to kernel mode for a third-party SCSI tool</a>
+      <a href="#backup-and-restore-for-disaster-recovery">Backup and restore for disaster recovery</a>
+      <a href="#monitor-gotochanger-via-snmp">Monitor gotochanger via SNMP</a>
+      <a href="#managing-cleaning-tapes">Managing cleaning tapes</a>
+      <a href="#set-up-a-scoped-operator-api-token-for-a-ci-script">Set up a scoped operator API token for a CI script</a>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Troubleshooting and FAQ</div>
+      <a href="#troubleshooting-and-faq">Troubleshooting and FAQ</a>
     </div>
   </nav>
 
   <main class="guide-content">
+    <h1 id="welcome-to-gotochanger">Welcome to gotochanger</h1>
+<p class="lead">A virtual tape library you can operate, break, and repair without touching real hardware.</p>
+<p>gotochanger simulates a SCSI tape autochanger — storage slots, import/export (mail) slots, robotics, and
+multiple tape drives — behind a REST API and a web dashboard. It's most often used as a drop-in
+<code>Changer Command</code> target for <strong>Bareos</strong>, replacing a bare disk-staging setup with something that behaves like
+a real tape library: slots fill up, cartridges have real barcodes, drives can fault, and operations take
+realistic amounts of time if you turn latency simulation on.</p>
+<p>This guide covers everything a day-to-day operator or administrator needs: the dashboard, the concepts behind
+slots/drives/tape sets, common step-by-step workflows, installation, the first-run setup wizard, Bareos
+integration, kernel mode, the Admin section, monitoring, the CLI and REST API, and a cookbook of full
+end-to-end scenarios.</p>
+<div class="callout callout-tip">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 11h1v5h1"/></svg>
+<div>By default, everything in gotochanger is simulated in userspace: no real kernel SCSI device is created,
+just plain files. Loads, unloads, faults, and even drive timing are all software state you can freely
+experiment with. An optional <a href="#kernel-mode">kernel mode</a> can additionally expose the same library
+as real <code>/dev/sg*</code>/<code>/dev/nst*</code> devices, for tools that insist on a real SCSI medium
+changer - see the Kernel Mode section for when that's actually needed.</div>
+</div>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="first-run-bootstrap-and-sign-in">First run: bootstrap and sign in</h3>
+<p>The first time you open gotochanger, you'll be asked to set a password for the built-in <strong>Admin</strong> account
+— there's no default password to guess. After that, sign in with username <code>Admin</code> and the password you
+just set. Sessions are cookie-based and held in memory by the daemon, so signing everyone out is as simple as
+restarting the service.</p>
+<p>If this is a brand-new install with no topology configured yet (no drives, magazines, or mailboxes), you'll be
+dropped straight into the <a href="#first-run-and-setup-wizard">Setup Wizard</a> instead of the dashboard.</p>
+<h3 id="roles">Roles</h3>
+<p>Every user account and API token has exactly one role, checked on every request:</p>
+<ul>
+<li><strong>Viewer</strong> — read-only. Can see the dashboard and Admin screens but can't load/unload tapes, open
+doors, or change anything.</li>
+<li><strong>Operator</strong> — everything a Viewer can do, plus day-to-day operation: load/unload/move tapes, open and
+close doors, raise/clear drive and robotic-arm faults, download a manual backup.</li>
+<li><strong>Admin</strong> — everything, including all of Admin &gt; Library Topology, user/token management, scheduled
+backups, and restore.</li>
+</ul>
+<p>The dashboard adapts to your role automatically — action buttons (Load, Unload, Move, Raise fault, ...)
+only appear if you're an Operator or Admin, and the Admin nav button itself is hidden entirely for a Viewer.</p>
+<h2 id="dashboard-tour">Dashboard Tour</h2>
+<p>The dashboard is a set of independent panels, each mirroring one physical part of the library. Every panel can
+be <strong>dragged by its <code>::</code> handle</strong> to reorder it, and <strong>collapsed</strong> with the button in its header — both
+the order and which panels are collapsed are remembered per-browser (saved to local storage), so your layout
+survives a reload. The toolbar above the panels has two more options: <em>Show library colors</em> (tints each
+element by which Logical Library it belongs to) and <em>Hide unassigned</em> (hide elements that aren't part of any
+Logical Library yet), plus a <em>Collapse all</em> shortcut.</p>
+<p>The dashboard polls <code>GET /api/v1/status</code> every 4 seconds and re-renders automatically — you never need to
+manually refresh the page to see a change made from another tab, another operator, or the API.</p>
+<h3 id="outside-library-tapes">Outside Library Tapes</h3>
+<p>Cartridges that exist as real files on disk but aren't in any slot, drive, or the offsite vault right now
+— think of it as the loading dock. This is also where new cartridges are born: the <strong>Create tape</strong>
+button walks you through picking a Tape Set and either auto-generating the next barcode in sequence or typing
+one in by hand. From here, tapes get loaded into a drive, a storage slot, or an I/O slot.</p>
+<h3 id="offsite-vault">Offsite Vault</h3>
+<p>Volumes that have been sent offsite — simulating tape rotation to a physical vault. <strong>Send to offsite</strong>
+picks a full storage slot to vault; each vaulted volume gets a <strong>Recall</strong> button to bring it back into an
+empty storage slot. See <a href="#offsite-vaulting">Offsite Vaulting</a> for the concept and how scheduled rotation
+works, and the <a href="#scheduled-offsite-rotation">Scheduled offsite rotation</a> cookbook scenario
+for a worked example with the CLI/API.</p>
+<h3 id="robotic-arm">Robotic Arm</h3>
+<p>There's exactly one robotic arm in the physical library, shared by every Logical Library. This panel shows
+its status — idle, moving, or in a simulated fault — with an indicator light using the same
+convention as the drives (see <a href="#drive-indicator-lights">Drive Indicator Lights</a>). Operators can <strong>Raise
+fault</strong> (choosing a realistic failure mode: blocked arm, mispositioned cartridge, pickup/drop failure,
+movement jam, or other) to test how their backup software reacts, then <strong>Clear fault</strong> once done. A raised
+fault rejects Load/Unload/Move (but not door open/close) library-wide until cleared — see the
+<a href="#bareos-resilience-testing-fault-injection">Bareos resilience testing</a> cookbook scenario for a full
+walkthrough with events and SNMP traps.</p>
+<h3 id="drives">Drives</h3>
+<p>Every physical tape drive, each with an indicator light (see below), the cartridge currently loaded (if any)
+rendered as a real-looking barcode label, and how full it is. Loaded drives get an <strong>Unload to...</strong> button;
+every drive gets a <strong>Raise fault / Clear fault</strong> toggle to simulate a hardware problem on that specific drive.</p>
+<h3 id="drive-indicator-lights">Drive Indicator Lights</h3>
+<p>Each drive (and the robotic arm) shows a small colored light modeled on a real tape drive's front panel, so
+the dashboard reads at a glance instead of requiring you to parse text on every card.</p>
+<div class="led-legend">
+<div class="led-legend-row"><span class="led led-fault"></span><strong>Amber, pulsing</strong><span class="desc">Fault - the drive (or the robotic arm) is in a simulated fault state. Takes priority over everything else.</span></div>
+<div class="led-legend-row"><span class="led led-writing"></span><strong>Red, pulsing</strong><span class="desc">Writing - the loaded cartridge's backing file just grew between two dashboard polls, meaning something is actually writing data to it right now (e.g. a real attached backup job).</span></div>
+<div class="led-legend-row"><span class="led led-busy"></span><strong>Green, blinking</strong><span class="desc">Active operation - this browser tab has a Load/Unload/Move in flight for this drive (or the arm generally, for the Robotic Arm panel).</span></div>
+<div class="led-legend-row"><span class="led led-idle"></span><strong>Green, steady/dim</strong><span class="desc">Ready - a cartridge is loaded and idle.</span></div>
+<div class="led-legend-row"><span class="led led-off"></span><strong>Dark</strong><span class="desc">Empty - no cartridge loaded, nothing happening.</span></div>
+</div>
+<p>Priority order when more than one condition is true, highest first: <strong>Fault &gt; Writing &gt; Active operation &gt;
+Ready &gt; Empty</strong>. A faulted drive always shows amber even mid-operation, for instance.</p>
+<div class="callout callout-warn">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+<div><strong>The "Writing" light needs a real write, not just a Load.</strong> gotochanger doesn't simulate the
+byte stream of a backup job &mdash; a loaded drive (in userspace/file mode) is just a symlink at a device path,
+and nothing writes to it unless something external actually does (typically a real attached Bareos SD job, or
+a manual test write). So clicking Load and watching the drive sit at steady green with no red flash is
+completely normal, not a bug &mdash; it just means nothing has written any bytes to that cartridge yet.</div>
+</div>
+<p>Two more details worth knowing if you're timing things precisely: the &quot;busy&quot; light only reflects an operation
+<em>this browser tab</em> started — there's no way to see another tab's or another operator's in-flight action
+as &quot;busy&quot; (it just means an operation is happening somewhere; a status refresh from any tab will briefly pause
+until it finishes, since only one physical robotic arm exists). And the &quot;writing&quot; light, once triggered, stays
+lit for a few seconds after the write is detected (longer than one poll interval) so a brief burst of activity
+remains visible instead of flickering for a single frame.</p>
+<h3 id="io-slots-mail-slots">I/O Slots (mail slots)</h3>
+<p>Import/export elements, grouped into <strong>Mailboxes</strong>. Each mailbox group has its own door: click <strong>Open mail
+slot</strong> to start staging tapes in or out, then use each slot's <strong>Load</strong> (bring an outside tape in) or <strong>Pickup</strong>
+(queue a tape to come out) button, and finally <strong>Close mail slot</strong> to commit every queued action at once
+— just like closing a real mail slot door triggers the robot to do the actual moves.</p>
+<h3 id="storage-slots">Storage Slots</h3>
+<p>The main body of the library, grouped into <strong>Magazines</strong>. Each occupied slot can <strong>Move</strong> its cartridge to an
+empty drive, another slot, or an I/O slot. Open a magazine's storage door to get <strong>Bulk load...</strong> (load several
+outside tapes into empty slots in one dialog) and <strong>Move all to outside...</strong> (queue several loaded slots for
+pickup at once) — handy for seeding a fresh magazine or clearing one out.</p>
+<p>Below the panels, the <strong>Activity Log</strong> dock (bottom of the screen, also collapsible) shows a running feed of
+everything that's happened — loads, unloads, faults, configuration changes — each tagged with a
+status pill (success/failure/warning/...), useful for spotting what an automated job or another operator just
+did.</p>
+<h2 id="core-concepts">Core Concepts</h2>
+<p>gotochanger's data model mirrors a real tape library fairly literally. If you've operated a physical
+autochanger or an LTO library before, most of this will already be familiar.</p>
+<h3 id="magazines--storage-slots">Magazines &amp; Storage Slots</h3>
+<p>A <strong>Magazine</strong> is a named group of 5-20 storage slots (in increments of 5) — the removable cartridge
+racks a real library holds internally. Storage slots are what hold the bulk of your tape inventory between
+backup jobs. Slots are addressed contiguously across the whole physical library (all magazines' slots first,
+in creation order), which only matters if you're scripting against the raw API — the dashboard always
+shows you slots grouped back into their magazine, and each slot also gets a human-facing, magazine-relative
+label like <code>2.3</code> (slot 3 of the 2nd currently-existing magazine).</p>
+<h3 id="mailboxes--io-slots">Mailboxes &amp; I/O Slots</h3>
+<p>A <strong>Mailbox</strong> is the import/export equivalent of a magazine — a named group of 1-5 I/O (mail) slots. I/O
+slots share one contiguous address space with storage slots (storage slots first, then I/O slots), matching
+how real SCSI medium changers and Bareos itself report a combined &quot;N slots (M import/export)&quot; total. This is
+the normal door operators use to bring new cartridges in or send full ones out without opening the whole
+library.</p>
+<h3 id="tape-drives">Tape Drives</h3>
+<p>Each physical tape drive (a &quot;Data Transfer Element&quot;) can hold at most one cartridge at a time. A drive can be
+individually put into a simulated fault state to test failure handling, independent of every other drive and
+of the robotic arm. By default a loaded drive is a plain symlink at a configured device path (userspace/file
+mode); <a href="#kernel-mode">Kernel Mode</a> can instead back it with a real <code>/dev/nst*</code> device.</p>
+<h3 id="tape-sets--barcodes">Tape Sets &amp; Barcodes</h3>
+<p>Every cartridge belongs to exactly one <strong>Tape Set</strong> — a named group of cartridges that share a <strong>Tape
+Type</strong> (the media family: LTO, DLT, SDLT, DDS/DAT, AIT/SAIT, IBM 3592, or a non-physical &quot;generic&quot; type) and a
+storage folder on disk. A cartridge's <strong>barcode</strong> is its one and only identifier — there's no separate
+&quot;volume label&quot; concept — and it's always unique across the entire library, not just within its own tape
+set. Barcodes auto-generate in sequence per tape type (skipping past any already in use), or you can type one
+in by hand as long as it matches the tape type's format.</p>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Shape</th>
+<th>Example</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LTO</td>
+<td>6-digit volser + 2-char media id</td>
+<td><code>000001L8</code></td>
+<td>Media id like <code>L8</code>/<code>L9</code> per LTO generation; real published vendor format.</td>
+</tr>
+<tr>
+<td>DLT</td>
+<td>6-digit volser + 0-1 char media id</td>
+<td><code>0000034</code></td>
+<td>7 characters total for DLT-IV; real published vendor format.</td>
+</tr>
+<tr>
+<td>SDLT</td>
+<td>6-digit volser + 1-2 char media id</td>
+<td><code>000007S2</code></td>
+<td>Real published vendor format.</td>
+</tr>
+<tr>
+<td>DDS / AIT / 3592</td>
+<td>6-digit volser + 2-char media id</td>
+<td><code>000001D6</code></td>
+<td>No official external barcode standard for these - gotochanger's own convention, for consistency with LTO/SDLT.</td>
+</tr>
+<tr>
+<td>Generic</td>
+<td>Configurable length, no media id</td>
+<td><code>00000001</code></td>
+<td>Used by the built-in &quot;Unlimited&quot;-capacity type, for non-physical/test tapes.</td>
+</tr>
+<tr>
+<td>Cleaning</td>
+<td>Fixed 5-digit sequence + <code>CLN</code> suffix</td>
+<td><code>00001CLN</code></td>
+<td>Not admin-configurable; see <a href="#managing-cleaning-tapes">Managing cleaning tapes</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Barcodes render as real Code 39 bars throughout the dashboard (the same symbology real tape libraries and
+barcode scanners use) rather than as plain text — purely cosmetic, but it makes a slot full of cartridges
+look like an actual tape library.</p>
+<h3 id="logical-libraries">Logical Libraries</h3>
+<p>A <strong>Logical Library</strong> partitions the physical library into an independent slice — its own subset of
+drives, magazines, and mailboxes — the same way a Dell ML3 or similar real library can be split into two
+logical autochangers sharing one chassis. Each drive/magazine/mailbox can belong to at most one Logical Library
+at a time (an element already assigned to one can't be added to another). This is what lets one gotochangerd
+instance stand in for two completely separate Bareos Autochanger resources - see
+<a href="#partition-one-physical-robot-into-two-logical-libraries">Partitioning one physical robot into two logical libraries</a>
+for a full worked example. Elements not yet assigned to any Logical Library show up under Admin &gt; Logical
+Libraries &gt; Unassigned.</p>
+<h3 id="offsite-vaulting">Offsite Vaulting</h3>
+<p>Simulates rotating full tapes to a physical offsite vault: sending a volume moves it out of its storage slot
+into the vault; recalling brings it back into an empty slot. This can also happen on a schedule (Admin &gt;
+Settings &gt; Offsite rotation) — a chosen number of full volumes get sent offsite automatically at a
+configured interval, simulating routine tape rotation without a human doing it by hand every time. See
+<a href="#scheduled-offsite-rotation">Scheduled offsite rotation</a> for the CLI/cron-driven version.</p>
+<h1 id="installation">Installation</h1>
+<p>gotochanger ships as two Debian binary packages built from the same source tree - <code>gotochanger</code> (the daemon,
+the Bareos changer shim, and the admin CLI) and the optional <code>gotochanger-kernel</code> add-on (see
+<a href="#kernel-mode">Kernel Mode</a>). All three installation paths below produce the same binaries; pick whichever
+fits your environment.</p>
+<h2 id="install-from-a-deb-package">Install from a <code>.deb</code> package</h2>
+<p>If your organization publishes gotochanger to an apt repository, installation is the usual:</p>
+<pre><code class="language-sh">sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL &lt;your-repo-signing-key-url&gt; | sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
+echo &quot;deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] &lt;your-repo-url&gt; trixie main&quot; \
+  | sudo tee /etc/apt/sources.list.d/gotochanger.list
+sudo apt-get update
+sudo apt-get install gotochanger
+# optional, only if this deployment needs real /dev/sg*/dev/nst* devices:
+sudo apt-get install gotochanger-kernel
+</code></pre>
+<p>Every tagged release also publishes both <code>.deb</code>s (and plain binary tarballs) as
+<a href="https://github.com/swenske/gotochanger/releases">GitHub Releases</a> assets - installable directly with
+<code>sudo apt install ./gotochanger_&lt;version&gt;_amd64.deb</code> without configuring a repository at all.</p>
+<h2 id="build-from-source">Build from source</h2>
+<pre><code class="language-sh">make build            # binaries land in ./bin
+make test             # go test ./...
+sudo make install DESTDIR=/some/root   # same install layout debian/rules uses
+</code></pre>
+<p>Dependencies are vendored (<code>vendor/</code>), so this never needs network access. <code>make build</code> also regenerates the
+embedded User Guide from <code>docs/guide/**.md</code> first (<code>make guide</code>) - see
+<a href="#cli-and-rest-api-reference">CLI Reference and REST API</a> if you're editing the guide itself and want to
+preview it with <code>make site</code> before publishing.</p>
+<h2 id="build-the-debian-package-directly">Build the Debian package directly</h2>
+<pre><code class="language-sh">dpkg-buildpackage -us -uc -b
+</code></pre>
+<p>Produces the same two binary packages (<code>gotochanger</code>, <code>gotochanger-kernel</code>) from a plain git checkout, no
+network access required.</p>
+<h2 id="first-start">First start</h2>
+<pre><code class="language-sh">sudo systemctl status gotochanger
+journalctl -u gotochanger | grep 'bootstrap API token'   # save this - it's an admin-scoped token, shown once
+</code></pre>
+<p>Then open the web UI at <code>http://&lt;host&gt;:8480/</code> (or whatever <code>listen.http</code> is set to in
+<code>/etc/gotochanger/config.yaml</code>) and continue with <a href="#first-run-and-setup-wizard">First Run and Setup Wizard</a>.</p>
+<h1 id="first-run-and-setup-wizard">First Run and Setup Wizard</h1>
+<p>A fresh install has no drives, magazines, or mailboxes configured at all - the daemon starts completely empty
+and walks you through bootstrap, then an 8-step wizard, before handing you the dashboard.</p>
+<h2 id="bootstrap">Bootstrap</h2>
+<p>The very first request to the web UI (or <code>POST /api/v1/auth/bootstrap</code>) sets the password for the built-in
+<code>Admin</code> account - there's no default password to guess, and this only works once (<code>GET /api/v1/auth/state</code>
+reports whether bootstrap is still required). After that, sign in normally; sessions are cookie-based and
+held in memory only, so restarting <code>gotochangerd</code> signs everyone out.</p>
+<h2 id="the-wizard">The wizard</h2>
+<p>You can always go back with <strong>Previous</strong> without losing what you've already entered, and everything you
+submit is saved immediately to the database (not just at the end) - closing the browser mid-wizard never
+loses earlier steps. <code>gotochangerctl wizard status</code> reports the current step from the CLI; the wizard itself
+is only driven through the web UI/REST API (<code>GET/POST /api/v1/wizard</code>, <code>POST /api/v1/wizard/complete</code>,
+<code>POST /api/v1/wizard/reset</code>, <code>GET /api/v1/wizard/options</code>).</p>
+<ol>
+<li><strong>Operational Mode</strong> - name your virtual tape library (the VTL name shown throughout the UI) and pick the
+operational mode: <code>changer</code> (default userspace/file mode) or <code>kernel</code> (see <a href="#kernel-mode">Kernel Mode</a>).</li>
+<li><strong>Drives</strong> - choose how many physical drives to create and which drive type each one is, from the
+drive-type catalog.</li>
+<li><strong>Magazines</strong> - define one or more magazines (storage slot groups, 5-20 slots each).</li>
+<li><strong>Mailboxes</strong> - define one or more mailboxes (I/O slot groups, 1-5 slots each) - optional, a library can
+run with no I/O slots at all.</li>
+<li><strong>Offsite Location</strong> - a simple on/off toggle for whether offsite vaulting is available at all; the
+rotation schedule itself is configured later, in Admin &gt; Settings.</li>
+<li><strong>Tape Sets</strong> - create at least one tape set (tape type + storage folder + how many cartridges to
+generate up front). The cartridge-count field is consumed once, at step 8's completion.</li>
+<li><strong>Logical Libraries</strong> - optionally partition your drives/magazines/mailboxes into one or more Logical
+Libraries; you can also leave everything unassigned and do this later from Admin.</li>
+<li><strong>Latency Simulation</strong> - a single checkbox: enable realistic timing delays or not. The actual delay values
+always start at sensible factory defaults and are tuned afterwards from Admin &gt; Latency, never from the
+wizard itself.</li>
+</ol>
+<p><code>POST /api/v1/wizard/complete</code> hot-applies everything to the running daemon immediately - no restart, and the
+dashboard reflects your new topology the instant you land on it. It also generates each tape set's pending
+cartridges and reconciles any kernel-mode instances if operational mode is <code>kernel</code>.</p>
+<div class="callout callout-tip">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 11h1v5h1"/></svg>
+<div>The wizard is resumable across a daemon restart: every step's data is written to the database as you
+submit it, so a restart mid-wizard picks up exactly where you left off instead of starting over.</div>
+</div>
+<h1 id="bareos-integration">Bareos Integration</h1>
+<p>Point Bareos's Device resource at the changer shim exactly like <code>disk-changer.in</code>, and set <code>Device Type = File</code> with <code>Archive Device</code> matching the corresponding entry in <code>library.drive_devices</code>.</p>
+<h2 id="autochanger-and-device-resources">Autochanger and Device resources</h2>
+<pre><code>Autochanger {
+  Name = FakeML3
+  Device = Drive0, Drive1
+  Changer Device = /dev/null              # unused, kept for compatibility
+  Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V&quot;
+}
 
-    <section id="welcome">
-      <h1><svg class="icon" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>&nbsp;Welcome to gotochanger</h1>
-      <p class="lead">A virtual tape library you can operate, break, and repair without touching real hardware.</p>
-      <p>gotochanger simulates a SCSI tape autochanger &mdash; storage slots, import/export (mail) slots, robotics, and
-      multiple tape drives &mdash; behind a REST API and a web dashboard. It's most often used as a drop-in
-      <code>Changer Command</code> target for <strong>Bareos</strong>, replacing a bare disk-staging setup with something
-      that behaves like a real tape library: slots fill up, cartridges have real barcodes, drives can fault, and
-      operations take realistic amounts of time if you turn latency simulation on.</p>
-      <p>This guide covers the parts a day-to-day operator or administrator needs: the dashboard, the concepts behind
-      slots/drives/tape sets, common step-by-step workflows, the first-run setup wizard, and the Admin section. If
-      you're integrating gotochanger with Bareos itself (SCSI addressing, <code>bareos-sd</code> config, SNMP traps),
-      see the REST API reference at <a href="/docs" target="_blank" rel="noopener">API Docs</a> instead &mdash; this guide
-      is about using the tool, not wiring it into Bareos.</p>
-      <div class="callout callout-tip">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 11h1v5h1"/></svg>
-        <div>Everything in gotochanger is simulated: no real kernel SCSI device is created. Loads, unloads, faults, and
-        even drive timing are all software state you can freely experiment with.</div>
-      </div>
-    </section>
+Device {
+  Name = Drive0
+  Drive Index = 0                         # required with 2+ drives - see below
+  Media Type = File
+  Archive Device = /var/lib/gotochanger/drives/drive0
+  Device Type = File
+  AutomaticMount = yes
+  RemovableMedia = yes
+  AutoChanger = yes
+}
 
-    <section id="getting-started">
-      <h2>Getting Started</h2>
-
-      <h3 id="gs-bootstrap">First run: bootstrap and sign in</h3>
-      <p>The first time you open gotochanger, you'll be asked to set a password for the built-in <strong>Admin</strong>
-      account &mdash; there's no default password to guess. After that, sign in with username <code>Admin</code> and the
-      password you just set. Sessions are cookie-based and held in memory by the daemon, so signing everyone out is as
-      simple as restarting the service.</p>
-      <p>If this is a brand-new install with no topology configured yet (no drives, magazines, or mailboxes), you'll be
-      dropped straight into the <a href="#wizard">Setup Wizard</a> instead of the dashboard.</p>
-
-      <h3 id="gs-roles">Roles</h3>
-      <p>Every user account and API token has exactly one role, checked on every request:</p>
-      <ul>
-        <li><strong>Viewer</strong> &mdash; read-only. Can see the dashboard and Admin screens but can't load/unload tapes,
-        open doors, or change anything.</li>
-        <li><strong>Operator</strong> &mdash; everything a Viewer can do, plus day-to-day operation: load/unload/move
-        tapes, open and close doors, raise/clear drive and robotic-arm faults, download a manual backup.</li>
-        <li><strong>Admin</strong> &mdash; everything, including all of Admin &gt; Library Topology, user/token
-        management, scheduled backups, and restore.</li>
-      </ul>
-      <p>The dashboard adapts to your role automatically &mdash; action buttons (Load, Unload, Move, Raise fault, &hellip;)
-      only appear if you're an Operator or Admin, and the Admin nav button itself is hidden entirely for a Viewer.</p>
-    </section>
-
-    <section id="dashboard-tour">
-      <h2>Dashboard Tour</h2>
-      <p>The dashboard is a set of independent panels, each mirroring one physical part of the library. Every panel can
-      be <strong>dragged by its <code>::</code> handle</strong> to reorder it, and <strong>collapsed</strong> with the
-      &#9660; button in its header &mdash; both the order and which panels are collapsed are remembered per-browser
-      (saved to local storage), so your layout survives a reload. The toolbar above the panels has two more options:
-      <em>Show library colors</em> (tints each element by which Logical Library it belongs to) and <em>Hide unassigned</em>
-      (hide elements that aren't part of any Logical Library yet), plus a <em>Collapse all</em> shortcut.</p>
-      <p>The dashboard polls <code>GET /api/v1/status</code> every 4 seconds and re-renders automatically &mdash; you never
-      need to manually refresh the page to see a change made from another tab, another operator, or the API.</p>
-
-      <div class="panel-tour">
-        <div class="panel-tour-item" id="dt-outside">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>Outside Library Tapes</h4>
-          <p>Cartridges that exist as real files on disk but aren't in any slot, drive, or the offsite vault right now
-          &mdash; think of it as the loading dock. This is also where new cartridges are born: the <strong>Create tape</strong>
-          button walks you through picking a Tape Set and either auto-generating the next barcode in sequence or typing
-          one in by hand. From here, tapes get loaded into a drive, a storage slot, or an I/O slot.</p>
-        </div>
-        <div class="panel-tour-item" id="dt-offsite">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Vault</h4>
-          <p>Volumes that have been sent offsite &mdash; simulating tape rotation to a physical vault. <strong>Send to
-          offsite</strong> picks a full storage slot to vault; each vaulted volume gets a <strong>Recall</strong> button
-          to bring it back into an empty storage slot. See <a href="#c-offsite">Offsite Vaulting</a> for the concept and
-          how scheduled rotation works.</p>
-        </div>
-        <div class="panel-tour-item" id="dt-robot">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2"/><path d="M5 17V11h6l4-4h4"/><circle cx="19" cy="7" r="1.6"/><path d="M11 11l2 2"/></svg>Robotic Arm</h4>
-          <p>There's exactly one robotic arm in the physical library, shared by every Logical Library. This panel shows
-          its status &mdash; idle, moving, or in a simulated fault &mdash; with an indicator light using the same
-          convention as the drives (see <a href="#led-behavior">Drive Indicator Lights</a>). Operators can <strong>Raise
-          fault</strong> (choosing a realistic failure mode: blocked arm, mispositioned cartridge, pickup/drop failure,
-          movement jam, or other) to test how their backup software reacts, then <strong>Clear fault</strong> once done.
-          A raised fault rejects Load/Unload/Move (but not door open/close) library-wide until cleared.</p>
-        </div>
-        <div class="panel-tour-item" id="dt-drives">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives</h4>
-          <p>Every physical tape drive, each with an indicator light (see below), the cartridge currently loaded (if
-          any) rendered as a real-looking barcode label, and how full it is. Loaded drives get an <strong>Unload
-          to&hellip;</strong> button; every drive gets a <strong>Raise fault / Clear fault</strong> toggle to simulate a
-          hardware problem on that specific drive.</p>
-        </div>
-      </div>
-
-      <h3 id="dt-drives-leds">Drive indicator lights, at a glance</h3>
-      <p>Full explanation, priority order, and the one caveat worth knowing (the "writing" light needs a real write, not
-      just a Load) is in its own section: <a href="#led-behavior">Drive Indicator Lights</a>.</p>
-
-      <div class="panel-tour">
-        <div class="panel-tour-item" id="dt-ioslots">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>I/O Slots (mail slots)</h4>
-          <p>Import/export elements, grouped into <strong>Mailboxes</strong>. Each mailbox group has its own door: click
-          <strong>Open mail slot</strong> to start staging tapes in or out, then use each slot's <strong>Load</strong>
-          (bring an outside tape in) or <strong>Pickup</strong> (queue a tape to come out) button, and finally
-          <strong>Close mail slot</strong> to commit every queued action at once &mdash; just like closing a real mail
-          slot door triggers the robot to do the actual moves. See <a href="#wf-import">Import via mailbox</a> and
-          <a href="#wf-export">Export via mailbox</a>.</p>
-        </div>
-        <div class="panel-tour-item" id="dt-slots">
-          <h4><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Storage Slots</h4>
-          <p>The main body of the library, grouped into <strong>Magazines</strong>. Each occupied slot can
-          <strong>Move</strong> its cartridge to an empty drive, another slot, or an I/O slot. Open a magazine's storage
-          door to get <strong>Bulk load&hellip;</strong> (load several outside tapes into empty slots in one dialog) and
-          <strong>Move all to outside&hellip;</strong> (queue several loaded slots for pickup at once) &mdash; handy for
-          seeding a fresh magazine or clearing one out.</p>
-        </div>
-      </div>
-
-      <p>Below the panels, the <strong>Activity Log</strong> dock (bottom of the screen, also collapsible) shows a
-      running feed of everything that's happened &mdash; loads, unloads, faults, configuration changes &mdash; each
-      tagged with a status pill (success/failure/warning/&hellip;), useful for spotting what an automated job or another
-      operator just did.</p>
-    </section>
-
-    <section id="concepts">
-      <h2>Core Concepts</h2>
-      <p>gotochanger's data model mirrors a real tape library fairly literally. If you've operated a physical autochanger
-      or an LTO library before, most of this will already be familiar.</p>
-
-      <h3 id="c-magazines">Magazines &amp; Storage Slots</h3>
-      <p>A <strong>Magazine</strong> is a named group of 5&ndash;20 storage slots (in increments of 5) &mdash; the
-      removable cartridge racks a real library holds internally. Storage slots are what hold the bulk of your tape
-      inventory between backup jobs. Slots are addressed contiguously across the whole physical library (all magazines'
-      slots first, in creation order), which only matters if you're scripting against the raw API &mdash; the dashboard
-      always shows you slots grouped back into their magazine.</p>
-
-      <h3 id="c-mailboxes">Mailboxes &amp; I/O Slots</h3>
-      <p>A <strong>Mailbox</strong> is the import/export equivalent of a magazine &mdash; a named group of 1&ndash;5 I/O
-      (mail) slots. I/O slots are numbered right after every storage slot, matching how real SCSI medium changers and
-      Bareos itself report a combined "N slots (M import/export)" total. This is the normal door operators use to bring
-      new cartridges in or send full ones out without opening the whole library.</p>
-
-      <h3 id="c-drives">Drives</h3>
-      <p>Each physical tape drive (a "Data Transfer Element") can hold at most one cartridge at a time. A drive can be
-      individually put into a simulated fault state to test failure handling, independent of every other drive and of
-      the robotic arm.</p>
-
-      <h3 id="c-tapesets">Tape Sets &amp; Barcodes</h3>
-      <p>Every cartridge belongs to exactly one <strong>Tape Set</strong> &mdash; a named group of cartridges that share
-      a <strong>Tape Type</strong> (the media family: LTO, DLT, SDLT, DDS/DAT, AIT/SAIT, IBM 3592, or a non-physical
-      "generic" type) and a storage folder on disk. A cartridge's <strong>barcode</strong> is its one and only
-      identifier &mdash; there's no separate "volume label" concept &mdash; and it's always unique across the entire
-      library, not just within its own tape set. Barcodes auto-generate in sequence per tape type (skipping past any
-      already in use), or you can type one in by hand as long as it matches the tape type's format.</p>
-      <table class="ref-table">
-        <thead><tr><th>Family</th><th>Shape</th><th>Example</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td>LTO</td><td>6-digit volser + 2-char media id</td><td><code>000001L8</code></td><td>Media id like <code>L8</code>/<code>L9</code> per LTO generation; real published vendor format.</td></tr>
-          <tr><td>DLT</td><td>6-digit volser + 0&ndash;1 char media id</td><td><code>0000034</code></td><td>7 characters total for DLT-IV; real published vendor format.</td></tr>
-          <tr><td>SDLT</td><td>6-digit volser + 1&ndash;2 char media id</td><td><code>000007S2</code></td><td>Real published vendor format.</td></tr>
-          <tr><td>DDS / AIT / 3592</td><td>6-digit volser + 2-char media id</td><td><code>000001D6</code></td><td>No official external barcode standard for these &mdash; gotochanger's own convention, for consistency with LTO/SDLT.</td></tr>
-          <tr><td>Generic</td><td>Configurable length, no media id</td><td><code>00000001</code></td><td>Used by the built-in "Unlimited"-capacity type, for non-physical/test tapes.</td></tr>
-        </tbody>
-      </table>
-      <p>Barcodes render as real Code&nbsp;39 bars throughout the dashboard (the same symbology real tape libraries and
-      barcode scanners use) rather than as plain text &mdash; purely cosmetic, but it makes a slot full of cartridges look
-      like an actual tape library.</p>
-
-      <h3 id="c-logical-libraries">Logical Libraries</h3>
-      <p>A <strong>Logical Library</strong> partitions the physical library into an independent slice &mdash; its own
-      subset of drives, magazines, and mailboxes &mdash; the same way a Dell ML3 or similar real library can be split
-      into two logical autochangers sharing one chassis. Each drive/magazine/mailbox can belong to at most one Logical
-      Library at a time (an element already assigned to one can't be added to another). This is what lets one
-      gotochangerd instance stand in for two completely separate Bareos Autochanger resources. Elements not yet assigned
-      to any Logical Library show up under Admin &gt; Logical Libraries &gt; Unassigned.</p>
-
-      <h3 id="c-offsite">Offsite Vaulting</h3>
-      <p>Simulates rotating full tapes to a physical offsite vault: sending a volume moves it out of its storage slot
-      into the vault; recalling brings it back into an empty slot. This can also happen on a schedule (Admin &gt;
-      Settings &gt; Offsite rotation) &mdash; a chosen number of full volumes get sent offsite automatically at a
-      configured interval, simulating routine tape rotation without a human doing it by hand every time.</p>
-    </section>
-
-    <section id="workflows">
-      <h2>Common Workflows</h2>
-
-      <h3 id="wf-load">Load a tape into a drive</h3>
-      <ol class="step-list">
-        <li>Find the cartridge &mdash; in Outside Library Tapes, a Storage Slot, or an I/O Slot &mdash; and click its
-        <strong>Move</strong> button (or, from Outside, use whichever panel currently holds it).</li>
-        <li>Pick an empty drive as the destination.</li>
-        <li>Confirm. The drive's indicator light goes green and blinks while the (simulated) load happens, then settles
-        to a steady dim green once the tape is ready.</li>
-      </ol>
-
-      <h3 id="wf-unload">Unload a drive</h3>
-      <ol class="step-list">
-        <li>On the Drives panel, click <strong>Unload to&hellip;</strong> on the loaded drive.</li>
-        <li>Pick a destination &mdash; any empty storage slot or I/O slot.</li>
-        <li>Confirm. The drive empties and its light returns to off.</li>
-      </ol>
-
-      <h3 id="wf-move">Move a tape between slots</h3>
-      <p>Same idea as loading a drive: click <strong>Move</strong> on the source slot, then pick any empty destination
-      (another storage slot, an I/O slot, or a drive).</p>
-
-      <h3 id="wf-import">Import tapes via a mailbox</h3>
-      <ol class="step-list">
-        <li>On I/O Slots, click <strong>Open mail slot</strong> for the mailbox you want to use.</li>
-        <li>For each empty I/O slot, click <strong>Load</strong> and pick which outside tape goes there &mdash; this only
-        queues the action.</li>
-        <li>Click <strong>Close mail slot</strong> once you're done staging &mdash; every queued load happens at once,
-        just like closing a real mail slot door signals the robot to go get the tapes.</li>
-      </ol>
-
-      <h3 id="wf-export">Export tapes via a mailbox</h3>
-      <p>Same door, opposite direction: open the mailbox, click <strong>Pickup</strong> on each occupied I/O slot you
-      want to send out, then <strong>Close mail slot</strong> to commit. The same open/queue/close pattern also works on
-      Storage Slots directly via <strong>Bulk load&hellip;</strong> and <strong>Move all to outside&hellip;</strong> on
-      an open magazine, for moving several tapes at once without a mailbox.</p>
-
-      <h3 id="wf-tapeset">Create a tape set and add cartridges</h3>
-      <p>From the dashboard, the fastest path is Outside Library Tapes &rarr; <strong>Create tape</strong>, which lets
-      you pick an existing tape set and either auto-generate the next barcode or type one in. To create a brand-new
-      tape set (a new tape type + storage folder combination), use
-      <a href="#admin-topology">Admin &gt; Tape Sets</a> &mdash; see that section for the full New/Add tapes flow.</p>
-
-      <h3 id="wf-offsite-send">Send a tape offsite</h3>
-      <p>On Offsite Vault, click <strong>Send to offsite</strong>, pick a storage slot with a volume in it, and confirm.</p>
-
-      <h3 id="wf-offsite-recall">Recall a tape from offsite</h3>
-      <p>On Offsite Vault, click <strong>Recall</strong> next to the volume you want back, and pick an empty storage
-      slot to receive it.</p>
-
-      <h3 id="wf-drive-fault">Raise or clear a drive fault</h3>
-      <p>On the Drives panel, every drive has a <strong>Raise fault</strong> / <strong>Clear fault</strong> toggle.
-      A faulted drive rejects further Load/Unload attempts until cleared &mdash; useful for testing how your backup
-      software reports and recovers from a hardware failure on one specific drive.</p>
-
-      <h3 id="wf-robot-fault">Raise or clear a robotic arm fault</h3>
-      <p>On the Robotic Arm panel, click <strong>Raise fault</strong>, pick a realistic failure mode (blocked arm,
-      mispositioned cartridge, pickup failure, drop failure, movement jam, or other) and an optional message, then
-      confirm. This affects the whole library (there's only one arm) &mdash; every Load/Unload/Move is rejected until
-      you click <strong>Clear fault</strong>. Door open/close is unaffected, since an operator can still physically
-      handle media while the arm itself is down.</p>
-
-      <h3 id="wf-restore">Restore from a backup</h3>
-      <p>Admin &gt; Backup &gt; Restore accepts a previously-downloaded backup file and replaces the entire database
-      (topology, settings, and current slot/drive/volume state) with it. This briefly restarts the service and signs
-      everyone out &mdash; see <a href="#admin-operations">Operations</a> for the full picture, including what a backup
-      does and doesn't include.</p>
-    </section>
-
-    <section id="wizard">
-      <h2>Setup Wizard</h2>
-      <p>A fresh install with no topology yet walks you through 8 steps before handing you the dashboard. You can always
-      go back with Previous without losing what you've already entered, and everything you submit is saved immediately
-      (not just at the end) &mdash; so closing the browser mid-wizard doesn't lose earlier steps.</p>
-      <ol class="step-list">
-        <li><strong>Operational Mode</strong> &mdash; name your virtual tape library (the VTL name shown throughout the
-        UI) and confirm the operational mode (Changer Command Script mode is the only one currently available).</li>
-        <li><strong>Drives</strong> &mdash; choose how many physical drives to create and which drive type each one is.</li>
-        <li><strong>Magazines</strong> &mdash; define one or more magazines (storage slot groups).</li>
-        <li><strong>Mailboxes</strong> &mdash; define one or more mailboxes (I/O slot groups).</li>
-        <li><strong>Offsite Location</strong> &mdash; a simple on/off toggle for whether offsite vaulting is available at
-        all; rotation scheduling itself is configured later, in Admin &gt; Settings.</li>
-        <li><strong>Tape Sets</strong> &mdash; create at least one tape set (tape type + storage folder + how many
-        cartridges to generate up front).</li>
-        <li><strong>Logical Libraries</strong> &mdash; optionally partition your drives/magazines/mailboxes into one or
-        more Logical Libraries; you can also leave everything unassigned and do this later from Admin.</li>
-        <li><strong>Latency Simulation</strong> &mdash; a single checkbox: enable realistic timing delays or not. The
-        actual delay values always start at sensible factory defaults and are tuned afterwards from
-        <a href="#admin-operations">Admin &gt; Latency</a>, never from the wizard itself.</li>
-      </ol>
-      <p>Finishing the wizard hot-applies everything immediately &mdash; no restart, and the dashboard reflects your new
-      topology the instant you land on it.</p>
-    </section>
-
-    <section id="admin-guide">
-      <h2>Admin Guide</h2>
-      <p>The Admin section is organized into three groups, in the order you'll typically need them: who can get in,
-      what the library is made of, and how it behaves day to day.</p>
-
-      <h3 id="admin-access-control">Access Control</h3>
-      <p><strong>Users</strong> &mdash; create additional accounts beyond the built-in Admin, each with one of the three
-      roles. <strong>API Tokens</strong> &mdash; role-scoped tokens for scripts/automation to authenticate with, via
-      either an <code>X-Api-Key</code> header or a bearer token; managing tokens is Admin-only, but a token itself can be
-      scoped down to Viewer or Operator.</p>
-
-      <h3 id="admin-topology">Library Topology</h3>
-      <p>Everything that defines the physical (and logical) shape of the library. All of it hot-applies immediately
-      &mdash; no daemon restart, ever &mdash; when you add, edit, or remove something here.</p>
-      <ul>
-        <li><strong>Drive Types</strong> &mdash; the catalog of drive hardware models offered during setup and used by
-        Logical Libraries.</li>
-        <li><strong>Tape Types</strong> &mdash; the catalog of media families (LTO/DLT/SDLT/DDS/AIT/3592/generic), each
-        defining its own barcode format (see the <a href="#c-tapesets">barcode reference table</a> above).</li>
-        <li><strong>Tape Sets</strong> &mdash; groups of cartridges by tape type, each stored under its own folder on
-        disk. <strong>New tape set</strong> creates the set and its first batch of cartridges in one step;
-        <strong>Add tapes</strong> on an existing set tops it up later (auto-generated or a manually-typed barcode).</li>
-        <li><strong>Drives</strong> &mdash; the physical drive device list. Removing anything other than the
-        highest-indexed drive shifts every later drive's index, so double-check which drive you mean to remove if
-        there's more than one.</li>
-        <li><strong>Magazines</strong> / <strong>Mailboxes</strong> &mdash; storage-slot and I/O-slot groups,
-        respectively.</li>
-        <li><strong>Logical Libraries</strong> &mdash; create/edit partitions of drives, magazines, and mailboxes; the
-        Unassigned list at the bottom shows anything not yet claimed by one.</li>
-      </ul>
-
-      <h3 id="admin-operations">Operations</h3>
-      <ul>
-        <li><strong>Latency</strong> &mdash; seven independently-tunable simulated delays (drive load/unload, tape
-        positioning, robotic arm movement for tape moves vs. magazine scans, post-close magazine scanning, door
-        open/close) applied library-wide, editable live with a "Load defaults" prefill. Turning this on is what makes
-        the <a href="#led-behavior">busy indicator light</a> actually visible for more than an instant.</li>
-        <li><strong>Settings</strong> &mdash; default volume capacity, offsite rotation schedule, daemon-level knobs
-        (log level, capacity poll interval, tokens/users file paths), and SNMP trap configuration.</li>
-        <li><strong>Backup</strong> &mdash; a backup is a full snapshot of the database: topology, every setting above,
-        current slot/drive/volume state, and &mdash; since user accounts and API tokens moved out of separate JSON
-        files and into that same database &mdash; the stored credentials too. Because a backup file therefore carries
-        password hashes, every action here is Admin-only: taking and downloading a manual backup, scheduling recurring
-        backups, browsing previously stored ones, and restoring.
-        <strong>Restoring replaces the entire database</strong> and briefly restarts the service &mdash; expect a short
-        unreachable window and to have to sign in again afterwards.</li>
-      </ul>
-    </section>
-
-    <section id="led-behavior">
-      <h2>Drive Indicator Lights</h2>
-      <p>Each drive (and the robotic arm) shows a small colored light modeled on a real tape drive's front panel, so the
-      dashboard reads at a glance instead of requiring you to parse text on every card.</p>
-      <div class="led-legend">
-        <div class="led-legend-row"><span class="led led-fault"></span><strong>Amber, pulsing</strong><span class="desc">Fault &mdash; the drive (or the robotic arm) is in a simulated fault state. Takes priority over everything else.</span></div>
-        <div class="led-legend-row"><span class="led led-writing"></span><strong>Red, pulsing</strong><span class="desc">Writing &mdash; the loaded cartridge's backing file just grew between two dashboard polls, meaning something is actually writing data to it right now (e.g. a real attached backup job).</span></div>
-        <div class="led-legend-row"><span class="led led-busy"></span><strong>Green, blinking</strong><span class="desc">Active operation &mdash; this browser tab has a Load/Unload/Move in flight for this drive (or the arm generally, for the Robotic Arm panel).</span></div>
-        <div class="led-legend-row"><span class="led led-idle"></span><strong>Green, steady/dim</strong><span class="desc">Ready &mdash; a cartridge is loaded and idle.</span></div>
-        <div class="led-legend-row"><span class="led led-off"></span><strong>Dark</strong><span class="desc">Empty &mdash; no cartridge loaded, nothing happening.</span></div>
-      </div>
-      <p>Priority order when more than one condition is true, highest first: <strong>Fault &gt; Writing &gt; Active
-      operation &gt; Ready &gt; Empty</strong>. A faulted drive always shows amber even mid-operation, for instance.</p>
-      <div class="callout callout-warn">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
-        <div><strong>The "Writing" light needs a real write, not just a Load.</strong> gotochanger doesn't simulate the
-        byte stream of a backup job &mdash; a loaded drive is just a symlink at a device path, and nothing writes to it
-        unless something external actually does (typically a real attached Bareos SD job, or a manual test write). So
-        clicking Load and watching the drive sit at steady green with no red flash is completely normal, not a bug
-        &mdash; it just means nothing has written any bytes to that cartridge yet.</div>
-      </div>
-      <p>Two more details worth knowing if you're timing things precisely: the "busy" light only reflects an operation
-      <em>this browser tab</em> started &mdash; there's no way to see another tab's or another operator's in-flight
-      action as "busy" (it just means an operation is happening somewhere; a status refresh from any tab will briefly
-      pause until it finishes, since only one physical robotic arm exists). And the "writing" light, once triggered,
-      stays lit for a few seconds after the write is detected (longer than one poll interval) so a brief burst of
-      activity remains visible instead of flickering for a single frame.</p>
-    </section>
-
-    <section id="faq">
-      <h2>Troubleshooting &amp; FAQ</h2>
-
-      <div class="faq-item">
-        <h4>I forgot the Admin password.</h4>
-        <p>There's no in-app recovery flow for the built-in account by design (sessions and credentials are kept
-        deliberately simple). Whoever manages the host running gotochangerd will need to reset it at the data-store
-        level, or create a new Admin user via <code>gotochangerctl</code> against the trusted local socket, which
-        bypasses web login entirely.</p>
-      </div>
-      <div class="faq-item">
-        <h4>Why don't I see an Admin button?</h4>
-        <p>You're signed in as a Viewer. Viewer accounts see the dashboard and read-only Admin screens are hidden
-        entirely, not just disabled &mdash; ask an Admin to change your role if you need Operator or Admin access.</p>
-      </div>
-      <div class="faq-item">
-        <h4>A Load/Unload/Move button gave me an error about "no destination available".</h4>
-        <p>That means every eligible destination (an empty drive, slot, or I/O slot, depending on the action) is
-        currently occupied. Free one up &mdash; unload a drive, move a tape out of a slot &mdash; and try again.</p>
-      </div>
-      <div class="faq-item">
-        <h4>Everything is rejected with a 409 / "robotic arm is in fault state".</h4>
-        <p>The robotic arm has an active simulated fault. Clear it from the Robotic Arm panel (<a href="#wf-robot-fault">Raise
-        or clear a robotic arm fault</a>) &mdash; door open/close still work while a fault is active, but Load/Unload/Move
-        are rejected library-wide until it's cleared.</p>
-      </div>
-      <div class="faq-item">
-        <h4>My cartridge got a barcode I didn't expect.</h4>
-        <p>Barcodes come entirely from the tape set's tape type format &mdash; check Admin &gt; Tape Types for the tape
-        set's type to see its exact family/media-id/length, or Admin &gt; Tape Sets to confirm which tape type the set
-        actually uses.</p>
-      </div>
-      <div class="faq-item">
-        <h4>Operations feel instantaneous &mdash; is latency simulation on?</h4>
-        <p>Check Admin &gt; Latency &gt; Enable. It's off by default on a fresh install; turning it on (with the "Load
-        defaults" prefill, or your own tuned values) is also what makes the drive's "active operation" light visibly
-        blink for more than an instant &mdash; see <a href="#led-behavior">Drive Indicator Lights</a>.</p>
-      </div>
-      <div class="faq-item">
-        <h4>Does gotochanger create a real <code>/dev/sg*</code> or <code>/dev/nst*</code> device?</h4>
-        <p>No, and it never will in Changer Command Script mode (the only mode this build supports) &mdash; Bareos
-        never needs a kernel SCSI device for this integration, it just calls a Changer Command script, which is exactly
-        what gotochanger provides. A loaded drive is a plain symlink at a configured device path.</p>
-      </div>
-      <div class="faq-item">
-        <h4>Where do I configure Bareos itself to talk to gotochanger?</h4>
-        <p>That's outside the scope of this guide &mdash; see the project README for <code>bareos-sd</code>/<code>bareos-dir</code>
-        configuration, or generate a ready-to-paste config skeleton from Admin &gt; Logical Libraries &gt; "Bareos Config".</p>
-      </div>
-    </section>
+Device {
+  Name = Drive1
+  Drive Index = 1
+  Media Type = File
+  Archive Device = /var/lib/gotochanger/drives/drive1
+  Device Type = File
+  AutomaticMount = yes
+  RemovableMedia = yes
+  AutoChanger = yes
+}
+</code></pre>
+<p>Add the <code>bareos</code> system user to the <code>gotochanger</code> group so it can reach the trusted local socket and read/
+write volume files:</p>
+<pre><code class="language-sh">sudo adduser bareos gotochanger
+</code></pre>
+<p>Supported changer commands (matching <code>disk-changer.in</code>): <code>load</code>, <code>unload</code>, <code>list</code>, <code>listall</code>, <code>slots</code>,
+<code>loaded</code>, <code>transfer</code>. Extra commands usable by hand (never invoked by Bareos itself): <code>outside</code>,
+<code>outside-delete</code>, <code>io-door</code>, <code>storage-door</code>, <code>ioslots</code>, <code>offsite-send</code>, <code>offsite-recall</code>.</p>
+<div class="callout callout-warn">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+<div><strong>The Drive Index trap.</strong> <code>Drive Index</code> defaults to <code>0</code> for any
+Device resource that doesn't set it explicitly - with only one drive that's harmless, but with two or more it
+means every drive silently collapses to "drive 0" from Bareos's point of view (regardless of the Device's
+<code>Name</code>/<code>Archive Device</code>), so it's required as soon as an Autochanger has more than one
+Device. Set it to the drive's 0-based position within <em>this</em> Autochanger's own <code>Device =</code>
+list, not gotochangerd's own drive index (they happen to match here only because both start at 0 and are
+contiguous). See the
+<a href="#configure-multiple-drives-without-the-drive-index-trap">Configure multiple drives</a> cookbook
+scenario for a worked example, including how to catch this if it's already happened to you.</div>
+</div>
+<p>The Admin UI's Logical Libraries &quot;Bareos Config&quot; button generates this block correctly, including
+<code>Drive Index</code>, for whatever drives are actually assigned to that logical library - the fastest way to get a
+correct config skeleton without hand-counting indices.</p>
+<h2 id="scoping-an-autochanger-to-one-logical-library">Scoping an Autochanger to one logical library</h2>
+<p>If the physical library is partitioned into multiple logical libraries, add a static
+<code>--logical-library=NAME</code> flag to that Autochanger resource's <code>Changer Command</code> line (Bareos has no
+substitution variable for this, so it's a fixed per-Autochanger suffix - the Autochanger is already
+permanently bound to one logical library):</p>
+<pre><code>Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V --logical-library=Library1&quot;
+</code></pre>
+<p>With this set, <code>load</code>/<code>unload</code>/<code>move</code> (and their <code>X-Logical-Library</code> REST/CLI equivalents) are rejected with
+an error if the addressed slot, I/O slot, or drive doesn't belong to <code>Library1</code> - this is what keeps two
+Bareos Autochangers sharing one physical gotochanger instance from touching each other's media. See
+<a href="#partition-one-physical-robot-into-two-logical-libraries">Partition one physical robot into two logical libraries</a>
+for a full worked example with two separate Bareos Storage Daemons.</p>
+<h2 id="migrating-from-disk-changerin">Migrating from <code>disk-changer.in</code></h2>
+<p>gotochanger is designed as a drop-in replacement: it stays compatible with existing <code>Device Type = File</code>
+Bareos configurations, so an existing <code>disk-changer.in</code>-based Autochanger can usually switch over by changing
+only the <code>Changer Command</code> line - Device/Media Type/Archive Device stay the same. See
+<a href="#migrate-from-disk-changerin">Migrate from disk-changer.in</a> for the full step-by-step migration, including
+how to verify Bareos still sees the same volumes in the same slots afterward.</p>
+<h1 id="kernel-mode">Kernel Mode</h1>
+<p>By default gotochanger runs in <strong>userspace/file mode</strong>: loading a drive symlinks a plain file at the
+configured <code>Archive Device</code> path, no root or kernel modules required. An optional <strong>kernel mode</strong> instead
+exposes the same library as real SCSI devices (<code>/dev/sg*</code> for the changer/generic device, <code>/dev/nst*</code> for
+tape drives) via TCMU/LIO (<code>target_core_user</code>), for tools that insist on talking to an actual SCSI medium
+changer rather than a changer-script convention - no real tape hardware is involved either way, kernel mode
+just adds a real <em>kernel device node</em> backed by the same plain files.</p>
+<h2 id="when-to-enable-it">When to enable it</h2>
+<p>Bareos itself never needs kernel mode - it talks to <code>gotochanger-changer</code> as a Changer Command script and
+reads/writes plain files either way. Turn kernel mode on only when something else in your stack (a
+third-party backup tool, a monitoring agent, a test harness) specifically requires a real <code>/dev/sg*</code>/<code>/dev/nst*</code>
+device path rather than a script-driven changer convention. See
+<a href="#switch-to-kernel-mode-for-a-third-party-scsi-tool">Switch to kernel mode for a third-party SCSI tool</a> for a
+full worked example.</p>
+<h2 id="enabling-it">Enabling it</h2>
+<ol>
+<li>Install the separate <code>gotochanger-kernel</code> package (depends on <code>gotochanger</code> and <code>polkitd</code>). It needs root
+and the <code>target_core_user</code> kernel module - the package's postinst does a best-effort <code>modprobe</code>.</li>
+<li>Turn it on by setting the <strong>operational mode</strong> to <code>kernel</code> (setup wizard, or Admin &gt; Settings /
+<code>gotochangerctl settings set operational_mode=kernel</code>). gotochangerd's own reconciler then automatically
+starts/stops one <code>gotochanger-tcmud@&lt;logical-library-name&gt;.service</code> instance per logical library
+(<code>@default</code> if the library is unscoped) via polkit-authorized systemd calls - no manual <code>systemctl enable</code>
+step is required, though it's supported (the Admin UI's per-library &quot;Kernel Mode Setup&quot; dialog shows the
+equivalent manual <code>systemctl enable --now gotochanger-tcmud@&lt;instance&gt;</code> command for cases where automatic
+management isn't wanted).</li>
+<li>Real devices then appear under <code>/dev/sg*</code>/<code>/dev/nst*</code>. Prefer the stable
+<code>/dev/tape/by-id/scsi-&lt;NAA&gt;[-nst]</code> symlinks over raw <code>/dev/sgN</code>/<code>/dev/nstN</code> numbers, which are <strong>not</strong>
+stable across a <code>gotochanger-tcmud</code> restart. Admin &gt; Drives and the Bareos-Config generator button both
+show the actual current device paths.</li>
+<li>Point the third-party tool's device configuration at those real device paths instead of the file-based
+ones - for Bareos specifically, no other config-file syntax change is needed either way.</li>
+</ol>
+<p>Device paths are tracked in memory on the gotochangerd side (a running <code>gotochanger-tcmud</code> self-reports them
+at startup via <code>POST /api/v1/kernel-mode/devices/{instance}</code>) and are lost on a gotochangerd restart until the
+<code>gotochanger-tcmud</code> instance itself restarts.</p>
+<h2 id="scope-and-limitations">Scope and limitations</h2>
+<ul>
+<li><strong>Drive bandwidth throttling only applies in kernel mode.</strong> In the default userspace/file mode, a loaded
+drive is a symlink at the configured device path; the consuming application writes directly to that file
+and gotochangerd never sees the byte stream, so there's nothing to throttle. In kernel mode,
+<code>gotochanger-tcmud</code> sits directly in the SCSI I/O path and does throttle reads/writes to the assigned drive
+type's configured native speed.</li>
+<li>Backstore/WWN names are prefixed with the instance name (the logical library name, or <code>default</code>) to avoid
+kernel-level name collisions between concurrent <code>gotochanger-tcmud</code> instances.</li>
+<li><code>gotochanger-tcmud</code> requires root and is not started or enabled automatically just by installing the
+package - only once operational mode is actually set to <code>kernel</code>.</li>
+</ul>
+<p>See <code>gotochangerctl</code> status commands and <code>GET /api/v1/kernel-mode/status</code> / <code>GET /api/v1/kernel-mode/devices</code>
+to check whether the kernel module and any running instances are currently available.</p>
+<h1 id="administration">Administration</h1>
+<p>The Admin section is organized into three groups, in the order you'll typically need them: who can get in,
+what the library is made of, and how it behaves day to day. Every route under Admin is Admin-only - there is
+no Operator-reachable exception, since these actions change shared topology, credentials, or the database
+itself.</p>
+<h2 id="access-control">Access Control</h2>
+<p><strong>Users</strong> - create additional accounts beyond the built-in <code>Admin</code>, each with one of the three roles
+(Viewer/Operator/Admin). Passwords are hashed with PBKDF2-HMAC-SHA256; a locked-out account (5 failed logins)
+unlocks itself automatically after 15 minutes. The last remaining Admin account can never be deleted or
+demoted, so you can't accidentally lock yourself out entirely.</p>
+<p><strong>API Tokens</strong> - role-scoped tokens for scripts/automation to authenticate with, via either an <code>X-Api-Key</code>
+header or an <code>Authorization: Bearer</code> token. Managing tokens is Admin-only, but a token itself can be scoped
+down to Viewer or Operator - see
+<a href="#set-up-a-scoped-operator-api-token-for-a-ci-script">Set up a scoped operator API token for a CI script</a> for a full example.
+Only a token's SHA-256 hash is ever stored; a token's raw value is shown exactly once, at creation time.</p>
+<p>The bootstrap install also auto-generates a single admin-scoped token on first run, logged once to
+<code>journalctl -u gotochanger</code> (<code>grep 'bootstrap API token'</code>) - useful for scripting an initial setup before any
+user account exists.</p>
+<h2 id="library-topology">Library Topology</h2>
+<p>Everything that defines the physical (and logical) shape of the library. All of it hot-applies immediately -
+no daemon restart, ever - when you add, edit, or remove something here.</p>
+<ul>
+<li><strong>Drive Types</strong> - the catalog of drive hardware models offered during setup and used by Logical Libraries.</li>
+<li><strong>Tape Types</strong> - the catalog of media families (LTO/DLT/SDLT/DDS/AIT/3592/generic), each defining its own
+barcode format (see the barcode reference table in
+<a href="#tape-sets--barcodes">Overview and Concepts</a> - unless noted otherwise in that table, <code>New tape type</code>
+chooses the format for you).</li>
+<li><strong>Tape Sets</strong> - groups of cartridges by tape type, each stored under its own folder on disk. <strong>New tape
+set</strong> creates the set and its first batch of cartridges in one step; <strong>Add tapes</strong> on an existing set tops
+it up later (auto-generated or a manually-typed barcode).</li>
+<li><strong>Drives</strong> - the physical drive device list. Removing anything other than the highest-indexed drive shifts
+every later drive's index, so double-check which drive you mean to remove if there's more than one - this
+is exactly the kind of shift that produces the <a href="#bareos-integration">Drive Index trap</a> on the Bareos side
+if the corresponding <code>Device</code> resources aren't updated to match.</li>
+<li><strong>Magazines</strong> / <strong>Mailboxes</strong> - storage-slot and I/O-slot groups, respectively. Either can optionally
+require a 4-digit PIN to open its door (Admin &gt; Settings &gt; PIN) - an empty PIN clears the requirement.</li>
+<li><strong>Logical Libraries</strong> - create/edit partitions of drives, magazines, and mailboxes; the Unassigned list at
+the bottom shows anything not yet claimed by one. The <strong>Bareos Config</strong> button on each logical library
+generates a ready-to-paste Autochanger/Device block, including the correct <code>Drive Index</code> per drive.</li>
+</ul>
+<h2 id="operations">Operations</h2>
+<ul>
+<li><strong>Latency</strong> - seven independently-tunable simulated delays (drive load/unload, tape positioning, robotic
+arm movement for tape moves vs. magazine scans, post-close magazine scanning, door open/close) applied
+library-wide, editable live with a &quot;Load defaults&quot; prefill (<code>gotochangerctl latency get|set|reset</code>). Turning
+this on is what makes the busy indicator light actually visible for more than an instant.</li>
+<li><strong>Cleaning tapes</strong> - thresholds (mount count before a drive needs cleaning), maximum uses per cartridge, and
+cleaning duration are all configured here (<code>gotochangerctl cleaning settings get|set|reset</code>). See
+<a href="#managing-cleaning-tapes">Managing cleaning tapes</a> for the full lifecycle and a worked example.</li>
+<li><strong>Settings</strong> - default volume capacity, offsite rotation schedule, daemon-level knobs (log level, capacity
+poll interval), and SNMP trap configuration - see <a href="#monitoring">Monitoring</a>.</li>
+<li><strong>Backup</strong> - a backup is a full snapshot of the database (<code>VACUUM INTO</code>): topology, every setting above,
+current slot/drive/volume state, and - since user accounts and API tokens live in that same database - the
+stored credential hashes too. Because a backup file therefore carries password hashes, every action here is
+Admin-only: taking and downloading a manual backup, scheduling recurring backups (interval + retention),
+browsing previously stored ones, and restoring.
+<strong>Restoring replaces the entire database</strong> (atomically, then restarts the service) and genuinely overwrites
+user accounts and tokens along with topology - see
+<a href="#backup-and-restore-for-disaster-recovery">Backup and restore for disaster recovery</a> for the full
+procedure and what to check afterward.</li>
+<li><strong>Factory reset</strong> - <code>gotochangerctl reset &lt;confirm-name&gt;</code> (or the Admin UI equivalent) wipes the database
+back to empty defaults: no topology, no users/tokens (bootstrap required again), wizard not completed -
+exactly like a fresh install. It requires typing the VTL's current name as confirmation, and takes a
+safety-net backup automatically before wiping anything. Optional <code>--delete-volumes</code> also deletes every
+cartridge's backing file on disk. Like restore, this restarts the service.</li>
+</ul>
+<h1 id="monitoring">Monitoring</h1>
+<p>Every state-changing action in gotochanger emits two things: one activity-log event (visible via
+<code>GET /api/v1/events</code>, the dashboard's Activity Log dock, and <code>gotochangerctl events</code>), and - when SNMP is
+enabled - one SNMPv2c trap. This includes both success and failure outcomes for robotics/media actions,
+authentication actions (login/logout/bootstrap/password change), and configuration actions
+(users/tokens/settings/scheduled backups).</p>
+<h2 id="event-codes">Event codes</h2>
+<p>Events use a structured code taxonomy, for example:</p>
+<ul>
+<li><code>ROBOTICS.LOAD.SUCCESS</code></li>
+<li><code>ROBOTICS.MOVE.FAILURE</code></li>
+<li><code>DRIVE.FAULT.SET.SUCCESS</code></li>
+<li><code>AUTH.LOGIN.FAILURE</code></li>
+<li><code>CONFIG.SETTINGS.UPDATE.SUCCESS</code></li>
+</ul>
+<p>Each event also carries <code>category</code>, <code>severity</code>, <code>outcome</code>, and <code>operation</code> fields (plus a free-form <code>detail</code>
+string) so operators and NMS rules can classify behavior without parsing free text.</p>
+<table>
+<thead>
+<tr>
+<th>Domain</th>
+<th>Code prefix</th>
+<th>Typical severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Robotics/media movement</td>
+<td><code>ROBOTICS.*</code>, <code>MEDIA.*</code></td>
+<td>information / warning</td>
+</tr>
+<tr>
+<td>Drive state</td>
+<td><code>DRIVE.*</code></td>
+<td>information / error</td>
+</tr>
+<tr>
+<td>Authentication</td>
+<td><code>AUTH.*</code></td>
+<td>information / error</td>
+</tr>
+<tr>
+<td>Configuration/admin</td>
+<td><code>CONFIG.*</code></td>
+<td>configuration / error</td>
+</tr>
+<tr>
+<td>Cleaning cycles</td>
+<td><code>CLEANING.*</code></td>
+<td>information / warning</td>
+</tr>
+<tr>
+<td>Internal daemon failures</td>
+<td><code>SYSTEM.*</code></td>
+<td>error</td>
+</tr>
+</tbody>
+</table>
+<p>Outcome suffix convention: <code>*.SUCCESS</code> for completed actions, <code>*.FAILURE</code> for rejected/failed actions,
+<code>*.WARNING</code> for non-fatal alerts (for example simulated end-of-tape).</p>
+<h2 id="snmp-traps">SNMP traps</h2>
+<p>Disabled by default. Like the rest of the daemon's configuration, SNMP settings live in the database and are
+edited live, with no config file and no restart required:</p>
+<ul>
+<li>
+<p>Web UI: Admin &gt; Settings &gt; &quot;SNMP traps&quot; panel (Enabled, Enterprise OID, Agent address, and Targets - one
+per line, <code>host:port:community</code>).</p>
+</li>
+<li>
+<p>CLI, for the scalar fields:</p>
+<pre><code class="language-sh">gotochangerctl settings set snmp_enabled=true snmp_enterprise_oid=1.3.6.1.4.1.55555.1
+</code></pre>
+<p>Targets are a list, which the CLI's simple <code>key=value</code> form can't express - set them via the web UI, or
+with a direct <code>PUT /api/v1/settings</code> call (<code>snmp_targets</code>, an array of <code>{host, port, community}</code>).</p>
+</li>
+</ul>
+<h2 id="the-dynamic-mib">The dynamic MIB</h2>
+<p>A MIB matching your <em>currently configured</em> enterprise OID is served at <code>GET /api/v1/snmp/mib</code> (any
+authenticated Viewer+ role) and linked from Admin &gt; Settings &gt; SNMP traps. The endpoint rewrites the PEN and
+root object-identifier lines of a bundled MIB template to match the live <code>snmp.enterprise_oid</code> setting, so
+whatever you load into your NMS always decodes the exact OIDs this instance actually emits - even after
+changing the enterprise OID. See
+<a href="#monitor-gotochanger-via-snmp">Monitor gotochanger via SNMP</a> for a full worked example: receiving a trap,
+downloading the MIB, and decoding one in a real monitoring tool.</p>
+<div class="callout callout-note">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+<div>The REST API's OpenAPI spec (served at <code>/api/v1/openapi.json</code>, rendered at <code>/docs</code>)
+currently documents the most commonly used routes but not every admin/topology endpoint listed in
+<a href="#cli-and-rest-api-reference">CLI Reference and REST API</a> - treat the CLI reference and this guide
+as the source of truth for anything not yet in Swagger.</div>
+</div>
+<h1 id="cli-and-rest-api-reference">CLI and REST API Reference</h1>
+<p>Every action available in the web UI is also available over the <code>gotochangerctl</code> CLI and the REST API - the
+dashboard is a client of the same API, nothing more.</p>
+<h2 id="gotochangerctl">gotochangerctl</h2>
+<p>By default, <code>gotochangerctl</code> talks to the trusted local Unix socket (<code>/run/gotochanger/gotochanger.sock</code>, no
+token needed - every request over it is treated as Admin). Use <code>--url</code>/<code>--token</code> to drive a remote instance
+instead, <code>--json</code> for machine-readable output, and <code>--logical-library=NAME</code> to scope status/load/unload/move
+to one logical library.</p>
+<pre><code class="language-sh">gotochangerctl status                                        # arm/drive/slot/ioslot snapshot
+gotochangerctl events                                         # recent event log
+gotochangerctl volumes                                        # racked volumes (slots/ioslots/drives)
+gotochangerctl outside                                        # outside-library (&quot;loading dock&quot;) volumes
+gotochangerctl load &lt;slot|ioslot&gt; &lt;address|label&gt; &lt;drive&gt;      # move a volume into a drive
+gotochangerctl unload &lt;drive&gt; &lt;slot|ioslot&gt; &lt;address|label&gt;
+gotochangerctl move &lt;slot|ioslot&gt; &lt;addr&gt; &lt;slot|ioslot&gt; &lt;addr&gt;
+gotochangerctl outside-delete &lt;barcode&gt;                        # remove an outside-library cartridge
+gotochangerctl io-door &lt;mailbox-id&gt; open [pin] | close [actions-json]
+gotochangerctl storage-door &lt;magazine-id&gt; open [pin] | close [actions-json]
+gotochangerctl fault &lt;drive&gt; &lt;on|off&gt;                          # simulate a drive fault
+gotochangerctl write-protect &lt;barcode&gt; &lt;on|off&gt;
+gotochangerctl robotic-fault on &lt;kind&gt; [message] | off         # simulate a robotic-arm fault
+gotochangerctl token new|revoke|list [name] [role]             # API token management (admin/operator/viewer)
+gotochangerctl user new|list|delete|role|reset-password ...    # local user accounts
+gotochangerctl settings get | set &lt;key&gt;=&lt;value&gt; ...            # daemon-wide settings (snmp, offsite, ...)
+gotochangerctl latency get | set &lt;k&gt;=&lt;v&gt;... | reset            # simulated latency knobs
+gotochangerctl cleaning settings get|set|reset                 # cleaning tunables
+gotochangerctl cleaning tape new|list                          # create/list cleaning cartridges
+gotochangerctl logical-library new|list|show|update|delete ...
+gotochangerctl drive-type new|list|update|delete ...
+gotochangerctl tape-type new|list|update|delete ...
+gotochangerctl tape-set new|list|update|delete|add-tapes|add-tape ...
+gotochangerctl magazine new|list|update|delete ...
+gotochangerctl mailbox new|list|update|delete ...
+gotochangerctl drive new|list|update|delete ...
+gotochangerctl unassigned                                      # drives/slots/ioslots not in any logical library
+gotochangerctl offsite list|send|recall ...
+gotochangerctl backup download|list|download-stored|delete|schedule show|schedule set ...
+gotochangerctl restore &lt;file&gt;                                   # replaces state.db (incl. users/tokens!) + restarts
+gotochangerctl reset &lt;confirm-name&gt; [--delete-volumes]            # factory-reset + restart
+gotochangerctl wizard status                                      # setup-wizard state (the wizard itself is web/API only)
+</code></pre>
+<p><code>&lt;address|label&gt;</code> arguments accept either a bare physical integer address or the human-facing
+<code>&quot;&lt;ordinal&gt;.&lt;offset&gt;&quot;</code> label (e.g. <code>&quot;2.3&quot;</code> - slot 3 of the 2nd currently-existing magazine).</p>
+<div class="callout callout-note">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+<div><code>outside-create</code>, <code>import</code>, <code>create-volume</code>, and <code>export</code> are
+retired - creating a new cartridge is now always <code>tape-set add-tape</code> (it belongs to a tape set),
+and moving media in/out of the library is always the <code>io-door</code>/<code>storage-door</code>
+open/queue/close workflow described in
+<a href="#dashboard-tour">Dashboard Tour</a>.</div>
+</div>
+<h2 id="rest-api">REST API</h2>
+<p>All actions are available over HTTP. The Unix socket is trusted (every request is treated as Admin, access
+controlled by filesystem permissions); the TCP listener accepts either a browser session cookie or an API
+token (<code>X-Api-Key</code> header or <code>Authorization: Bearer &lt;token&gt;</code>), each carrying one of the
+<code>admin</code>/<code>operator</code>/<code>viewer</code> roles.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Role</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/auth/bootstrap</code></td>
+<td>none</td>
+<td>Set the initial Admin password</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/auth/login</code></td>
+<td>none</td>
+<td>Log in, start a session</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/auth/logout</code></td>
+<td>viewer+</td>
+<td>Log out</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/auth/state</code></td>
+<td>none</td>
+<td>Am I logged in? Is bootstrap needed?</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/auth/change-password</code></td>
+<td>viewer+</td>
+<td>Change your own password</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/status</code></td>
+<td>viewer+</td>
+<td>Full library snapshot</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/events</code></td>
+<td>viewer+</td>
+<td>Recent activity log</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/stream</code></td>
+<td>viewer+</td>
+<td>Live event stream (Server-Sent Events)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/volumes</code></td>
+<td>viewer+</td>
+<td>List all volumes</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/outside</code></td>
+<td>viewer+</td>
+<td>List outside-library tapes</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/v1/outside/{barcode}</code></td>
+<td>operator+</td>
+<td>Delete an outside-library tape</td>
+</tr>
+<tr>
+<td>GET / POST</td>
+<td><code>/api/v1/cleaning/tapes</code></td>
+<td>viewer+ / operator+</td>
+<td>List / create cleaning tapes</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/load</code></td>
+<td>operator+</td>
+<td>Load a slot/ioslot into a drive</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/unload</code></td>
+<td>operator+</td>
+<td>Unload a drive to a slot/ioslot</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/move</code></td>
+<td>operator+</td>
+<td>Move between slot/ioslot elements</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/doors/io/{id}/open</code> | <code>/close</code></td>
+<td>operator+</td>
+<td>Open/close an I/O (mailbox) door</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/doors/storage/{id}/open</code> | <code>/close</code></td>
+<td>operator+</td>
+<td>Open/close a storage (magazine) door</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/drives/{index}/fault</code></td>
+<td>operator+</td>
+<td>Inject/clear a simulated fault on one drive</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/robotics/fault</code></td>
+<td>operator+</td>
+<td>Inject/clear a simulated fault on the shared robotic arm</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/volumes/{barcode}/write-protect</code></td>
+<td>operator+</td>
+<td>Set/clear a volume's write-protect flag</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/offsite</code></td>
+<td>viewer+</td>
+<td>List volumes in the offsite vault</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/offsite/send</code> | <code>/recall</code></td>
+<td>operator+</td>
+<td>Send/recall a volume to/from the offsite vault</td>
+</tr>
+<tr>
+<td>GET/POST/DELETE</td>
+<td><code>/api/v1/users</code></td>
+<td>admin</td>
+<td>Manage user accounts</td>
+</tr>
+<tr>
+<td>GET/POST/DELETE</td>
+<td><code>/api/v1/tokens</code></td>
+<td>admin</td>
+<td>Manage scoped API tokens</td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/settings</code></td>
+<td>admin</td>
+<td>View/update application settings</td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/settings/latency</code></td>
+<td>admin</td>
+<td>View/update latency simulation settings</td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/settings/cleaning</code></td>
+<td>admin</td>
+<td>View/update cleaning thresholds</td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/settings/pin</code></td>
+<td>admin</td>
+<td>View/update the magazine/mailbox door PIN</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/logical-libraries[/{name}]</code></td>
+<td>admin</td>
+<td>Manage logical library partitions</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/unassigned</code></td>
+<td>admin</td>
+<td>Drives/slots/mailboxes in no logical library</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/drive-types[/{name}]</code></td>
+<td>admin</td>
+<td>Manage the drive-type catalog</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/drives[/{index}]</code></td>
+<td>admin</td>
+<td>Manage drives (hot-applies)</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/tape-types[/{name}]</code></td>
+<td>admin</td>
+<td>Manage the tape/media-type catalog</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/tape-sets[/{name}]</code></td>
+<td>admin</td>
+<td>Manage tape sets (type + storage folder)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/fs/browse</code></td>
+<td>admin</td>
+<td>Browse server-side folders (tape-set storage picker)</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/magazines[/{id}]</code></td>
+<td>admin</td>
+<td>Manage magazines (hot-applies)</td>
+</tr>
+<tr>
+<td>GET/POST/PUT/DELETE</td>
+<td><code>/api/v1/mailboxes[/{id}]</code></td>
+<td>admin</td>
+<td>Manage mailboxes (hot-applies)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/backup/download</code></td>
+<td>admin</td>
+<td>Download an on-demand backup of <code>state.db</code></td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/backup/schedule</code></td>
+<td>admin</td>
+<td>View/update the recurring backup schedule</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/backups</code></td>
+<td>admin</td>
+<td>List stored (scheduled) backups</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/backups/{filename}/download</code></td>
+<td>admin</td>
+<td>Download a stored backup</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/v1/backups/{filename}</code></td>
+<td>admin</td>
+<td>Delete a stored backup</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/restore</code></td>
+<td>admin</td>
+<td>Restore <code>state.db</code> from a backup file (restarts)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/reset</code></td>
+<td>admin</td>
+<td>Factory reset (name-confirmed, restarts)</td>
+</tr>
+<tr>
+<td>GET/POST</td>
+<td><code>/api/v1/wizard</code></td>
+<td>admin</td>
+<td>Current step / submit one wizard step</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/v1/wizard/complete</code> | <code>/reset</code></td>
+<td>admin</td>
+<td>Finish, or reset progress of, the setup wizard</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/wizard/options</code></td>
+<td>admin</td>
+<td>Catalogs + current state for the wizard UI</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/kernel-mode/status</code></td>
+<td>viewer+</td>
+<td>Whether <code>gotochanger-kernel</code>/the kernel module are available</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/kernel-mode/devices</code></td>
+<td>viewer+</td>
+<td>Real device paths self-reported by running <code>gotochanger-tcmud</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/snmp/mib</code></td>
+<td>viewer+</td>
+<td>Download the dynamic MIB (see <a href="#monitoring">Monitoring</a>)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/openapi.json</code></td>
+<td>none</td>
+<td>OpenAPI 3.0 spec backing the Swagger UI at <code>/docs</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>Load</code>/<code>Unload</code>/<code>Move</code> (and <code>GET /api/v1/status</code>) additionally accept an <code>X-Logical-Library: NAME</code> header to
+scope the operation to one logical library.</p>
+<p>A minimal curl example, using the trusted socket's HTTP-over-Unix-socket form:</p>
+<pre><code class="language-sh">curl --unix-socket /run/gotochanger/gotochanger.sock http://localhost/api/v1/status | jq .
+</code></pre>
+<p>Or against the TCP listener with a token:</p>
+<pre><code class="language-sh">curl -H &quot;X-Api-Key: $GOTOCHANGER_TOKEN&quot; http://localhost:8480/api/v1/status | jq .
+</code></pre>
+<p>For interactive exploration with full request/response schemas, use the Swagger UI at <code>/docs</code> (backed by
+<code>/api/v1/openapi.json</code>) - see the note in <a href="#monitoring">Monitoring</a> about its current route coverage.</p>
+<h1 id="migrate-from-disk-changerin">Migrate from disk-changer.in</h1>
+<p>You have an existing Bareos Storage Daemon using <code>disk-changer.in</code> as its Changer Command, with one or more
+<code>Device = File</code> resources pointed at plain files. gotochanger stays compatible with that same Device
+configuration, so the migration only touches the Autochanger's <code>Changer Command</code> line and how the archive
+device paths get populated - Bareos's own catalog (volume names, pools, retention) is untouched.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>The existing <code>disk-changer.in</code>-based Autochanger's Device count and current <code>Archive Device</code> paths (e.g.
+<code>/etc/bareos/scripts/disk-changer.conf</code> or the Device resources themselves).</li>
+<li>gotochanger installed (see <a href="#installation">Installation</a>) but not yet configured (fresh wizard state).</li>
+<li><code>bareos</code> added to the <code>gotochanger</code> group so it can reach the trusted socket and the volume files:
+<code>sudo adduser bareos gotochanger</code>.</li>
+</ul>
+<h2 id="steps">Steps</h2>
+<ol>
+<li>Note how many drives and how many total storage slots the existing setup uses - <code>disk-changer.in</code>'s own
+config typically has this as a slot count and a directory of volume files.</li>
+<li>Run through the <a href="#first-run-and-setup-wizard">setup wizard</a>, creating one magazine (call its ID <code>mag1</code>)
+sized to match your existing slot count (round up to the nearest multiple of 5), one drive per existing
+Device resource, and one tape set for your existing media. Skip mailboxes/logical libraries for now if you
+just want the fastest path back to a working Autochanger - you can add them later without disrupting
+Bareos.</li>
+<li>For each existing Device resource, edit only the <code>Changer Command</code> line:
+<pre><code>Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V&quot;
+</code></pre>
+Leave <code>Archive Device</code>, <code>Media Type</code>, <code>Device Type = File</code>, <code>AutomaticMount</code>, and <code>RemovableMedia</code>
+untouched.</li>
+<li>Register each existing volume as an outside-library tape under the tape set you just created, using its
+real existing barcode, then bring it straight into a storage slot through that magazine's storage door -
+this is the same open/queue/close pattern the dashboard's &quot;Bulk load...&quot; button uses:
+<pre><code class="language-sh">gotochangerctl tape-set add-tape &lt;tape-set-name&gt; &lt;existing-barcode&gt;
+gotochangerctl storage-door mag1 open
+gotochangerctl storage-door mag1 close '[{&quot;action&quot;:&quot;load&quot;,&quot;address&quot;:1,&quot;barcode&quot;:&quot;&lt;existing-barcode&gt;&quot;}]'
+</code></pre>
+Repeat the last line (with the next free storage-slot address) for each existing volume.</li>
+<li>Restart <code>bareos-sd</code>, then verify Bareos still sees the expected slot/drive count:
+<pre><code class="language-sh">gotochanger-changer /dev/null slots
+gotochanger-changer /dev/null listall
+</code></pre>
+</li>
+</ol>
+<h2 id="verify">Verify</h2>
+<pre><code class="language-sh">bconsole &lt;&lt;'EOF'
+status storage=FakeML3 slots
+EOF
+</code></pre>
+<p>Expect the same total slot count Bareos reported before the migration, and <code>gotochangerctl status</code> to show
+the same barcodes racked in storage slots your old <code>disk-changer.in</code> setup had. Run a small backup/restore
+job against one volume to confirm read/write still works end-to-end before decommissioning the old script.</p>
+<h1 id="partition-one-physical-robot-into-two-logical-libraries">Partition one physical robot into two logical libraries</h1>
+<p>You have one gotochangerd instance with enough drives/magazines/mailboxes to serve two separate Bareos
+Storage Daemons, and want each SD to see its own independent Autochanger without either one being able to
+touch the other's media.</p>
+<h2 id="prerequisites-2">Prerequisites</h2>
+<ul>
+<li>At least 4 drives and 2 magazines (<code>mag1</code>, <code>mag2</code>) and 2 mailboxes (<code>mbx1</code>, <code>mbx2</code>) already configured - one
+magazine/mailbox pair and two drives per logical library, minimum.</li>
+<li>Admin access to gotochangerd.</li>
+</ul>
+<h2 id="steps-2">Steps</h2>
+<ol>
+<li>Check what's currently unassigned, to confirm the drive indices and magazine/mailbox IDs you'll use:
+<pre><code class="language-sh">gotochangerctl unassigned
+</code></pre>
+</li>
+<li>Create the two logical libraries, assigning drives/magazines/mailboxes directly at creation time
+(<code>logical-library new &lt;name&gt; &lt;drive-indices csv&gt; &lt;magazine-ids csv&gt; &lt;mailbox-ids csv&gt;</code>):
+<pre><code class="language-sh">gotochangerctl logical-library new Library1 0,1 mag1 mbx1
+gotochangerctl logical-library new Library2 2,3 mag2 mbx2
+</code></pre>
+Equivalently via the REST API:
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/logical-libraries \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;name&quot;:&quot;Library1&quot;,&quot;drives&quot;:[0,1],&quot;magazines&quot;:[&quot;mag1&quot;],&quot;mailboxes&quot;:[&quot;mbx1&quot;]}'
+</code></pre>
+</li>
+<li>In the Admin web UI, open <strong>Logical Libraries &gt; Library1</strong> and click <strong>Bareos Config</strong> - this generates a
+ready-to-paste Autochanger/Device block with the correct <code>Drive Index</code> values already filled in for
+Library1's two drives. Repeat for Library2. If you'd rather build the block by hand, <code>gotochangerctl logical-library show Library1</code> and <code>gotochangerctl drive list</code> return the same underlying data.</li>
+<li>Paste each generated block into the corresponding Bareos Storage Daemon's config, giving each Autochanger
+its own <code>--logical-library</code> suffix on the <code>Changer Command</code> line:
+<pre><code>Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V --logical-library=Library1&quot;
+</code></pre>
+<pre><code>Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V --logical-library=Library2&quot;
+</code></pre>
+</li>
+<li>Restart both Storage Daemons.</li>
+</ol>
+<h2 id="verify-2">Verify</h2>
+<pre><code class="language-sh">gotochangerctl --logical-library=Library1 status
+gotochangerctl --logical-library=Library2 status
+</code></pre>
+<p>Each should show only its own drives/slots/ioslots, with dense addresses starting from 1 (0 for drives)
+within that scope - the physical addresses underneath are unaffected. Confirm cross-library isolation by
+attempting a move that crosses the boundary from Library1 into a slot that belongs to <code>mag2</code>:</p>
+<pre><code class="language-sh">gotochangerctl --logical-library=Library1 move slot 1 slot &lt;a-mag2-slot-address&gt;
+</code></pre>
+<p>Expect an error rejecting the move because the destination isn't in <code>Library1</code> - this is exactly what keeps
+the two Bareos SDs from touching each other's media while sharing one physical robot.</p>
+<h1 id="configure-multiple-drives-without-the-drive-index-trap">Configure multiple drives without the Drive Index trap</h1>
+<p>You're adding a second (or third) drive to an existing Autochanger and want Bareos to actually address each
+one independently, instead of every Device silently reporting as &quot;drive 0&quot;.</p>
+<h2 id="prerequisites-3">Prerequisites</h2>
+<ul>
+<li>An Autochanger resource with 2+ Device resources already defined in <code>bareos-sd.d/</code>.</li>
+<li>2+ drives already created in gotochanger (<code>gotochangerctl drive list</code>).</li>
+</ul>
+<h2 id="steps-3">Steps</h2>
+<ol>
+<li>List gotochanger's own drives, to confirm their indices and device paths:
+<pre><code class="language-sh">gotochangerctl drive list
+</code></pre>
+Expected output (one line per drive):
+<pre><code>0    /var/lib/gotochanger/drives/drive0
+1    /var/lib/gotochanger/drives/drive1
+</code></pre>
+</li>
+<li>In the Bareos Autochanger's config, add an explicit <code>Drive Index</code> to <strong>every</strong> Device resource, set to
+that Device's 0-based position within <em>this Autochanger's own</em> <code>Device =</code> list - not gotochangerd's drive
+index (they only happen to match when both start at 0 and are contiguous, which is the common but not
+universal case):
+<pre><code>Autochanger {
+  Name = FakeML3
+  Device = Drive0, Drive1
+  Changer Command = &quot;/usr/bin/gotochanger-changer %c %o %S %a %d %V&quot;
+}
+Device {
+  Name = Drive0
+  Drive Index = 0
+  ...
+}
+Device {
+  Name = Drive1
+  Drive Index = 1
+  ...
+}
+</code></pre>
+</li>
+<li>Restart <code>bareos-sd</code>.</li>
+</ol>
+<h2 id="verify-3">Verify</h2>
+<pre><code class="language-sh">gotochanger-changer /dev/null loaded 0
+gotochanger-changer /dev/null loaded 1
+</code></pre>
+<p>Load a different volume into each drive and confirm each Device resource reports the correct one:</p>
+<pre><code class="language-sh">gotochangerctl load slot 1 0
+gotochangerctl load slot 2 1
+</code></pre>
+<pre><code class="language-sh">bconsole &lt;&lt;'EOF'
+status storage=FakeML3
+EOF
+</code></pre>
+<p>Expect Drive0/Drive1 to each show their own distinct volume, not both showing the same one. If both Devices
+report identical status regardless of which drive actually has the tape, <code>Drive Index</code> is missing (or
+identical) on one of them - that's the trap: it silently defaults to <code>0</code> for any Device that doesn't set it,
+so a missing second <code>Drive Index</code> makes Bareos treat both Devices as the same physical drive.</p>
+<h1 id="scheduled-offsite-rotation">Scheduled offsite rotation</h1>
+<p>You want a chosen number of full volumes automatically vaulted offsite on a recurring schedule, simulating
+routine tape rotation without an operator manually clicking &quot;Send to offsite&quot; every day - plus the ability to
+trigger a send/recall by hand (e.g. from a cron job or an external rotation script) when needed.</p>
+<h2 id="prerequisites-4">Prerequisites</h2>
+<ul>
+<li>Offsite vaulting enabled for this library (set during the setup wizard, or via Admin &gt; Settings).</li>
+<li>At least one full storage-slot volume to rotate.</li>
+</ul>
+<h2 id="steps-4">Steps</h2>
+<h3 id="enable-and-configure-scheduled-rotation">Enable and configure scheduled rotation</h3>
+<pre><code class="language-sh">gotochangerctl settings set offsite_location=true offsite_rotation_count=2 offsite_rotation_interval=24h
+</code></pre>
+<p>gotochangerd re-reads <code>offsite_rotation_interval</code>/<code>offsite_rotation_count</code> from the live settings store every
+few seconds, so this takes effect without a restart. Once the interval elapses, up to <code>offsite_rotation_count</code>
+of the least-recently-created <strong>full</strong> volumes currently in storage slots are sent offsite automatically.</p>
+<h3 id="trigger-a-rotation-manually-eg-from-cron">Trigger a rotation manually (e.g. from cron)</h3>
+<pre><code class="language-sh">gotochangerctl offsite list
+gotochangerctl offsite send slot 3
+</code></pre>
+<p>Equivalently via curl:</p>
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/offsite/send \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;from_kind&quot;:&quot;slot&quot;,&quot;from_address&quot;:3}'
+</code></pre>
+<p>A typical cron entry driving a nightly manual rotation instead of (or in addition to) the built-in scheduler:</p>
+<pre><code>0 2 * * * gotochangerctl offsite send slot 3 &gt;&gt; /var/log/gotochanger-offsite.log 2&gt;&amp;1
+</code></pre>
+<h3 id="recall-a-volume">Recall a volume</h3>
+<pre><code class="language-sh">gotochangerctl offsite recall &lt;barcode&gt; slot 3
+</code></pre>
+<h2 id="verify-4">Verify</h2>
+<pre><code class="language-sh">gotochangerctl offsite list
+gotochangerctl events | grep -i offsite
+</code></pre>
+<p>Expect the sent volume to disappear from storage-slot listings (<code>gotochangerctl status</code>) and appear in
+<code>gotochangerctl offsite list</code>; the activity log (and an SNMP trap, if enabled - see <a href="#monitoring">Monitoring</a>)
+records a <code>MEDIA.OFFSITE-SEND.SUCCESS</code>-style event for both the manual and scheduled paths. A scheduled
+rotation that finds a candidate volume already moved by something else in the gap is skipped with a logged
+error rather than treated as fatal - check the events log if fewer volumes were rotated than expected.</p>
+<h1 id="bareos-resilience-testing-fault-injection">Bareos resilience testing: fault injection</h1>
+<p>You want to verify your Bareos configuration (retries, alerting, failover) actually reacts correctly when a
+drive or the robotic arm fails mid-job - without waiting for real hardware to break. gotochanger can inject
+either kind of failure on demand and clear it just as easily.</p>
+<h2 id="prerequisites-5">Prerequisites</h2>
+<ul>
+<li>A running backup job (or one ready to run) against a gotochanger-backed Autochanger.</li>
+<li>Operator access (drive/robotic faults are an Operator-level action, not Admin-only).</li>
+</ul>
+<h2 id="steps-5">Steps</h2>
+<h3 id="inject-a-drive-fault">Inject a drive fault</h3>
+<pre><code class="language-sh">gotochangerctl fault 0 on
+</code></pre>
+<p>Equivalently:</p>
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/drives/0/fault \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;fault&quot;:true}'
+</code></pre>
+<p>Kick off (or let continue) a Bareos job using drive 0. Expect Bareos to report a mount/drive error - exactly
+as if a real drive had failed - and your alerting to fire on it.</p>
+<p>Clear it once you've confirmed the failure handling:</p>
+<pre><code class="language-sh">gotochangerctl fault 0 off
+</code></pre>
+<h3 id="inject-a-robotic-arm-fault">Inject a robotic-arm fault</h3>
+<p>There's only one shared robotic arm, so this affects every drive/logical library at once - useful for testing
+a full &quot;changer offline&quot; scenario:</p>
+<pre><code class="language-sh">gotochangerctl robotic-fault on blocked_arm &quot;simulated jam for DR test&quot;
+</code></pre>
+<p>Valid <code>&lt;kind&gt;</code> values: <code>blocked_arm</code>, <code>mispositioned_cartridge</code>, <code>pickup_failure</code>, <code>drop_failure</code>,
+<code>movement_jam</code>, <code>other</code>. Equivalently:</p>
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/robotics/fault \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;active&quot;:true,&quot;kind&quot;:&quot;blocked_arm&quot;,&quot;message&quot;:&quot;simulated jam for DR test&quot;}'
+</code></pre>
+<p>Every Load/Unload/Move now fails library-wide (door open/close still works) until cleared:</p>
+<pre><code class="language-sh">gotochangerctl robotic-fault off
+</code></pre>
+<h2 id="verify-5">Verify</h2>
+<pre><code class="language-sh">gotochangerctl events
+</code></pre>
+<p>Expect <code>DRIVE.FAULT.SET.SUCCESS</code> and <code>ROBOTICS.FAULT.SET.SUCCESS</code>-style events (and, if SNMP is enabled, a
+matching trap for each - see <a href="#monitoring">Monitoring</a>) around the times you injected each fault, followed by
+<code>*.CLEAR.SUCCESS</code> events once cleared. On the dashboard, the affected drive (or the Robotic Arm panel) shows
+the amber pulsing fault light for the whole window - see
+<a href="#drive-indicator-lights">Drive Indicator Lights</a> for the full light legend. Cross-check against Bareos's own
+job log/<code>bconsole status storage</code> output to confirm it actually surfaced the failure to an operator instead
+of silently retrying forever.</p>
+<h1 id="switch-to-kernel-mode-for-a-third-party-scsi-tool">Switch to kernel mode for a third-party SCSI tool</h1>
+<p>A monitoring agent, a test harness, or some other tool in your stack insists on talking to a real SCSI medium
+changer (<code>/dev/sg*</code>) and tape drives (<code>/dev/nst*</code>) rather than a changer-script convention. Bareos itself never
+needs this - only enable kernel mode if something else genuinely requires a real kernel device node.</p>
+<h2 id="prerequisites-6">Prerequisites</h2>
+<ul>
+<li>The <code>gotochanger-kernel</code> package installed (<code>sudo apt-get install gotochanger-kernel</code>).</li>
+<li>Root access on the host (kernel mode needs the <code>target_core_user</code> kernel module and configfs).</li>
+<li>An existing logical library (or the whole physical library, unscoped) you want to expose.</li>
+</ul>
+<h2 id="steps-6">Steps</h2>
+<ol>
+<li>Switch operational mode to <code>kernel</code>:
+<pre><code class="language-sh">gotochangerctl settings set operational_mode=kernel
+</code></pre>
+</li>
+<li>gotochangerd's reconciler automatically starts one <code>gotochanger-tcmud@&lt;logical-library-name&gt;.service</code>
+instance per logical library (<code>gotochanger-tcmud@default.service</code> if the library is unscoped), via
+polkit-authorized systemd calls - no manual <code>systemctl enable</code> step is required. Confirm it's running:
+<pre><code class="language-sh">systemctl status 'gotochanger-tcmud@*.service'
+</code></pre>
+</li>
+<li>Check which real devices came up:
+<pre><code class="language-sh">curl --unix-socket /run/gotochanger/gotochanger.sock http://localhost/api/v1/kernel-mode/status | jq .
+curl --unix-socket /run/gotochanger/gotochanger.sock http://localhost/api/v1/kernel-mode/devices | jq .
+</code></pre>
+The Admin UI's Drives page and each logical library's &quot;Kernel Mode Setup&quot; dialog show the same device
+paths, plus the equivalent manual <code>systemctl enable --now gotochanger-tcmud@&lt;instance&gt;</code> command if you'd
+rather manage the instance yourself instead of relying on the automatic reconciler.</li>
+<li>Find the stable device symlinks - <strong>prefer these over raw <code>/dev/sgN</code>/<code>/dev/nstN</code> numbers</strong>, which are not
+stable across a <code>gotochanger-tcmud</code> restart:
+<pre><code class="language-sh">ls -l /dev/tape/by-id/
+</code></pre>
+</li>
+<li>Point your third-party tool's device configuration at the <code>scsi-&lt;NAA&gt;</code> (changer) or <code>scsi-&lt;NAA&gt;-nst</code>
+(drive) symlink instead of the raw device number.</li>
+</ol>
+<h2 id="verify-6">Verify</h2>
+<pre><code class="language-sh">sg_inq /dev/tape/by-id/scsi-&lt;NAA&gt;
+mt -f /dev/tape/by-id/scsi-&lt;NAA&gt;-nst status
+</code></pre>
+<p>Expect a real SCSI INQUIRY response and tape-drive status output, backed by the same plain files gotochanger
+already manages - loading a volume through <code>gotochangerctl load</code>/the dashboard should make it visible at that
+same device path within a few seconds. If the third-party tool reports the device is gone after a
+<code>gotochanger-tcmud</code> restart, check <code>/dev/tape/by-id/</code> again rather than a previously-noted <code>/dev/sgN</code> number -
+that's exactly the instability the by-id symlinks exist to avoid.</p>
+<h1 id="backup-and-restore-for-disaster-recovery">Backup and restore for disaster recovery</h1>
+<p>The host running gotochangerd was rebuilt (or its disk was lost) and you need to restore topology, volume
+state, and settings from a previously downloaded backup - onto either the same host or a freshly installed
+one.</p>
+<h2 id="prerequisites-7">Prerequisites</h2>
+<ul>
+<li>A previously downloaded backup file (see &quot;Taking a backup&quot; below if you don't have one yet).</li>
+<li>Admin access to the <em>new</em> gotochangerd instance (a fresh install, bootstrapped with a temporary Admin
+password).</li>
+</ul>
+<div class="callout callout-warn">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+<div><strong>A backup is a full snapshot of the whole database, not just topology.</strong> It contains every
+user account and API token's credential hash alongside slots/drives/tape sets/settings. Restoring
+<strong>replaces the entire database</strong>, including users and tokens - the temporary Admin password you
+just bootstrapped on the new install will stop working the moment the restore completes, replaced by whatever
+accounts existed at backup time.</div>
+</div>
+<h2 id="taking-a-backup-before-disaster-strikes">Taking a backup (before disaster strikes)</h2>
+<pre><code class="language-sh">gotochangerctl backup download ./gotochanger-backup.db
+</code></pre>
+<p>Or schedule recurring backups so you always have a recent one:</p>
+<pre><code class="language-sh">gotochangerctl backup schedule set interval=24h retention=7
+</code></pre>
+<h2 id="restoring-onto-the-rebuilt-host">Restoring onto the rebuilt host</h2>
+<ol>
+<li>Install gotochanger fresh (see <a href="#installation">Installation</a>) and bootstrap a temporary Admin password -
+this account only exists long enough to perform the restore.</li>
+<li>Restore the backup:
+<pre><code class="language-sh">gotochangerctl restore ./gotochanger-backup.db
+</code></pre>
+Equivalently via curl:
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/restore \
+  --data-binary @./gotochanger-backup.db
+</code></pre>
+</li>
+<li>The daemon validates the file (SQLite header + expected schema), atomically swaps it in, and restarts.
+Expect a brief unreachable window.</li>
+<li>Sign in again - <strong>using the credentials that existed at backup time</strong>, not the temporary bootstrap
+password from step 1.</li>
+</ol>
+<h2 id="verify-7">Verify</h2>
+<pre><code class="language-sh">gotochangerctl status
+gotochangerctl user list
+gotochangerctl volumes
+</code></pre>
+<p>Expect the same topology (magazines, mailboxes, drives, logical libraries), the same tape sets/volumes, and
+the same user accounts/roles that existed when the backup was taken - not the temporary bootstrap account
+from step 1, which no longer exists post-restore. Re-issue any API tokens your automation depends on if you
+aren't certain they survived in the backup, since a token's raw value is never recoverable - only its hash is
+stored, matching what was true before the disaster.</p>
+<h1 id="monitor-gotochanger-via-snmp">Monitor gotochanger via SNMP</h1>
+<p>You want an existing NMS (Nagios, Zabbix, PRTG, or similar) to receive SNMPv2c traps for library events -
+robotic/drive faults, media movement, authentication, configuration changes - and to decode them using
+gotochanger's own MIB.</p>
+<h2 id="prerequisites-8">Prerequisites</h2>
+<ul>
+<li>An SNMP trap receiver reachable from the gotochangerd host.</li>
+<li>Admin access to gotochangerd.</li>
+</ul>
+<h2 id="steps-7">Steps</h2>
+<ol>
+<li>Enable SNMP and point it at your receiver:
+<pre><code class="language-sh">gotochangerctl settings set snmp_enabled=true snmp_enterprise_oid=1.3.6.1.4.1.55555.1
+</code></pre>
+Targets (<code>host:port:community</code>, one or more) aren't expressible via the CLI's simple <code>key=value</code> form -
+set them from Admin &gt; Settings &gt; &quot;SNMP traps&quot;, or directly:
+<pre><code class="language-sh">curl -X PUT --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/settings \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;snmp_targets&quot;:[{&quot;host&quot;:&quot;nms.example.com&quot;,&quot;port&quot;:162,&quot;community&quot;:&quot;public&quot;}]}'
+</code></pre>
+</li>
+<li>Download the MIB matching your configured enterprise OID:
+<pre><code class="language-sh">curl --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/snmp/mib -o gotochanger.mib
+</code></pre>
+(Or click the same link from Admin &gt; Settings &gt; SNMP traps in the web UI.)</li>
+<li>Load <code>gotochanger.mib</code> into your NMS's MIB browser/trap decoder.</li>
+<li>Trigger an event to confirm delivery - a drive fault is the simplest:
+<pre><code class="language-sh">gotochangerctl fault 0 on
+gotochangerctl fault 0 off
+</code></pre>
+</li>
+</ol>
+<h2 id="verify-8">Verify</h2>
+<p>On your NMS, expect one decoded trap for the fault-set event and one for the fault-clear event, each carrying
+the <code>sysUpTime</code>, <code>snmpTrapOID</code>, a human-readable message, and structured <code>code</code>/<code>category</code>/<code>severity</code>/
+<code>outcome</code>/<code>operation</code> varbinds plus a <code>key=value; ...</code> detail string - not just an opaque numeric OID. If the
+trap arrives but decodes as an unknown OID, re-download the MIB: it's rendered against your <em>current</em>
+<code>snmp.enterprise_oid</code>, so an MIB downloaded before changing that setting will no longer match. Cross-check
+against <code>gotochangerctl events</code>, which shows the exact same event that produced the trap, to confirm nothing
+was dropped in transit.</p>
+<h1 id="managing-cleaning-tapes">Managing cleaning tapes</h1>
+<p>You want gotochanger to simulate drive cleaning realistically: cartridges that wear out after a fixed number
+of cleaning cycles, and a mount-count threshold that decides when a drive actually needs cleaning.</p>
+<h2 id="prerequisites-9">Prerequisites</h2>
+<ul>
+<li>Admin access to gotochangerd.</li>
+</ul>
+<h2 id="steps-8">Steps</h2>
+<h3 id="configure-thresholds">Configure thresholds</h3>
+<pre><code class="language-sh">gotochangerctl cleaning settings get
+gotochangerctl cleaning settings set enabled=true mode=backup_robot max_uses=20 mount_threshold=50 duration=2m
+</code></pre>
+<p>Two modes are available:</p>
+<ul>
+<li><code>backup_software</code> - cleaning cartridges sit in a magazine assigned to a logical library, so your backup
+software (e.g. Bareos) decides when to mount/unmount them; gotochangerd only tracks usage/expiry.</li>
+<li><code>backup_robot</code> - cartridges sit in a magazine <strong>not</strong> assigned to any logical library (invisible to Bareos);
+gotochangerd's own background sweep finds idle drives at/over <code>mount_threshold</code> mounts-since-last-cleaning
+and runs the cycle itself, auto-ejecting back to origin when done.</li>
+</ul>
+<h3 id="create-a-cleaning-cartridge">Create a cleaning cartridge</h3>
+<pre><code class="language-sh">gotochangerctl cleaning tape new
+gotochangerctl cleaning tape list
+</code></pre>
+<p>Up to 5 cleaning cartridges can exist at once, barcoded with a fixed <code>NNNNNCLN</code> format (e.g. <code>00001CLN</code>) - not
+admin-configurable, unlike regular tape sets.</p>
+<h3 id="run-a-cleaning-cycle-manually-backup-software-mode">Run a cleaning cycle manually (<code>backup_software</code> mode)</h3>
+<p>Loading a cleaning cartridge into a drive like any other volume is enough - gotochangerd detects it's a
+cleaning tape and branches into the cleaning path automatically:</p>
+<pre><code class="language-sh">gotochangerctl load slot &lt;cleaning-tape-slot&gt; 0
+</code></pre>
+<h2 id="verify-9">Verify</h2>
+<pre><code class="language-sh">gotochangerctl cleaning tape list
+gotochangerctl events | grep -i cleaning
+</code></pre>
+<p>Expect <code>CLEANING.CYCLE-START.SUCCESS</code> then <code>CLEANING.CYCLE-SUCCESS</code> events around the load, the drive's
+<code>MountsSinceCleaning</code> counter reset to 0 for that drive, and the cartridge's own usage count incremented by
+one. Once a cartridge's usage count reaches <code>max_uses</code>, its state moves to <code>expired</code> and it can no longer be
+auto-selected or manually loaded (<code>gotochangerctl load</code> returns an error) - replace it:</p>
+<pre><code class="language-sh">gotochangerctl cleaning tape new
+</code></pre>
+<p>and, if the expired cartridge was one of 5 already at the pool limit, note that a <code>CLEANING.TAPE-CREATE.FAILURE</code>
+event (pool full) means you need to physically account for/remove the expired one from its magazine before
+creating a replacement.</p>
+<h1 id="set-up-a-scoped-operator-api-token-for-a-ci-script">Set up a scoped operator API token for a CI script</h1>
+<p>An external CI job needs to drive day-to-day operations (load/unload/move, inject a fault for a resilience
+test, read status) against gotochangerd, but should never be able to touch Users, Tokens, Settings, or Backup</p>
+<ul>
+<li>exactly what the <code>operator</code> role is for.</li>
+</ul>
+<h2 id="prerequisites-10">Prerequisites</h2>
+<ul>
+<li>Admin access to gotochangerd.</li>
+<li>The CI system's secret-storage mechanism, to hold the token once issued.</li>
+</ul>
+<h2 id="steps-9">Steps</h2>
+<ol>
+<li>Create a scoped token - the raw value is only ever shown once, right here:
+<pre><code class="language-sh">gotochangerctl token new ci-pipeline operator
+</code></pre>
+Equivalently via curl:
+<pre><code class="language-sh">curl -X POST --unix-socket /run/gotochanger/gotochanger.sock \
+  http://localhost/api/v1/tokens \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;name&quot;:&quot;ci-pipeline&quot;,&quot;role&quot;:&quot;operator&quot;}'
+</code></pre>
+</li>
+<li>Store the returned value in your CI system's secret store (e.g. a GitHub Actions repository secret,
+<code>GOTOCHANGER_TOKEN</code>) - it will never be displayed again; only its SHA-256 hash is kept server-side.</li>
+<li>Use it from the CI script against the TCP listener (the trusted Unix socket isn't reachable from outside
+the host, and always behaves as Admin anyway, which defeats the point of scoping):
+<pre><code class="language-sh">curl -H &quot;X-Api-Key: $GOTOCHANGER_TOKEN&quot; http://gotochanger-host:8480/api/v1/status
+</code></pre>
+or with <code>gotochangerctl --url http://gotochanger-host:8480 --token &quot;$GOTOCHANGER_TOKEN&quot; status</code>.</li>
+</ol>
+<h2 id="verify-10">Verify</h2>
+<pre><code class="language-sh">gotochangerctl token list
+</code></pre>
+<p>Expect <code>ci-pipeline</code> listed with role <code>operator</code>. Confirm the scope is actually enforced - an Admin-only route
+should be rejected:</p>
+<pre><code class="language-sh">curl -s -o /dev/null -w '%{http_code}\n' -H &quot;X-Api-Key: $GOTOCHANGER_TOKEN&quot; \
+  http://gotochanger-host:8480/api/v1/users
+</code></pre>
+<p>Expect <code>403</code>, not <code>200</code> - proving the token can't manage users/tokens/settings/backups even though it can
+freely load/unload/move volumes and inject faults. When the CI script is decommissioned, revoke it rather
+than leaving it live:</p>
+<pre><code class="language-sh">gotochangerctl token revoke ci-pipeline
+</code></pre>
+<h1 id="troubleshooting-and-faq">Troubleshooting and FAQ</h1>
+<h4 id="i-forgot-the-admin-password">I forgot the Admin password.</h4>
+<p>There's no in-app recovery flow for the built-in account by design (sessions and credentials are kept
+deliberately simple). Whoever manages the host running gotochangerd will need to create a new Admin user via
+<code>gotochangerctl user new &lt;name&gt; admin &lt;password&gt;</code> against the trusted local socket, which bypasses web login
+entirely.</p>
+<h4 id="why-dont-i-see-an-admin-button">Why don't I see an Admin button?</h4>
+<p>You're signed in as a Viewer. Viewer accounts see the dashboard and read-only Admin screens are hidden
+entirely, not just disabled - ask an Admin to change your role if you need Operator or Admin access
+(<code>gotochangerctl user role &lt;username&gt; operator</code>).</p>
+<h4 id="a-loadunloadmove-button-or-command-gave-me-an-error-about-no-destination-available">A Load/Unload/Move button (or command) gave me an error about &quot;no destination available&quot;.</h4>
+<p>That means every eligible destination (an empty drive, slot, or I/O slot, depending on the action) is
+currently occupied. Free one up - unload a drive, move a tape out of a slot - and try again.</p>
+<h4 id="everything-is-rejected-with-a-409--robotic-arm-is-in-fault-state">Everything is rejected with a 409 / &quot;robotic arm is in fault state&quot;.</h4>
+<p>The robotic arm has an active simulated fault. Clear it (<code>gotochangerctl robotic-fault off</code>, or the Robotic
+Arm panel's <strong>Clear fault</strong> button) - door open/close still work while a fault is active, but Load/Unload/
+Move are rejected library-wide until it's cleared. See
+<a href="#bareos-resilience-testing-fault-injection">Bareos resilience testing</a> if you triggered this deliberately.</p>
+<h4 id="my-cartridge-got-a-barcode-i-didnt-expect">My cartridge got a barcode I didn't expect.</h4>
+<p>Barcodes come entirely from the tape set's tape type format - check Admin &gt; Tape Types for the tape set's
+type to see its exact family/media-id/length, or Admin &gt; Tape Sets to confirm which tape type the set
+actually uses.</p>
+<h4 id="operations-feel-instantaneous---is-latency-simulation-on">Operations feel instantaneous - is latency simulation on?</h4>
+<p>Check Admin &gt; Latency &gt; Enable. It's off by default on a fresh install; turning it on (with the &quot;Load
+defaults&quot; prefill, or your own tuned values) is also what makes the drive's &quot;active operation&quot; light visibly
+blink for more than an instant - see <a href="#drive-indicator-lights">Drive Indicator Lights</a>.</p>
+<h4 id="does-gotochanger-create-a-real-devsg-or-devnst-device">Does gotochanger create a real <code>/dev/sg*</code> or <code>/dev/nst*</code> device?</h4>
+<p>Only if you've explicitly enabled <a href="#kernel-mode">Kernel Mode</a> (the separate <code>gotochanger-kernel</code> package,
+<code>operational_mode=kernel</code>). By default gotochanger runs in userspace/file mode, where a loaded drive is a
+plain symlink at a configured device path and Bareos never needs a kernel SCSI device for this integration -
+it just calls a Changer Command script. Kernel mode exists only for third-party tools that insist on a real
+device node; see <a href="#switch-to-kernel-mode-for-a-third-party-scsi-tool">Switch to kernel mode</a>.</p>
+<h4 id="a-magazinemailbox-door-wont-open---pin-required-or-invalid-pin">A magazine/mailbox door won't open - &quot;PIN required&quot; or &quot;invalid PIN&quot;.</h4>
+<p>That magazine or mailbox has a 4-digit PIN configured (Admin &gt; Settings &gt; PIN). Pass it as the optional <code>pin</code>
+argument: <code>gotochangerctl storage-door &lt;id&gt; open &lt;pin&gt;</code> / <code>gotochangerctl io-door &lt;id&gt; open &lt;pin&gt;</code>. An empty
+PIN in Admin &gt; Settings clears the requirement entirely.</p>
+<h4 id="the-swagger-ui-at-docs-doesnt-show-every-endpoint-this-guide-documents">The Swagger UI at <code>/docs</code> doesn't show every endpoint this guide documents.</h4>
+<p>Correct, and known - the static OpenAPI spec currently documents the most commonly used routes but hasn't
+been fully expanded to cover every admin/topology endpoint yet. Treat
+<a href="#cli-and-rest-api-reference">CLI Reference and REST API</a> as the authoritative list until that's addressed;
+every route listed there works today even if Swagger doesn't render it yet.</p>
+<h4 id="where-do-i-configure-bareos-itself-to-talk-to-gotochanger">Where do I configure Bareos itself to talk to gotochanger?</h4>
+<p>See <a href="#bareos-integration">Bareos Integration</a> - Autochanger/Device resources, the Drive Index gotcha, and
+scoping one Autochanger to one logical library - or generate a ready-to-paste config skeleton from Admin &gt;
+Logical Libraries &gt; &quot;Bareos Config&quot;.</p>
 
     <footer class="guide-footer">
       gotochanger User Guide &middot; also see <a href="/docs" target="_blank" rel="noopener">API Docs</a> for the full REST reference &middot; <a href="/">back to the dashboard</a>

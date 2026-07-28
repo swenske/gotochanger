@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gotochanger &mdash; User Guide</title>
+{{- if .IsEmbed}}
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+{{- end}}
+<link rel="stylesheet" href="{{.AssetPrefix}}guide.css">
+</head>
+<body>
+
+<div class="guide-shell">
+  <nav class="guide-toc" id="guideToc">
+    <div class="guide-toc-brand">
+      <svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3"/><circle cx="11" cy="16" r="4.2"/><circle cx="21" cy="16" r="4.2"/><circle cx="11" cy="16" r="1.1" fill="currentColor" stroke="none"/><circle cx="21" cy="16" r="1.1" fill="currentColor" stroke="none"/><path d="M2 22h28"/></svg>
+      gotochanger
+      <span>User Guide</span>
+    </div>
+    {{- if .BackHref}}
+    <a class="guide-toc-back" href="{{.BackHref}}">{{.BackLabel}}</a>
+    {{- end}}
+
+    {{- range .NavGroups}}
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">{{.Label}}</div>
+      {{- range .Links}}
+      <a href="{{.Href}}">{{.Label}}</a>
+      {{- end}}
+    </div>
+    {{- end}}
+  </nav>
+
+  <main class="guide-content">
+    {{.Content}}
+    <footer class="guide-footer">
+      gotochanger User Guide
+      {{- if .DocsHref}} &middot; also see <a href="{{.DocsHref}}" target="_blank" rel="noopener">API Docs</a> for the full REST reference{{end}}
+      {{- if .IsEmbed}} &middot; <a href="{{.BackHref}}">back to the dashboard</a>{{end}}
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.guide-toc a[href^="#"]'));
+  var sections = links
+    .map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  if (!sections.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var current = null;
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      if (id === current) return;
+      current = id;
+      links.forEach(function (a) { a.classList.remove('active'); });
+      if (byId[id]) {
+        byId[id].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+  sections.forEach(function (s) { observer.observe(s); });
+})();
+</script>
+</body>
+</html>

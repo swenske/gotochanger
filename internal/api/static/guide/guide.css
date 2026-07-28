@@ -130,8 +130,7 @@ body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; 
   max-width: 860px;
 }
 
-.guide-content section { margin-bottom: 3rem; scroll-margin-top: 1.2rem; }
-.guide-content section section { margin-bottom: 2.2rem; }
+.guide-content h1, .guide-content h2, .guide-content h3, .guide-content h4 { scroll-margin-top: 1.2rem; }
 
 .guide-content h1 {
   display: flex;
@@ -146,10 +145,11 @@ body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; 
 }
 .guide-content h2 {
   font-size: 1.35rem;
-  margin: 0 0 0.9rem;
+  margin: 2.6rem 0 0.9rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--border);
 }
+.guide-content h2:first-child { margin-top: 0; }
 .guide-content h3 { font-size: 1.05rem; color: var(--text); margin: 1.4rem 0 0.5rem; }
 .guide-content h4 { font-size: 0.92rem; color: var(--accent-glow); margin: 1.1rem 0 0.4rem; text-transform: uppercase; letter-spacing: .03em; }
 .guide-content p { margin: 0 0 0.9rem; }
@@ -189,14 +189,18 @@ body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; 
 .callout-warn .icon { color: var(--warn); }
 .callout-note .icon { color: var(--muted); }
 
-.step-list { counter-reset: step; list-style: none; padding-left: 0; }
-.step-list > li {
+/* Every ordered list in the guide gets the numbered-badge treatment (not
+   just a hand-picked ".step-list" subset) - this is what lets docs/guide's
+   Markdown source use plain "1. ..." lists for cookbook/workflow steps
+   instead of hand-written HTML. */
+.guide-content ol { counter-reset: step; list-style: none; padding-left: 0; }
+.guide-content ol > li {
   counter-increment: step;
   position: relative;
   padding: 0.2rem 0 0.2rem 2.4rem;
   margin-bottom: 1rem;
 }
-.step-list > li::before {
+.guide-content ol > li::before {
   content: counter(step);
   position: absolute;
   left: 0;
@@ -213,10 +217,13 @@ body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; 
   justify-content: center;
 }
 
-table.ref-table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.4rem; font-size: 0.86rem; }
-table.ref-table th, table.ref-table td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); }
-table.ref-table th { color: var(--muted); font-weight: 600; }
-table.ref-table code { white-space: nowrap; }
+/* Likewise, every table (incl. plain GFM Markdown tables) gets the
+   reference-table treatment - no separate ".ref-table" class needed in
+   the Markdown source. */
+.guide-content table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.4rem; font-size: 0.86rem; }
+.guide-content table th, .guide-content table td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); }
+.guide-content table th { color: var(--muted); font-weight: 600; }
+.guide-content table code { white-space: nowrap; }
 
 .led-legend { display: flex; flex-direction: column; gap: 0.6rem; margin: 1rem 0 1.4rem; }
 .led-legend-row { display: flex; align-items: center; gap: 0.7rem; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.55rem 0.8rem; }
