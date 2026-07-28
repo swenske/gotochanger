@@ -60,7 +60,7 @@ func renderFile(md goldmark.Markdown, src []byte, used usedHeadingIDs) (fileResu
 		id := headingID(h)
 		id = used.claim(id)
 		h.SetAttribute([]byte("id"), []byte(id))
-		label := string(h.Text(src))
+		label := headingText(h, src)
 
 		switch h.Level {
 		case 1:
@@ -110,4 +110,28 @@ func headingID(h *ast.Heading) string {
 	}
 	b, _ := v.([]byte)
 	return string(b)
+}
+
+// headingText extracts a node's plain-text content without using the
+// deprecated Node.Text (every concrete node's own Text() method, and
+// BaseNode.Text()'s generic fallback, carry an SA1019 deprecation as of
+// this vendored goldmark version) - walks children directly via their
+// Segment/Value fields instead, recursing into any other inline wrapper
+// (emphasis, links, code spans, ...) the same way the deprecated walker did.
+func headingText(n ast.Node, source []byte) string {
+	var buf bytes.Buffer
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		switch v := c.(type) {
+		case *ast.Text:
+			buf.Write(v.Segment.Value(source))
+			if v.SoftLineBreak() {
+				buf.WriteByte('\n')
+			}
+		case *ast.String:
+			buf.Write(v.Value)
+		default:
+			buf.WriteString(headingText(c, source))
+		}
+	}
+	return buf.String()
 }
