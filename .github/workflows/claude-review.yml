@@ -20,6 +20,7 @@ jobs:
   review:
     if: >
       contains(github.event.comment.body, '@claude') &&
+      github.event.comment.user.login != 'claude[bot]' &&
       github.event.issue.pull_request != null
     runs-on: ubuntu-latest
     steps:
