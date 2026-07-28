@@ -18,3 +18,9 @@ debian/*.debhelper
 
 # goreleaser build output
 /dist/
+
+# make site output (docs/guide/**.md -> static site export)
+/site/
+
+# stray `go build ./tools/docgen/...` output if run without -o
+/docgen

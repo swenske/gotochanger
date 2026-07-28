@@ -119,12 +119,13 @@ and backups; or drive everything from the CLI:
 
 ```sh
 # gotochangerctl talks to the trusted local Unix socket by default, no token needed
-# example below assumes 20 storage slots and 4 I/O slots addressed as 21..24
+# example below assumes 20 storage slots and 4 I/O slots addressed as 21..24, and a
+# tape set named "Set1" already created (e.g. by the setup wizard)
 gotochangerctl status
-gotochangerctl outside-create Vol0001 BC0001 10GiB # create a tape outside the library
-gotochangerctl io-door open                         # open mail slot door
-gotochangerctl io-door close '[{"action":"load","address":21,"label":"Vol0001"}]'
-gotochangerctl move ioslot 21 slot 1               # robot move inside the library
+gotochangerctl tape-set add-tape Set1 Vol0001       # create a tape outside the library
+gotochangerctl io-door 1 open                       # open mailbox 1's mail slot door
+gotochangerctl io-door 1 close '[{"action":"load","address":21,"barcode":"Vol0001"}]'
+gotochangerctl move ioslot 21 slot 1                # robot move inside the library
 gotochangerctl load slot 1 0                        # load slot 1 into drive 0
 gotochangerctl unload 0 slot 1                      # unload drive 0 back to slot 1
 gotochangerctl events
@@ -284,9 +285,8 @@ sudo adduser bareos gotochanger
 
 Supported changer commands (matching `disk-changer.in`): `load`, `unload`,
 `list`, `listall`, `slots`, `loaded`, `transfer`. Extra commands usable by
-hand (never invoked by Bareos itself): `outside`, `outside-create`,
-`outside-delete`, `io-door`, `storage-door`, `ioslots`, `offsite-send`,
-`offsite-recall`.
+hand (never invoked by Bareos itself): `outside`, `outside-delete`,
+`io-door`, `storage-door`, `ioslots`, `offsite-send`, `offsite-recall`.
 
 ### Scoping an Autochanger to one logical library
 
@@ -427,7 +427,9 @@ Neither requires internet access to view: both the Swagger UI assets and
 the guide are vendored and embedded in the binary. Use the "Authorize"
 button with an API token, or just stay logged into the web UI in the same
 browser (the session cookie is sent automatically for same-origin
-requests).
+requests). The same guide is also published at
+[swenske.github.io/gotochanger](https://swenske.github.io/gotochanger/)
+for browsing without a running `gotochangerd`.
 
 ## SNMP traps
 
@@ -520,10 +522,15 @@ also available as [GitHub Releases](https://github.com/swenske/gotochanger/relea
 ## Building from source
 
 ```sh
-make build          # binaries in ./bin
+make build          # binaries in ./bin (also regenerates the embedded User Guide - see below)
 make test
 make install DESTDIR=/some/root   # used by debian/rules
 ```
+
+The User Guide's canonical source is Markdown under `docs/guide/`; `make guide` renders it (via
+`tools/docgen`, a small goldmark-based generator) into the HTML embedded at `/guide` - `make build` always
+runs this first. `make site` additionally exports the same content as a self-contained static site to
+`./site/`, used to publish the guide externally (see `.github/workflows/docs.yml`).
 
 ## Building the Debian package
 
