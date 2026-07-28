@@ -102,13 +102,19 @@ func renderFile(md goldmark.Markdown, src []byte, used usedHeadingIDs) (fileResu
 
 // headingID reads the id WithAutoHeadingID already assigned to h during
 // parsing (always present - the parser is configured with that option in
-// main.go).
+// main.go). Panics rather than silently falling back to an empty/wrong id
+// on a violated assumption - this only runs as part of `make guide`/`make
+// site`, so a loud failure there is preferable to a quietly broken anchor
+// in the generated page.
 func headingID(h *ast.Heading) string {
 	v, ok := h.AttributeString("id")
 	if !ok {
-		return ""
+		panic("docgen: heading has no \"id\" attribute - WithAutoHeadingID should have set one for every heading")
 	}
-	b, _ := v.([]byte)
+	b, ok := v.([]byte)
+	if !ok {
+		panic(fmt.Sprintf("docgen: heading \"id\" attribute has unexpected type %T (want []byte)", v))
+	}
 	return string(b)
 }
 
