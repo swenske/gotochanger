@@ -11,7 +11,7 @@ on:
     types: [created]
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -32,7 +32,9 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--model claude-haiku-4-5-20251001"
+          claude_args: |
+            --model claude-haiku-4-5-20251001
+            --allowedTools "Read,Grep,Glob,Bash(gh pr comment:*),Bash(gh pr diff:*)"
           # This project is a stateful simulator (a virtual tape library)
           # built around a single shared `Library` struct guarded by one
           # sync.RWMutex - its own history is full of real bugs from
@@ -41,7 +43,6 @@ jobs:
           prompt: |
             Review this pull request to gotochanger, a Bareos tape-autochanger
             simulator written in Go. Focus on:
-
             - Correctness bugs: off-by-one errors, incorrect error handling,
               nil-pointer/bounds issues, and edge cases in element/slot/drive
               addressing logic.
@@ -54,7 +55,11 @@ jobs:
               consistent sentinel-error usage, no swallowed errors.
             - Edge cases: empty/zero-value inputs, restart/reload paths,
               and anything that changes on-disk or database state.
-
             Be specific and reference exact file/line locations. Skip style
             nitpicks already covered by golangci-lint (govet, staticcheck,
             errcheck, ineffassign, unused, gosimple, misspell).
+
+            Once your review is ready, post it as a single comment using:
+            gh pr comment ${{ github.event.issue.number || github.event.pull_request.number }} --body "<your review>"
+        env:
+          GH_TOKEN: ${{ github.token }}
