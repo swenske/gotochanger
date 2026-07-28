@@ -1,3 +1,22 @@
+gotochanger (0.7.3) UNRELEASED; urgency=medium
+
+  * cicd: Change issue permissions from read to write
+  * Change model argument to claude_args format
+  * Refactor magazine and mailbox handling to remove base_address (#6)
+  * Enhance CLAUDE review workflow configuration
+  * Modify Claude review workflow configuration
+  * Refine Claude issue triage workflow and prompt
+  * Enhance ArmPosition to include slot/ioslot labels and update related functions for improved clarity in logging and state representation (#7)
+  * Enable full output in claude-review workflow
+  * Refine Claude PR review workflow and prompt
+  * Refine Claude issue triage workflow
+  * Update CLAUDE review workflow condition
+  * Update triage job condition to exclude claude[bot]
+  * Rewrite the User Guide as Markdown with a single-source doc pipeline (#8)
+  * Add documentation badge to README
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Tue, 28 Jul 2026 14:58:35 +0000
+
 gotochanger (0.7.2) UNRELEASED; urgency=medium
 
   * Add logical library color helpers and update wizard state handling for tape sets (#4)
