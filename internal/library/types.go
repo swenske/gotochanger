@@ -44,9 +44,17 @@ type Volume struct {
 	CleaningUsageCount int    `json:"cleaning_usage_count,omitempty"`
 }
 
-// Slot is a Storage Element: a home location for a Volume.
+// Slot is a Storage Element: a home location for a Volume. Address is a
+// flat, dense, library-wide integer recomputed live on every topology
+// rebuild (see Library.buildTopologyLocked) - never persisted as a fixed
+// value, so it may change whenever a magazine is added, deleted, or
+// resized. Label is the human-facing, magazine-relative address
+// ("<magazine ordinal>.<slot offset>", e.g. "2.3") admin tooling
+// (gotochangerctl, the Admin API, the web UI) displays instead - see
+// Library.buildTopologyLocked for how both are derived.
 type Slot struct {
 	Address    int     `json:"address"`
+	Label      string  `json:"label,omitempty"`
 	MagazineID string  `json:"magazine_id,omitempty"`
 	Volume     *Volume `json:"volume,omitempty"`
 }
@@ -55,9 +63,12 @@ type Slot struct {
 // remove media from the library without opening the whole enclosure.
 // MailboxID identifies which mailbox (I/O door) it belongs to, mirroring
 // Slot.MagazineID — mailboxes are real, independently addressable groups,
-// not just a flat count.
+// not just a flat count. Address/Label mirror Slot's exactly, except
+// Label's ordinal counts mailboxes independently from magazines (a
+// mailbox's own "1st, 2nd..." sequence, not continuing magazines').
 type IOSlot struct {
 	Address   int     `json:"address"`
+	Label     string  `json:"label,omitempty"`
 	MailboxID string  `json:"mailbox_id,omitempty"`
 	Volume    *Volume `json:"volume,omitempty"`
 }

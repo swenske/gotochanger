@@ -102,8 +102,8 @@ func TestArmParkedWhileAnyDoorOpen(t *testing.T) {
 	cfg := config.Default()
 	cfg.DataDir = tmp
 	cfg.Library.Magazines = []config.MagazineConfig{
-		{ID: "Magazine1", Slots: 2, BaseAddress: 1},
-		{ID: "Magazine2", Slots: 2, BaseAddress: 3},
+		{ID: "Magazine1", Slots: 2},
+		{ID: "Magazine2", Slots: 2},
 	}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"
@@ -278,8 +278,8 @@ func TestArmStepsAnnounceParkedTransitionOnceAcrossMultipleDoors(t *testing.T) {
 	cfg := config.Default()
 	cfg.DataDir = tmp
 	cfg.Library.Magazines = []config.MagazineConfig{
-		{ID: "Magazine1", Slots: 2, BaseAddress: 1},
-		{ID: "Magazine2", Slots: 2, BaseAddress: 3},
+		{ID: "Magazine1", Slots: 2},
+		{ID: "Magazine2", Slots: 2},
 	}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"

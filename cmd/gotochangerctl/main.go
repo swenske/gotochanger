@@ -108,9 +108,9 @@ func run(args []string) error {
 
 	case "load":
 		if len(cmdArgs) != 3 {
-			return fmt.Errorf("usage: load <slot|ioslot> <address> <drive>")
+			return fmt.Errorf("usage: load <slot|ioslot> <address|label> <drive>")
 		}
-		addr, err := strconv.Atoi(cmdArgs[1])
+		addr, err := resolveAddress(c, cmdArgs[0], cmdArgs[1])
 		if err != nil {
 			return err
 		}
@@ -122,13 +122,13 @@ func run(args []string) error {
 
 	case "unload":
 		if len(cmdArgs) != 3 {
-			return fmt.Errorf("usage: unload <drive> <slot|ioslot> <address>")
+			return fmt.Errorf("usage: unload <drive> <slot|ioslot> <address|label>")
 		}
 		drive, err := strconv.Atoi(cmdArgs[0])
 		if err != nil {
 			return err
 		}
-		addr, err := strconv.Atoi(cmdArgs[2])
+		addr, err := resolveAddress(c, cmdArgs[1], cmdArgs[2])
 		if err != nil {
 			return err
 		}
@@ -136,13 +136,13 @@ func run(args []string) error {
 
 	case "move":
 		if len(cmdArgs) != 4 {
-			return fmt.Errorf("usage: move <slot|ioslot> <address> <slot|ioslot> <address>")
+			return fmt.Errorf("usage: move <slot|ioslot> <address|label> <slot|ioslot> <address|label>")
 		}
-		fromAddr, err := strconv.Atoi(cmdArgs[1])
+		fromAddr, err := resolveAddress(c, cmdArgs[0], cmdArgs[1])
 		if err != nil {
 			return err
 		}
-		toAddr, err := strconv.Atoi(cmdArgs[3])
+		toAddr, err := resolveAddress(c, cmdArgs[2], cmdArgs[3])
 		if err != nil {
 			return err
 		}
@@ -273,11 +273,11 @@ func run(args []string) error {
 			}
 			fmt.Println("Unassigned slots:")
 			for _, s := range u.Slots {
-				fmt.Printf("  slot %d (magazine %s)\n", s.Address, s.MagazineID)
+				fmt.Printf("  slot %s (magazine %s)\n", slotLabel(s.Label, s.Address), s.MagazineID)
 			}
 			fmt.Println("Unassigned I/O slots:")
 			for _, io := range u.IOSlots {
-				fmt.Printf("  ioslot %d\n", io.Address)
+				fmt.Printf("  ioslot %s\n", slotLabel(io.Label, io.Address))
 			}
 		})
 
@@ -552,7 +552,7 @@ func runMagazine(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(mags, jsonOut, func() {
 			for _, m := range mags {
-				fmt.Printf("%-16s %d slots\n", m.ID, m.Slots)
+				fmt.Printf("%-4d %-16s %d slots\n", m.Ordinal, m.ID, m.Slots)
 			}
 		})
 	case "update":
@@ -595,7 +595,7 @@ func runMailbox(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(mbs, jsonOut, func() {
 			for _, m := range mbs {
-				fmt.Printf("%-16s %d slots\n", m.ID, m.Slots)
+				fmt.Printf("%-4d %-16s %d slots\n", m.Ordinal, m.ID, m.Slots)
 			}
 		})
 	case "update":
@@ -687,9 +687,9 @@ func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 		})
 	case "send":
 		if len(args) != 3 {
-			return fmt.Errorf("usage: offsite send <slot|ioslot> <address>")
+			return fmt.Errorf("usage: offsite send <slot|ioslot> <address|label>")
 		}
-		addr, err := strconv.Atoi(args[2])
+		addr, err := resolveAddress(c, args[1], args[2])
 		if err != nil {
 			return err
 		}
@@ -701,9 +701,9 @@ func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 		return nil
 	case "recall":
 		if len(args) != 4 {
-			return fmt.Errorf("usage: offsite recall <barcode> <slot|ioslot> <address>")
+			return fmt.Errorf("usage: offsite recall <barcode> <slot|ioslot> <address|label>")
 		}
-		addr, err := strconv.Atoi(args[3])
+		addr, err := resolveAddress(c, args[2], args[3])
 		if err != nil {
 			return err
 		}
@@ -1173,6 +1173,50 @@ func runRoboticFault(c *apiclient.Client, args []string) error {
 	}
 }
 
+// resolveAddress parses a slot/ioslot address argument for load/unload/
+// move/offsite, accepting either a bare integer (the flat physical
+// address, unchanged from before this existed) or the human-facing
+// "<ordinal>.<offset>" Label notation (see library.Slot.Label/
+// library.IOSlot.Label), resolved against a live Status() call since a
+// Label's underlying Address isn't knowable without one.
+func resolveAddress(c *apiclient.Client, kind, token string) (int, error) {
+	if addr, err := strconv.Atoi(token); err == nil {
+		return addr, nil
+	}
+	major, minor, ok := strings.Cut(token, ".")
+	if !ok {
+		return 0, fmt.Errorf("invalid %s address %q: expected an integer address or an \"N.M\" label", kind, token)
+	}
+	if _, err := strconv.Atoi(major); err != nil {
+		return 0, fmt.Errorf("invalid %s address %q: expected an integer address or an \"N.M\" label", kind, token)
+	}
+	if _, err := strconv.Atoi(minor); err != nil {
+		return 0, fmt.Errorf("invalid %s address %q: expected an integer address or an \"N.M\" label", kind, token)
+	}
+
+	st, err := c.Status()
+	if err != nil {
+		return 0, fmt.Errorf("resolving label %q: %w", token, err)
+	}
+	switch kind {
+	case "slot":
+		for _, s := range st.Slots {
+			if s.Label == token {
+				return s.Address, nil
+			}
+		}
+	case "ioslot":
+		for _, io := range st.IOSlots {
+			if io.Label == token {
+				return io.Address, nil
+			}
+		}
+	default:
+		return 0, fmt.Errorf("resolveAddress: unknown kind %q", kind)
+	}
+	return 0, fmt.Errorf("no %s with label %q", kind, token)
+}
+
 func printStatus(st library.Status) {
 	if st.RoboticFault.Active {
 		fmt.Printf("Robotic arm: FAULT (kind=%s)\n", st.RoboticFault.Kind)
@@ -1193,19 +1237,30 @@ func printStatus(st library.Status) {
 	fmt.Println("IO slots:")
 	for _, io := range st.IOSlots {
 		if io.Volume != nil {
-			fmt.Printf("  slot %d %s\n", io.Address, io.Volume.Barcode)
+			fmt.Printf("  slot %s %s\n", slotLabel(io.Label, io.Address), io.Volume.Barcode)
 		} else {
-			fmt.Printf("  slot %d empty\n", io.Address)
+			fmt.Printf("  slot %s empty\n", slotLabel(io.Label, io.Address))
 		}
 	}
 	fmt.Println("Storage slots:")
 	for _, s := range st.Slots {
 		if s.Volume != nil {
-			fmt.Printf("  slot %-3d %s\n", s.Address, s.Volume.Barcode)
+			fmt.Printf("  slot %-5s %s\n", slotLabel(s.Label, s.Address), s.Volume.Barcode)
 		} else {
-			fmt.Printf("  slot %-3d empty\n", s.Address)
+			fmt.Printf("  slot %-5s empty\n", slotLabel(s.Label, s.Address))
 		}
 	}
+}
+
+// slotLabel prefers a slot/ioslot's human-facing Label ("<magazine/mailbox
+// ordinal>.<offset>", e.g. "2.3") over its flat Address for CLI display,
+// falling back to the address if Label is somehow empty (shouldn't happen
+// for a real slot, but this must never crash on one that lacks it).
+func slotLabel(label string, address int) string {
+	if label != "" {
+		return label
+	}
+	return strconv.Itoa(address)
 }
 
 func printUsage() {
@@ -1216,9 +1271,9 @@ subcommands:
   events
   volumes
 	outside
-  load <slot|ioslot> <address> <drive>
-  unload <drive> <slot|ioslot> <address>
-  move <slot|ioslot> <address> <slot|ioslot> <address>
+  load <slot|ioslot> <address|label> <drive>
+  unload <drive> <slot|ioslot> <address|label>
+  move <slot|ioslot> <address|label> <slot|ioslot> <address|label>
 	outside-delete <barcode>
 	io-door <mailbox-id> open [pin] | io-door <mailbox-id> close [actions-json]
 	storage-door <magazine-id> open [pin] | storage-door <magazine-id> close [actions-json]
@@ -1253,6 +1308,7 @@ subcommands:
   wizard status
 
 note: ioslot addresses are global contiguous element addresses (after storage slots)
+note: <address|label> accepts either a bare integer address or the human-facing "<ordinal>.<offset>" label shown by status/magazine/mailbox commands (e.g. "2.3")
 note: --logical-library scopes load/unload/move/status to one logical library`)
 }
 

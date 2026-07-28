@@ -509,8 +509,19 @@ func (c *Client) FSBrowse(path string) (FSBrowseResult, error) {
 
 // ---- magazines ----
 
-func (c *Client) ListMagazines() ([]config.MagazineConfig, error) {
-	var out []config.MagazineConfig
+// MagazineInfo mirrors the Admin API's magazine response DTO
+// (internal/api/handlers_topology.go's magazineView) - not just
+// config.MagazineConfig, since the API additionally reports Ordinal, this
+// magazine's live 1-based position (matching the number before the dot in
+// its slots' Label), recomputed on every response and never stored.
+type MagazineInfo struct {
+	ID      string `json:"id"`
+	Slots   int    `json:"slots"`
+	Ordinal int    `json:"ordinal"`
+}
+
+func (c *Client) ListMagazines() ([]MagazineInfo, error) {
+	var out []MagazineInfo
 	err := c.do(http.MethodGet, "/api/v1/magazines", nil, &out)
 	return out, err
 }
@@ -529,8 +540,19 @@ func (c *Client) DeleteMagazine(id string) error {
 
 // ---- mailboxes ----
 
-func (c *Client) ListMailboxes() ([]config.MailboxConfig, error) {
-	var out []config.MailboxConfig
+// MailboxInfo mirrors the Admin API's mailbox response DTO
+// (internal/api/handlers_topology.go's mailboxView) - see MagazineInfo's
+// doc comment; Ordinal is numbered independently from magazines' (see
+// library.IOSlot.Label).
+type MailboxInfo struct {
+	ID      string `json:"id"`
+	Slots   int    `json:"slots"`
+	Ordinal int    `json:"ordinal"`
+	PINSet  bool   `json:"pin_set"`
+}
+
+func (c *Client) ListMailboxes() ([]MailboxInfo, error) {
+	var out []MailboxInfo
 	err := c.do(http.MethodGet, "/api/v1/mailboxes", nil, &out)
 	return out, err
 }

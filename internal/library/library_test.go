@@ -25,8 +25,8 @@ func newTestLibrary(t *testing.T) *Library {
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
-	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	cfg.Library.TapeTypes = []config.TapeType{{Name: "TESTTYPE", Capacity: "1MiB", BarcodeFamily: "generic", VolSerLength: 8}}
@@ -396,7 +396,7 @@ func TestStorageDoorIsIndependentPerMagazine(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}, {ID: "Magazine2", Slots: 2, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}, {ID: "Magazine2", Slots: 2}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	lib, err := New(cfg, nil, nil, nil)
 	if err != nil {
@@ -484,8 +484,8 @@ func newTestLibraryWithLatency(t *testing.T, ls config.LatencySettings) *Library
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
-	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	cfg.Library.TapeTypes = []config.TapeType{{Name: "TESTTYPE", Capacity: "1MiB", BarcodeFamily: "generic", VolSerLength: 8}}
@@ -671,15 +671,14 @@ func TestRoboticFaultPersistsAcrossRestore(t *testing.T) {
 
 // TestReconfigureAddingMagazineDoesNotMoveExistingVolumes is an
 // end-to-end regression test for the critical bug reported against
-// magazine creation: adding a new magazine must never shift an existing
-// magazine's slot addresses or reassign its volumes to the new
-// magazine. buildTopologyLocked assigns each Slot.Address from its own
-// magazine's persisted BaseAddress (see the store's
-// migrateTopologyBaseAddresses doc comment), independent of every other
-// magazine, so this test appends a new magazine (with its own
-// non-overlapping BaseAddress, exactly as the topology store's
-// nextTopologyBaseAddressTx would assign in real use) and asserts the
-// existing magazine's volume stays exactly where it was.
+// magazine creation: adding a new magazine must never shift an existing,
+// earlier magazine's slot addresses or reassign its volumes to the new
+// magazine. buildTopologyLocked computes every Slot.Address live, in
+// magazine list order (see its doc comment) - appending a new magazine at
+// the end of the list never changes anything about the magazines already
+// listed before it, so an existing magazine's addresses (and, thanks to
+// Reconfigure's identity-based preservation, its volumes) are unaffected
+// either way.
 func TestReconfigureAddingMagazineDoesNotMoveExistingVolumes(t *testing.T) {
 	lib := newTestLibrary(t)
 	placeVolumeInFirstSlot(lib, "VOLA0001")
@@ -688,7 +687,7 @@ func TestReconfigureAddingMagazineDoesNotMoveExistingVolumes(t *testing.T) {
 
 	cfg := lib.cfg
 	cfg.Library.Magazines = append(append([]config.MagazineConfig(nil), cfg.Library.Magazines...),
-		config.MagazineConfig{ID: "Cleaning Tapes", Slots: 5, BaseAddress: 41})
+		config.MagazineConfig{ID: "Cleaning Tapes", Slots: 5})
 	if err := lib.Reconfigure(cfg); err != nil {
 		t.Fatalf("reconfigure: %v", err)
 	}
@@ -710,24 +709,28 @@ func TestReconfigureAddingMagazineDoesNotMoveExistingVolumes(t *testing.T) {
 	}
 }
 
-// TestReconfigureDeletingMagazineDoesNotMoveOrLoseOtherMagazinesVolumes
+// TestReconfigureDeletingMagazineRenumbersButKeepsOtherMagazinesVolumes
 // reproduces the exact real-world report that followed the creation-only
-// fix above: a 20-slot "Magazine5" and a 5-slot "Cleaning Tapes"
-// magazine both exist, a tape sits in Cleaning Tapes, Magazine5 (which
-// was created *first*, so it occupies the lower address range) gets
-// deleted - Cleaning Tapes' slot addresses, and its tape, must not move
-// or disappear. Before base_address was made permanent, deleting the
-// earlier magazine shrank the running counter's starting point for
-// every later one, and Reconfigure's address-based volume preservation
-// silently dropped the tape (no slot existed at its old address anymore
-// once everything shifted down).
-func TestReconfigureDeletingMagazineDoesNotMoveOrLoseOtherMagazinesVolumes(t *testing.T) {
+// fix above: a 20-slot "Magazine5" and a 5-slot "Cleaning Tapes" magazine
+// both exist, a tape sits in Cleaning Tapes, Magazine5 (which was created
+// *first*, so it occupies the lower address range) gets deleted. Cleaning
+// Tapes' flat Address is now *expected* to shift down (from 21 to 1 -
+// addressing is recomputed live from magazine list order on every
+// rebuild, see buildTopologyLocked's doc comment, so a gapless library
+// stays gapless after a deletion instead of leaving Magazine5's old range
+// stranded). What must never happen is losing or misattributing the tape
+// in the process: Reconfigure now preserves volume placement by
+// (MagazineID, offset) identity, not by raw address (see its doc
+// comment), so the tape must be found - correctly - at Cleaning Tapes'
+// new address, not left behind at the old one or silently handed to a
+// different entity that happens to land there.
+func TestReconfigureDeletingMagazineRenumbersButKeepsOtherMagazinesVolumes(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
 	cfg.Library.Magazines = []config.MagazineConfig{
-		{ID: "Magazine5", Slots: 20, BaseAddress: 1},
-		{ID: "Cleaning Tapes", Slots: 5, BaseAddress: 21},
+		{ID: "Magazine5", Slots: 20},
+		{ID: "Cleaning Tapes", Slots: 5},
 	}
 	cfg.Library.DefaultCapacity = "1MiB"
 	lib, err := New(cfg, nil, nil, nil)
@@ -735,7 +738,6 @@ func TestReconfigureDeletingMagazineDoesNotMoveOrLoseOtherMagazinesVolumes(t *te
 		t.Fatalf("new library: %v", err)
 	}
 
-	// Place a tape directly into Cleaning Tapes' first slot (address 21).
 	var cleaningSlot *Slot
 	for _, s := range lib.slots {
 		if s.MagazineID == "Cleaning Tapes" {
@@ -746,14 +748,16 @@ func TestReconfigureDeletingMagazineDoesNotMoveOrLoseOtherMagazinesVolumes(t *te
 	if cleaningSlot == nil {
 		t.Fatalf("Cleaning Tapes has no slots")
 	}
-	cleaningAddr := cleaningSlot.Address
+	if cleaningSlot.Address != 21 {
+		t.Fatalf("expected Cleaning Tapes' first slot at address 21 (right after Magazine5's 20), got %d", cleaningSlot.Address)
+	}
 	cleaningSlot.Volume = &Volume{Barcode: "00001CLN", Path: filepath.Join(tmp, "00001CLN"), Cleaning: true, CleaningState: CleaningTapeAvailable}
 
 	// Delete Magazine5 (simulating the Admin API's handleDeleteMagazine,
 	// which just resubmits the topology minus that one magazine).
 	newCfg := lib.cfg
 	newCfg.Library.Magazines = []config.MagazineConfig{
-		{ID: "Cleaning Tapes", Slots: 5, BaseAddress: 21},
+		{ID: "Cleaning Tapes", Slots: 5},
 	}
 	if err := lib.Reconfigure(newCfg); err != nil {
 		t.Fatalf("reconfigure (delete Magazine5): %v", err)
@@ -764,27 +768,162 @@ func TestReconfigureDeletingMagazineDoesNotMoveOrLoseOtherMagazinesVolumes(t *te
 	}
 	var found *Slot
 	for _, s := range lib.slots {
-		if s.Address == cleaningAddr {
+		if s.MagazineID == "Cleaning Tapes" && s.Volume != nil {
 			found = s
 		}
 	}
 	if found == nil {
-		t.Fatalf("expected a slot to still exist at address %d after deleting Magazine5, got addresses %v", cleaningAddr, slotAddresses(lib.slots))
+		t.Fatalf("expected Cleaning Tapes' tape to still be tracked after deleting Magazine5, got slots %+v", lib.slots)
 	}
-	if found.MagazineID != "Cleaning Tapes" {
-		t.Fatalf("expected slot %d to still belong to Cleaning Tapes, got %q", cleaningAddr, found.MagazineID)
+	if found.Address != 1 {
+		t.Fatalf("expected Cleaning Tapes' occupied slot to renumber to address 1 after deleting Magazine5, got %d", found.Address)
 	}
-	if found.Volume == nil || found.Volume.Barcode != "00001CLN" {
-		t.Fatalf("expected tape 00001CLN to still be at slot %d after deleting Magazine5, got %+v", cleaningAddr, found.Volume)
+	if found.Label != "1.1" {
+		t.Fatalf("expected Cleaning Tapes' occupied slot to renumber to label \"1.1\" after deleting Magazine5, got %q", found.Label)
+	}
+	if found.Volume.Barcode != "00001CLN" {
+		t.Fatalf("expected tape 00001CLN to still be in Cleaning Tapes' first slot after deleting Magazine5, got %+v", found.Volume)
 	}
 }
 
-func slotAddresses(slots []*Slot) []int {
-	out := make([]int, len(slots))
-	for i, s := range slots {
-		out[i] = s.Address
+// TestReconfigureShiftsDriveOriginWithItsSlot is a regression test for the
+// Drive.Origin staleness risk identified while designing gapless
+// addressing: a drive that still has a tape checked out remembers where it
+// came from as a flat Address (see ElementRef), not an identity - if a
+// magazine ahead of the tape's home magazine is added/deleted/resized and
+// shifts that magazine's addresses, Origin must shift by the same amount
+// (see shiftOriginAcrossRebuild), or it would end up pointing at whatever
+// unrelated slot now happens to sit at the old address once that range is
+// gapless and thus actually reused.
+func TestReconfigureShiftsDriveOriginWithItsSlot(t *testing.T) {
+	lib := newTestLibrary(t)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	homeMagID := lib.slots[0].MagazineID
+	homeAddr := lib.slots[0].Address
+
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: homeAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	return out
+	origin, err := lib.DriveOriginSlot(0)
+	if err != nil {
+		t.Fatalf("drive origin slot: %v", err)
+	}
+	if origin != homeAddr {
+		t.Fatalf("expected origin address %d right after load, got %d", homeAddr, origin)
+	}
+
+	// Insert a new 3-slot magazine *ahead* of the existing one, shifting
+	// the existing magazine's (and thus the checked-out tape's origin
+	// slot's) flat Address by 3.
+	cfg := lib.cfg
+	cfg.Library.Magazines = append([]config.MagazineConfig{{ID: "NewFirst", Slots: 3}}, cfg.Library.Magazines...)
+	if err := lib.Reconfigure(cfg); err != nil {
+		t.Fatalf("reconfigure: %v", err)
+	}
+
+	newOrigin, err := lib.DriveOriginSlot(0)
+	if err != nil {
+		t.Fatalf("drive origin slot after reconfigure: %v", err)
+	}
+	if newOrigin != homeAddr+3 {
+		t.Fatalf("expected origin address to shift from %d to %d after inserting a 3-slot magazine ahead of it, got %d", homeAddr, homeAddr+3, newOrigin)
+	}
+	var atNewOrigin *Slot
+	for _, s := range lib.slots {
+		if s.Address == newOrigin {
+			atNewOrigin = s
+		}
+	}
+	if atNewOrigin == nil || atNewOrigin.MagazineID != homeMagID {
+		t.Fatalf("expected address %d to belong to magazine %q, got %+v", newOrigin, homeMagID, atNewOrigin)
+	}
+}
+
+// TestReconfigureAcrossTwoLogicalLibrariesPreservesVolumesAndAddressing is
+// a regression test for the exact scenario CLAUDE.md flags as untested by
+// anything with fewer than two logical libraries: two logical libraries
+// each own a different magazine - Library1 owns the physically-first one,
+// Library2 owns a later one whose addresses aren't the lowest in the
+// library. Deleting Library1's (empty) magazine must correctly renumber
+// Library2's magazine's flat addresses (it's no longer second in the
+// list) while keeping Library2's volume tracked and reachable through the
+// logical-library-scoped view (LogicalLibraryStatus), not just the
+// unscoped one.
+func TestReconfigureAcrossTwoLogicalLibrariesPreservesVolumesAndAddressing(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{
+		{ID: "Mag1", Slots: 5},
+		{ID: "Mag2", Slots: 5},
+	}
+	cfg.Library.DriveDevices = []config.DriveDeviceConfig{
+		{DevicePath: filepath.Join(tmp, "drives", "drive0")},
+		{DevicePath: filepath.Join(tmp, "drives", "drive1")},
+	}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.LogicalLibraries = []config.LogicalLibraryConfig{
+		{Name: "Library1", Drives: []int{0}, Magazines: []string{"Mag1"}},
+		{Name: "Library2", Drives: []int{1}, Magazines: []string{"Mag2"}},
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+
+	var mag2Slot *Slot
+	for _, s := range lib.slots {
+		if s.MagazineID == "Mag2" {
+			mag2Slot = s
+			break
+		}
+	}
+	if mag2Slot == nil {
+		t.Fatalf("Mag2 has no slots")
+	}
+	if mag2Slot.Address != 6 {
+		t.Fatalf("expected Mag2's first slot at address 6 (right after Mag1's 5), got %d", mag2Slot.Address)
+	}
+	mag2Slot.Volume = &Volume{Barcode: "LIB20001", Path: filepath.Join(tmp, "LIB20001")}
+
+	before := lib.LogicalLibraryStatus("Library2")
+	if len(before.Slots) != 5 || before.Slots[0].Volume == nil || before.Slots[0].Volume.Barcode != "LIB20001" {
+		t.Fatalf("expected Library2's scoped status to show the volume before reconfigure, got %+v", before.Slots)
+	}
+
+	// Delete Mag1 (Library1's magazine - empty, a legitimate delete) -
+	// Mag2's flat addresses must renumber down to 1-5.
+	newCfg := lib.cfg
+	newCfg.Library.Magazines = []config.MagazineConfig{{ID: "Mag2", Slots: 5}}
+	newCfg.Library.LogicalLibraries = []config.LogicalLibraryConfig{
+		{Name: "Library2", Drives: []int{1}, Magazines: []string{"Mag2"}},
+	}
+	if err := lib.Reconfigure(newCfg); err != nil {
+		t.Fatalf("reconfigure (delete Mag1): %v", err)
+	}
+
+	after := lib.LogicalLibraryStatus("Library2")
+	if len(after.Slots) != 5 {
+		t.Fatalf("expected Library2 to still have 5 slots, got %d", len(after.Slots))
+	}
+	var found *Slot
+	for _, s := range after.Slots {
+		if s.Volume != nil {
+			found = s
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected Library2's volume to survive Mag1's deletion, got slots %+v", after.Slots)
+	}
+	if found.Address != 1 {
+		t.Fatalf("expected Mag2's occupied slot to renumber to address 1 after Mag1's deletion, got %d", found.Address)
+	}
+	if found.Label != "1.1" {
+		t.Fatalf("expected Mag2's occupied slot to renumber to label \"1.1\" after Mag1's deletion, got %q", found.Label)
+	}
+	if found.Volume.Barcode != "LIB20001" {
+		t.Fatalf("expected volume LIB20001 to survive, got %+v", found.Volume)
+	}
 }
 
 func TestReconfigureCarriesRoboticFault(t *testing.T) {

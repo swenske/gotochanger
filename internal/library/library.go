@@ -192,22 +192,49 @@ func (l *Library) buildTopologyLocked(cfg config.Config) {
 		l.drives = append(l.drives, &Drive{Index: i, DevicePath: dd.DevicePath, DriveType: dd.DriveType})
 	}
 
-	// Each magazine/mailbox's own persisted BaseAddress (assigned once at
-	// creation by the topology store, never recomputed here) is used
-	// directly - deliberately *not* a running counter across the whole
-	// list, which is what used to make every magazine/mailbox's
-	// addresses depend on everything listed before it. See the store's
-	// migrateTopologyBaseAddresses doc comment for the full history.
-	for _, mag := range cfg.Library.Magazines {
+	// Address is a running counter across the whole list (storage slots
+	// first, then I/O slots right after - one shared contiguous space, per
+	// the mtx/mtx-changer convention), recomputed fresh on every rebuild -
+	// so every magazine/mailbox's flat addresses depend on everything
+	// listed before it, and shift whenever an earlier one is added,
+	// deleted, or resized. That's safe (this codebase used to avoid it,
+	// for good reason - see git history around the since-removed
+	// migrateTopologyBaseAddresses/base_address scheme) only because
+	// Reconfigure/restore below now preserve volume placement, and a
+	// drive's Origin, by (MagazineID/MailboxID, offset-within-entity)
+	// identity rather than by raw Address - an identity that never
+	// changes no matter what else in the topology does, so a shifted
+	// Address can never cause a volume to be dropped or misattributed.
+	//
+	// Label is the human-facing, magazine/mailbox-relative address
+	// ("<ordinal>.<offset>") admin tooling shows instead of the flat
+	// Address - ordinal is this entity's live position (1st, 2nd, 3rd...)
+	// among currently-existing magazines/mailboxes of its own kind (the
+	// two numbered independently), so it too shifts down when an earlier
+	// entity is deleted, same as Address does.
+	addr := 1
+	for magNum, mag := range cfg.Library.Magazines {
 		for i := 0; i < mag.Slots; i++ {
-			l.slots = append(l.slots, &Slot{Address: mag.BaseAddress + i, MagazineID: mag.ID})
+			offset := i + 1
+			l.slots = append(l.slots, &Slot{
+				Address:    addr,
+				Label:      fmt.Sprintf("%d.%d", magNum+1, offset),
+				MagazineID: mag.ID,
+			})
+			addr++
 		}
 	}
 
 	l.mailboxPINHash = map[string]string{}
-	for _, mb := range cfg.Library.Mailboxes {
+	for mbNum, mb := range cfg.Library.Mailboxes {
 		for i := 0; i < mb.Slots; i++ {
-			l.ioslots = append(l.ioslots, &IOSlot{Address: mb.BaseAddress + i, MailboxID: mb.ID})
+			offset := i + 1
+			l.ioslots = append(l.ioslots, &IOSlot{
+				Address:   addr,
+				Label:     fmt.Sprintf("%d.%d", mbNum+1, offset),
+				MailboxID: mb.ID,
+			})
+			addr++
 		}
 		if mb.PINHash != "" {
 			l.mailboxPINHash[mb.ID] = mb.PINHash
@@ -378,28 +405,123 @@ func (l *Library) resolveLogicalLibraryLocked(libCfg config.LogicalLibraryConfig
 	return lib
 }
 
+// magazineSlotKey/mailboxSlotKey identify a Slot/IOSlot by
+// (MagazineID/MailboxID, offset-within-entity) rather than by its flat
+// Address - the identity that survives a topology rebuild even though
+// Address itself is now recomputed (and can shift) on every rebuild. See
+// Reconfigure and restore, which both key volume/drive-origin preservation
+// on this instead of Address for exactly that reason.
+type magazineSlotKey struct {
+	magazineID string
+	offset     int
+}
+
+type mailboxSlotKey struct {
+	mailboxID string
+	offset    int
+}
+
+// slotOffsets/ioslotOffsets derive each element's 1-based offset within its
+// own magazine/mailbox from list order, rather than trusting a stored
+// field - slots/ioslots have always been built (and thus persisted) as
+// consecutive runs per magazine/mailbox in offset order, by
+// buildTopologyLocked, both before and after this field existed, so this
+// works uniformly on both a freshly-built live list and a state.db
+// snapshot saved by a pre-upgrade binary (which has no notion of offset at
+// all) with no separate migration step needed.
+func slotOffsets(slots []*Slot) map[*Slot]magazineSlotKey {
+	keys := make(map[*Slot]magazineSlotKey, len(slots))
+	counts := make(map[string]int, len(slots))
+	for _, s := range slots {
+		counts[s.MagazineID]++
+		keys[s] = magazineSlotKey{s.MagazineID, counts[s.MagazineID]}
+	}
+	return keys
+}
+
+func ioslotOffsets(ioslots []*IOSlot) map[*IOSlot]mailboxSlotKey {
+	keys := make(map[*IOSlot]mailboxSlotKey, len(ioslots))
+	counts := make(map[string]int, len(ioslots))
+	for _, io := range ioslots {
+		counts[io.MailboxID]++
+		keys[io] = mailboxSlotKey{io.MailboxID, counts[io.MailboxID]}
+	}
+	return keys
+}
+
+// shiftOriginAcrossRebuild resolves a Drive's Origin (referencing a
+// slot/ioslot by the flat Address it had *before* a topology rebuild) to
+// the address that same slot/ioslot's (magazine/mailbox, offset) identity
+// has *after* the rebuild - so a drive that still has a tape checked out
+// keeps correctly reporting where it came from even though Address values
+// have shifted, instead of going stale or (worse) silently pointing at
+// whatever unrelated slot now happens to sit at the old address. Returns
+// nil if origin is nil or its magazine/mailbox no longer exists in the new
+// topology, mirroring how a removed slot/ioslot's volume is already
+// dropped from tracking rather than left dangling.
+func shiftOriginAcrossRebuild(origin *ElementRef, oldSlotKeyByAddress map[int]magazineSlotKey, oldIOSlotKeyByAddress map[int]mailboxSlotKey, newSlotAddrByKey map[magazineSlotKey]int, newIOSlotAddrByKey map[mailboxSlotKey]int) *ElementRef {
+	if origin == nil {
+		return nil
+	}
+	switch origin.Kind {
+	case KindSlot:
+		key, ok := oldSlotKeyByAddress[origin.Address]
+		if !ok {
+			return nil
+		}
+		addr, ok := newSlotAddrByKey[key]
+		if !ok {
+			return nil
+		}
+		return &ElementRef{Kind: KindSlot, Address: addr}
+	case KindIOSlot:
+		key, ok := oldIOSlotKeyByAddress[origin.Address]
+		if !ok {
+			return nil
+		}
+		addr, ok := newIOSlotAddrByKey[key]
+		if !ok {
+			return nil
+		}
+		return &ElementRef{Kind: KindIOSlot, Address: addr}
+	default:
+		return origin
+	}
+}
+
 // Reconfigure applies a new topology to an already-running Library without
 // requiring a daemon restart: used when the setup wizard completes and when
 // the Admin API adds/changes drives, magazines, I/O slots, or logical
-// libraries. Existing volume placements are preserved wherever the same
-// address/index still exists in the new topology; addresses that no longer
-// exist are dropped from tracking (the caller is expected to have already
-// refused a removal that would orphan a volume - see the Admin API's
-// magazine-delete handler).
+// libraries. Existing volume placements (and a loaded drive's Origin) are
+// preserved by (magazine/mailbox, offset) identity, not by Address - see
+// magazineSlotKey/shiftOriginAcrossRebuild - so it doesn't matter that flat
+// Address values are recomputed, and can shift, on every rebuild. An
+// identity that no longer exists in the new topology (a deleted magazine/
+// mailbox) is dropped from tracking (the caller is expected to have
+// already refused a removal that would orphan a volume - see the Admin
+// API's magazine-delete handler).
 func (l *Library) Reconfigure(cfg config.Config) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	oldSlots := make(map[int]*Volume, len(l.slots))
+	oldSlotKeys := slotOffsets(l.slots)
+	oldSlots := make(map[magazineSlotKey]*Volume, len(l.slots))
+	oldSlotKeyByAddress := make(map[int]magazineSlotKey, len(l.slots))
 	for _, s := range l.slots {
+		key := oldSlotKeys[s]
+		oldSlotKeyByAddress[s.Address] = key
 		if s.Volume != nil {
-			oldSlots[s.Address] = s.Volume
+			oldSlots[key] = s.Volume
 		}
 	}
-	oldIOSlots := make(map[int]*Volume, len(l.ioslots))
+	oldIOSlotKeys := ioslotOffsets(l.ioslots)
+	oldIOSlots := make(map[mailboxSlotKey]*Volume, len(l.ioslots))
+	oldIOSlotKeyByAddress := make(map[int]mailboxSlotKey, len(l.ioslots))
 	for _, io := range l.ioslots {
+		key := oldIOSlotKeys[io]
+		oldIOSlotKeyByAddress[io.Address] = key
 		if io.Volume != nil {
-			oldIOSlots[io.Address] = io.Volume
+			oldIOSlots[key] = io.Volume
 		}
 	}
 	oldDrives := make(map[int]*Drive, len(l.drives))
@@ -409,13 +531,21 @@ func (l *Library) Reconfigure(cfg config.Config) error {
 
 	l.buildTopologyLocked(cfg)
 
+	newSlotKeys := slotOffsets(l.slots)
+	newSlotAddrByKey := make(map[magazineSlotKey]int, len(l.slots))
 	for _, s := range l.slots {
-		if v, ok := oldSlots[s.Address]; ok {
+		key := newSlotKeys[s]
+		newSlotAddrByKey[key] = s.Address
+		if v, ok := oldSlots[key]; ok {
 			s.Volume = v
 		}
 	}
+	newIOSlotKeys := ioslotOffsets(l.ioslots)
+	newIOSlotAddrByKey := make(map[mailboxSlotKey]int, len(l.ioslots))
 	for _, io := range l.ioslots {
-		if v, ok := oldIOSlots[io.Address]; ok {
+		key := newIOSlotKeys[io]
+		newIOSlotAddrByKey[key] = io.Address
+		if v, ok := oldIOSlots[key]; ok {
 			io.Volume = v
 		}
 	}
@@ -423,9 +553,9 @@ func (l *Library) Reconfigure(cfg config.Config) error {
 		if old, ok := oldDrives[d.Index]; ok && old.DevicePath == d.DevicePath {
 			d.Volume = old.Volume
 			d.Fault = old.Fault
-			d.Origin = old.Origin
 			d.MountsSinceCleaning = old.MountsSinceCleaning
 			d.Activity = old.Activity
+			d.Origin = shiftOriginAcrossRebuild(old.Origin, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
 		}
 	}
 	// Resume/stop activity watchers to match the drives that actually
@@ -472,36 +602,60 @@ func (l *Library) Reconfigure(cfg config.Config) error {
 // where, drive fault/cleaning counters) onto the topology buildTopologyLocked
 // has just constructed from config.
 //
-// Elements are matched by address (slots/ioslots) and physical index
-// (drives), exactly like Reconfigure - deliberately NOT by array position,
-// which is what this used to do behind an all-or-nothing "only if the
-// lengths still match" guard. Position-based matching silently discarded
-// every volume placement whenever the element count changed at all while
-// the daemon was down, and quietly reassigned volumes to the wrong element
-// whenever the counts happened to match but the ordering didn't. Matching
-// by address is both safer and consistent with Reconfigure, now that each
-// magazine/mailbox owns a permanent base_address (see the store's
-// migrateTopologyBaseAddresses doc comment).
+// Slots/ioslots are matched by (magazine/mailbox, offset) identity, exactly
+// like Reconfigure - deliberately NOT by array position (which is what this
+// used to do behind an all-or-nothing "only if the lengths still match"
+// guard, silently discarding every volume placement whenever the element
+// count changed at all while the daemon was down) and NOT by raw Address
+// either (which broke the moment Address stopped being a permanently
+// reserved value - see buildTopologyLocked's doc comment). Deriving offset
+// from s.Slots/s.IOSlots' list order (slotOffsets/ioslotOffsets) rather
+// than trusting a stored field means this restores correctly even from a
+// state.db snapshot saved by a pre-upgrade binary that never had a concept
+// of offset at all - no separate migration step needed. Drives are matched
+// by physical Index, as before.
 func (l *Library) restore(s *State) error {
-	restoredSlots := make(map[int]*Volume, len(s.Slots))
+	oldSlotKeys := slotOffsets(s.Slots)
+	restoredSlots := make(map[magazineSlotKey]*Volume, len(s.Slots))
+	oldSlotKeyByAddress := make(map[int]magazineSlotKey, len(s.Slots))
 	for _, sl := range s.Slots {
-		if sl != nil && sl.Volume != nil {
-			restoredSlots[sl.Address] = sl.Volume
+		if sl == nil {
+			continue
+		}
+		key := oldSlotKeys[sl]
+		oldSlotKeyByAddress[sl.Address] = key
+		if sl.Volume != nil {
+			restoredSlots[key] = sl.Volume
 		}
 	}
+	newSlotKeys := slotOffsets(l.slots)
+	newSlotAddrByKey := make(map[magazineSlotKey]int, len(l.slots))
 	for _, sl := range l.slots {
-		if v, ok := restoredSlots[sl.Address]; ok {
+		key := newSlotKeys[sl]
+		newSlotAddrByKey[key] = sl.Address
+		if v, ok := restoredSlots[key]; ok {
 			sl.Volume = v
 		}
 	}
-	restoredIOSlots := make(map[int]*Volume, len(s.IOSlots))
+	oldIOSlotKeys := ioslotOffsets(s.IOSlots)
+	restoredIOSlots := make(map[mailboxSlotKey]*Volume, len(s.IOSlots))
+	oldIOSlotKeyByAddress := make(map[int]mailboxSlotKey, len(s.IOSlots))
 	for _, io := range s.IOSlots {
-		if io != nil && io.Volume != nil {
-			restoredIOSlots[io.Address] = io.Volume
+		if io == nil {
+			continue
+		}
+		key := oldIOSlotKeys[io]
+		oldIOSlotKeyByAddress[io.Address] = key
+		if io.Volume != nil {
+			restoredIOSlots[key] = io.Volume
 		}
 	}
+	newIOSlotKeys := ioslotOffsets(l.ioslots)
+	newIOSlotAddrByKey := make(map[mailboxSlotKey]int, len(l.ioslots))
 	for _, io := range l.ioslots {
-		if v, ok := restoredIOSlots[io.Address]; ok {
+		key := newIOSlotKeys[io]
+		newIOSlotAddrByKey[key] = io.Address
+		if v, ok := restoredIOSlots[key]; ok {
 			io.Volume = v
 		}
 	}
@@ -524,8 +678,10 @@ func (l *Library) restore(s *State) error {
 		// "loaded"/"listall" output that Bareos relies on to unload a tape
 		// back where it belongs). It is persisted by saveLocked, so failing
 		// to restore it here silently reported slot 0 for every drive that
-		// still had a tape loaded across a daemon restart.
-		d.Origin = old.Origin
+		// still had a tape loaded across a daemon restart. Resolved through
+		// the same identity-based shift as Reconfigure, since the address it
+		// was saved under may no longer be current (see buildTopologyLocked).
+		d.Origin = shiftOriginAcrossRebuild(old.Origin, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
 		// Activity is deliberately NOT restored: it's live telemetry from a
 		// per-drive filesystem watcher, and reconcileDriveWatchersLocked
 		// starts a fresh watcher below. A restored "writing" would stick
