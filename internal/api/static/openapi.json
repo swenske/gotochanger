@@ -97,6 +97,7 @@
         "type": "object",
         "properties": {
           "address": { "type": "integer" },
+          "label": { "type": "string", "description": "Human-facing, magazine-relative address (\"<magazine ordinal>.<slot offset>\", e.g. \"2.3\")." },
           "volume": { "$ref": "#/components/schemas/Volume" }
         }
       },
@@ -104,6 +105,7 @@
         "type": "object",
         "properties": {
           "address": { "type": "integer" },
+          "label": { "type": "string", "description": "Human-facing, mailbox-relative address (\"<mailbox ordinal>.<slot offset>\", e.g. \"1.2\"); mailboxes are numbered independently from magazines." },
           "volume": { "$ref": "#/components/schemas/Volume" }
         }
       },

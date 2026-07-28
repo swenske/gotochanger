@@ -74,28 +74,21 @@ type TapeType struct {
 	VolSerLength  int    `yaml:"volser_length" json:"volser_length"`
 }
 
-// MagazineConfig describes a magazine with configurable slots.
-// BaseAddress is assigned once by the topology store when the magazine
-// is created and never recomputed from other magazines' slot counts -
-// see the store's migrateTopologyBaseAddresses doc comment for why: it's
-// what keeps this magazine's slot addresses stable for its whole
-// lifetime regardless of other magazines being added, removed, or
-// resized. Callers creating/updating a magazine never set it directly -
-// the store computes it internally.
+// MagazineConfig describes a magazine with configurable slots. It carries
+// no address of its own - Slot.Address/Slot.Label are computed live from
+// this magazine's position among Config.Library.Magazines and its Slots
+// count (see library.Library.buildTopologyLocked), not stored here.
 type MagazineConfig struct {
-	ID          string `yaml:"id" json:"id"`
-	Slots       int    `yaml:"slots" json:"slots"`
-	BaseAddress int    `yaml:"base_address" json:"base_address"`
+	ID    string `yaml:"id" json:"id"`
+	Slots int    `yaml:"slots" json:"slots"`
 }
 
 // MailboxConfig describes a mailbox (I/O door) with configurable slots,
 // exactly mirroring MagazineConfig — mailboxes are real, independently
-// addressable groups of I/O slots, not just a flat count. BaseAddress
-// mirrors MagazineConfig.BaseAddress.
+// addressable groups of I/O slots, not just a flat count.
 type MailboxConfig struct {
-	ID          string `yaml:"id" json:"id"`
-	Slots       int    `yaml:"slots" json:"slots"`
-	BaseAddress int    `yaml:"base_address" json:"base_address"`
+	ID    string `yaml:"id" json:"id"`
+	Slots int    `yaml:"slots" json:"slots"`
 
 	// PINHash is this mailbox's own PIN-code hash (see secrethash), or
 	// empty if no PIN is configured for it - presence implies protection,

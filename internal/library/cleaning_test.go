@@ -16,8 +16,8 @@ func newTestLibraryWithCleaning(t *testing.T, cs config.CleaningSettings) *Libra
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
-	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	cfg.Library.Cleaning = cs
@@ -321,8 +321,8 @@ func TestCleaningSleepDoesNotBlockOtherDrives(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
-	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}, {DevicePath: filepath.Join(tmp, "drives", "drive1")}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	cfg.Library.Cleaning = config.CleaningSettings{Enabled: true, Mode: config.CleaningModeSoftware, MaxUses: 20, MountThreshold: 50, Duration: delay.String()}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/swenske/gotochanger/internal/config"
+	"github.com/swenske/gotochanger/internal/library"
 )
 
 // WizardState represents the current state of the setup wizard.
@@ -327,6 +328,9 @@ func (s *Server) UpdateWizardState(req WizardRequest) (WizardState, error) {
 				return s.wizardState, err
 			}
 		}
+		if err := s.checkMagazineResubmissionSafe(req.Magazines); err != nil {
+			return s.wizardState, err
+		}
 		if err := s.topology.SaveMagazines(req.Magazines); err != nil {
 			return s.wizardState, err
 		}
@@ -339,6 +343,9 @@ func (s *Server) UpdateWizardState(req WizardRequest) (WizardState, error) {
 			if err := config.ValidateMailbox(mb); err != nil {
 				return s.wizardState, err
 			}
+		}
+		if err := s.checkMailboxResubmissionSafe(req.Mailboxes); err != nil {
+			return s.wizardState, err
 		}
 		if err := s.topology.SaveMailboxes(req.Mailboxes); err != nil {
 			return s.wizardState, err
@@ -468,4 +475,83 @@ func (s *Server) GetWizardOptions() WizardResponse {
 		resp.TapeTypes, _ = s.topology.ListTapeTypes()
 	}
 	return resp
+}
+
+// checkMagazineResubmissionSafe refuses a wizard magazine-step (step 3)
+// submission that would remove or shrink an already-existing,
+// currently-occupied magazine - the same protection
+// handleDeleteMagazine/handleUpdateMagazine give the Admin API. Needed
+// here too: UpdateWizardState has no guard against being resubmitted
+// after the wizard is already completed and the system is live with real
+// volumes (SaveMagazines itself has no such guard either, by design - see
+// its doc comment - since it also serves the pre-completion, nothing-live
+// case where this check is always a no-op).
+func (s *Server) checkMagazineResubmissionSafe(mags []config.MagazineConfig) error {
+	existing, err := s.topology.ListMagazines()
+	if err != nil {
+		return err
+	}
+	newSlots := make(map[string]int, len(mags))
+	for _, m := range mags {
+		newSlots[m.ID] = m.Slots
+	}
+	st := s.lib.Status()
+	for _, old := range existing {
+		newCount, stillPresent := newSlots[old.ID]
+		current := slotsInMagazine(st.Slots, old.ID)
+		var removed []*library.Slot
+		switch {
+		case !stillPresent:
+			removed = current
+		case newCount < len(current):
+			removed = current[newCount:]
+		default:
+			continue
+		}
+		for _, slot := range removed {
+			if slot.Volume != nil {
+				return fmt.Errorf("magazine %s: %w", old.ID, errMagazineNotEmpty)
+			}
+		}
+		if driveOriginInSlots(st.Drives, removed) {
+			return fmt.Errorf("magazine %s: %w", old.ID, errMagazineVolumeOnDrive)
+		}
+	}
+	return nil
+}
+
+// checkMailboxResubmissionSafe mirrors checkMagazineResubmissionSafe for
+// the wizard's mailbox step (step 4).
+func (s *Server) checkMailboxResubmissionSafe(mbs []config.MailboxConfig) error {
+	existing, err := s.topology.ListMailboxes()
+	if err != nil {
+		return err
+	}
+	newSlots := make(map[string]int, len(mbs))
+	for _, m := range mbs {
+		newSlots[m.ID] = m.Slots
+	}
+	st := s.lib.Status()
+	for _, old := range existing {
+		newCount, stillPresent := newSlots[old.ID]
+		current := ioslotsInMailbox(st.IOSlots, old.ID)
+		var removed []*library.IOSlot
+		switch {
+		case !stillPresent:
+			removed = current
+		case newCount < len(current):
+			removed = current[newCount:]
+		default:
+			continue
+		}
+		for _, io := range removed {
+			if io.Volume != nil {
+				return fmt.Errorf("mailbox %s: %w", old.ID, errMailboxNotEmpty)
+			}
+		}
+		if driveOriginInIOSlots(st.Drives, removed) {
+			return fmt.Errorf("mailbox %s: %w", old.ID, errMailboxVolumeOnDrive)
+		}
+	}
+	return nil
 }

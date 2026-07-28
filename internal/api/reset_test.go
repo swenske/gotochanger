@@ -23,7 +23,7 @@ func newResetTestServer(t *testing.T) (*Server, *store.Store, string) {
 
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.TapeTypes = []config.TapeType{{Name: "TESTTYPE", Capacity: "1MiB", BarcodeFamily: "generic", VolSerLength: 8}}
 	cfg.Library.TapeSets = []config.TapeSetConfig{{Name: testTapeSet, TapeType: "TESTTYPE", StorageFolder: filepath.Join(tmp, "ts1")}}

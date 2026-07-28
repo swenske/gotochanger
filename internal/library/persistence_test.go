@@ -115,7 +115,7 @@ func TestRestoreMatchesElementsByAddressNotPosition(t *testing.T) {
 	// slots, so every existing address still exists but the element count
 	// no longer matches what was persisted.
 	cfg := lib.cfg
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 5, BaseAddress: 1}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 5}}
 
 	restored, err := New(cfg, &saved, nil, nil)
 	if err != nil {

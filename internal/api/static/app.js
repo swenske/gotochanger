@@ -1559,12 +1559,12 @@ function driveOptions() {
 
 function emptySlotOptions() {
   const slots = (state.status && state.status.slots) || [];
-  return slots.filter((s) => !s.volume).sort((a, b) => a.address - b.address).map((s) => ({ value: `slot:${s.address}`, label: `Slot ${s.address}` }));
+  return slots.filter((s) => !s.volume).sort((a, b) => a.address - b.address).map((s) => ({ value: `slot:${s.address}`, label: `Slot ${s.label || s.address}` }));
 }
 
 function emptyIOSlotOptions() {
   const ioslots = (state.status && state.status.ioslots) || [];
-  return ioslots.filter((io) => !io.volume).sort((a, b) => a.address - b.address).map((io) => ({ value: `ioslot:${io.address}`, label: `I/O Slot ${io.address}` }));
+  return ioslots.filter((io) => !io.volume).sort((a, b) => a.address - b.address).map((io) => ({ value: `ioslot:${io.address}`, label: `I/O Slot ${io.label || io.address}` }));
 }
 
 function nonDriveMoveDestinationOptions() {
@@ -1577,17 +1577,19 @@ function unloadDestinationOptions() {
   const options = [];
   for (const s of slots.slice().sort((a, b) => a.address - b.address)) {
     const full = !!s.volume;
+    const lbl = s.label || s.address;
     options.push({
       value: `slot:${s.address}`,
-      label: full ? `Slot ${s.address} (full)` : `Slot ${s.address}`,
+      label: full ? `Slot ${lbl} (full)` : `Slot ${lbl}`,
       disabled: full,
     });
   }
   for (const io of ioslots.slice().sort((a, b) => a.address - b.address)) {
     const full = !!io.volume;
+    const lbl = io.label || io.address;
     options.push({
       value: `ioslot:${io.address}`,
-      label: full ? `I/O Slot ${io.address} (full)` : `I/O Slot ${io.address}`,
+      label: full ? `I/O Slot ${lbl} (full)` : `I/O Slot ${lbl}`,
       disabled: full,
     });
   }
@@ -1811,8 +1813,8 @@ function armPositionLabel(pos) {
   if (!pos || !pos.kind) return "Unknown";
   switch (pos.kind) {
     case "parked": return "Parked";
-    case "slot": return `Slot ${pos.address}`;
-    case "ioslot": return `I/O slot ${pos.address}`;
+    case "slot": return `Slot ${pos.label || pos.address}`;
+    case "ioslot": return `I/O slot ${pos.label || pos.address}`;
     case "drive": return `Drive ${pos.address}`;
     default: return "Unknown";
   }
@@ -2206,7 +2208,7 @@ function renderIOSlots(ioslots, status, maps) {
       const card = document.createElement("div");
       card.className = "card" + (io.volume ? "" : " empty");
       if (state.showLibraryColors) applyLibraryBorder(card, maps.ioslotColor[io.address]);
-      let html = `<div class="addr">Slot ${io.address}</div>`;
+      let html = `<div class="addr">Slot ${io.label || io.address}</div>`;
       // Only reachable to toggle while the mailbox door is open, matching
       // Library.findAccessibleVolumeForWriteProtectLocked's rule - a real
       // tab can't be flipped while sealed behind a closed door.
@@ -2226,7 +2228,7 @@ function renderIOSlots(ioslots, status, maps) {
                 alert("No destination available (need an empty storage slot or I/O slot).");
                 return;
               }
-              const v = await openDialog("Move from I/O slot " + io.address, [{ name: "to", label: "Destination", type: "select", options }]);
+              const v = await openDialog("Move from I/O slot " + (io.label || io.address), [{ name: "to", label: "Destination", type: "select", options }]);
               if (!v) return;
               const to = parseMoveTarget(v.to);
               await withElementOp(`ioslot:${io.address}`, () =>
@@ -2240,7 +2242,7 @@ function renderIOSlots(ioslots, status, maps) {
                 alert("No destination available (need an empty, non-faulted drive).");
                 return;
               }
-              const v = await openDialog("Load I/O slot " + io.address + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
+              const v = await openDialog("Load I/O slot " + (io.label || io.address) + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
               if (!v) return;
               const to = parseMoveTarget(v.to);
               const op = io.volume.cleaning ? withCleaningOp : withDriveOp;
@@ -2268,7 +2270,7 @@ function renderIOSlots(ioslots, status, maps) {
                   refresh();
                   return;
                 }
-                const v = await openDialog("Load outside tape into IO slot " + io.address, [{ name: "barcode", label: "Tape", type: "select", options: opts }]);
+                const v = await openDialog("Load outside tape into IO slot " + (io.label || io.address), [{ name: "barcode", label: "Tape", type: "select", options: opts }]);
                 if (!v || !v.barcode) return;
                 state.mailboxQueues[mbId] = queueAction(queue, "load", io.address, v.barcode);
                 refresh();
@@ -2415,7 +2417,7 @@ function renderSlots(slots, status, maps) {
       card.className = "card" + (s.volume ? "" : " empty");
       if (state.showLibraryColors) applyLibraryBorder(card, maps.slotColor[s.address]);
       applyCleaningTooltip(card, s.volume, status.cleaning_max_uses);
-      let html = `<div class="addr">Slot ${s.address}</div>`;
+      let html = `<div class="addr">Slot ${s.label || s.address}</div>`;
       // Only reachable to toggle while the magazine door is open, matching
       // Library.findAccessibleVolumeForWriteProtectLocked's rule - a real
       // tab can't be flipped while sealed behind a closed door.
@@ -2455,7 +2457,7 @@ function renderSlots(slots, status, maps) {
                 alert("No destination available (need an empty storage slot or I/O slot).");
                 return;
               }
-              const v = await openDialog("Move from storage slot " + s.address, [{ name: "to", label: "Destination", type: "select", options }]);
+              const v = await openDialog("Move from storage slot " + (s.label || s.address), [{ name: "to", label: "Destination", type: "select", options }]);
               if (!v) return;
               const to = parseMoveTarget(v.to);
               await withElementOp(`slot:${s.address}`, () =>
@@ -2469,7 +2471,7 @@ function renderSlots(slots, status, maps) {
                 alert("No destination available (need an empty, non-faulted drive).");
                 return;
               }
-              const v = await openDialog("Load storage slot " + s.address + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
+              const v = await openDialog("Load storage slot " + (s.label || s.address) + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
               if (!v) return;
               const to = parseMoveTarget(v.to);
               const op = s.volume.cleaning ? withCleaningOp : withDriveOp;
@@ -2497,7 +2499,7 @@ function renderSlots(slots, status, maps) {
                   refresh();
                   return;
                 }
-                const v = await openDialog("Load outside tape into slot " + s.address, [{ name: "barcode", label: "Tape", type: "select", options: opts }]);
+                const v = await openDialog("Load outside tape into slot " + (s.label || s.address), [{ name: "barcode", label: "Tape", type: "select", options: opts }]);
                 if (!v || !v.barcode) return;
                 state.storageQueues[magId] = queueAction(queue, "load", s.address, v.barcode);
                 refresh();
@@ -2992,8 +2994,8 @@ document.getElementById("cleaningSettingsForm").addEventListener("submit", async
 // outsideOptions/renderOutside already cross-reference volumes against
 // live status elsewhere in this file.
 function locateVolumeLabel(barcode, status) {
-  for (const s of status.slots || []) if (s.volume && s.volume.barcode === barcode) return `slot ${s.address}`;
-  for (const io of status.ioslots || []) if (io.volume && io.volume.barcode === barcode) return `ioslot ${io.address}`;
+  for (const s of status.slots || []) if (s.volume && s.volume.barcode === barcode) return `slot ${s.label || s.address}`;
+  for (const io of status.ioslots || []) if (io.volume && io.volume.barcode === barcode) return `ioslot ${io.label || io.address}`;
   for (const d of status.drives || []) if (d.volume && d.volume.barcode === barcode) return `drive ${d.index}`;
   for (const v of status.outside_volumes || []) if (v.barcode === barcode) return "outside";
   return "unknown";
@@ -3986,7 +3988,7 @@ function renderOffsite(vols) {
 
 document.getElementById("offsiteSendBtn")?.addEventListener("click", async () => {
   const slots = (state.status && state.status.slots) || [];
-  const opts = slots.filter((s) => s.volume).sort((a, b) => a.address - b.address).map((s) => ({ value: String(s.address), label: `Slot ${s.address} (${s.volume.barcode})` }));
+  const opts = slots.filter((s) => s.volume).sort((a, b) => a.address - b.address).map((s) => ({ value: String(s.address), label: `Slot ${s.label || s.address} (${s.volume.barcode})` }));
   if (!opts.length) { alert("No volumes in storage slots to send offsite."); return; }
   const v = await openDialog("Send to offsite vault", [{ name: "slot", label: "Slot", type: "select", options: opts }]);
   if (!v) return;

@@ -396,13 +396,49 @@ type fsBrowseResponse struct {
 // Magazine changes affect physical slot addressing, so these hot-apply via
 // reconfigureFromStore instead of only touching the database.
 
+// magazineView is the magazine response DTO. Ordinal is this magazine's
+// live 1-based position among all magazines (insertion order - see
+// ListMagazines), letting a client derive its slots' Label
+// ("<ordinal>.<offset>") without a separate Status() call - see
+// library.Library.buildTopologyLocked, which computes Slot.Label the same
+// way. Recomputed on every response, never stored.
+type magazineView struct {
+	ID      string `json:"id"`
+	Slots   int    `json:"slots"`
+	Ordinal int    `json:"ordinal"`
+}
+
+func magazineViews(mags []config.MagazineConfig) []magazineView {
+	views := make([]magazineView, len(mags))
+	for i, m := range mags {
+		views[i] = magazineView{ID: m.ID, Slots: m.Slots, Ordinal: i + 1}
+	}
+	return views
+}
+
+// magazineViewByID re-lists magazines to find id's current ordinal -
+// used after a create/update, since the single config.MagazineConfig a
+// handler has in hand doesn't carry its list position.
+func (s *Server) magazineViewByID(id string, slots int) (magazineView, error) {
+	mags, err := s.topology.ListMagazines()
+	if err != nil {
+		return magazineView{}, err
+	}
+	for i, m := range mags {
+		if m.ID == id {
+			return magazineView{ID: id, Slots: slots, Ordinal: i + 1}, nil
+		}
+	}
+	return magazineView{ID: id, Slots: slots}, nil
+}
+
 func (s *Server) handleListMagazines(w http.ResponseWriter, r *http.Request) {
 	mags, err := s.topology.ListMagazines()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mags)
+	writeJSON(w, http.StatusOK, magazineViews(mags))
 }
 
 func (s *Server) handleCreateMagazine(w http.ResponseWriter, r *http.Request) {
@@ -423,9 +459,23 @@ func (s *Server) handleCreateMagazine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, m)
+	view, err := s.magazineViewByID(m.ID, m.Slots)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, view)
 }
 
+// handleUpdateMagazine resizes a magazine's slot count. A shrink is
+// refused if any slot beyond the new, smaller count currently holds a
+// volume, or if any drive currently has a tape checked out of one of
+// those slots (Drive.Origin) - both would otherwise be silently dropped
+// from tracking once the slots they're keyed on no longer exist (see
+// library.Library.Reconfigure's doc comment on how removed identities are
+// dropped). A grow needs no such check - nothing is removed - and shifts
+// every later magazine's/mailbox's flat Address on the next reconfigure,
+// which is safe, not orphaning, per the same doc comment.
 func (s *Server) handleUpdateMagazine(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var m config.MagazineConfig
@@ -438,6 +488,21 @@ func (s *Server) handleUpdateMagazine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	st := s.lib.Status()
+	current := slotsInMagazine(st.Slots, id)
+	if m.Slots < len(current) {
+		removed := current[m.Slots:]
+		for _, slot := range removed {
+			if slot.Volume != nil {
+				writeError(w, http.StatusConflict, errMagazineNotEmpty)
+				return
+			}
+		}
+		if driveOriginInSlots(st.Drives, removed) {
+			writeError(w, http.StatusConflict, errMagazineVolumeOnDrive)
+			return
+		}
+	}
 	if err := s.topology.UpdateMagazine(id, m); err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -446,20 +511,34 @@ func (s *Server) handleUpdateMagazine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, m)
+	view, err := s.magazineViewByID(id, m.Slots)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 // handleDeleteMagazine refuses to remove a magazine that still has volumes
-// in its slots, rather than silently orphaning them.
+// in its slots, or that a drive currently has a tape checked out of (its
+// Drive.Origin points into one of the magazine's slots) - either would
+// otherwise be silently dropped from tracking once the magazine's slots no
+// longer exist.
 func (s *Server) handleDeleteMagazine(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	for _, slot := range s.lib.Status().Slots {
-		if slot.MagazineID == id && slot.Volume != nil {
+	st := s.lib.Status()
+	slots := slotsInMagazine(st.Slots, id)
+	for _, slot := range slots {
+		if slot.Volume != nil {
 			writeError(w, http.StatusConflict, errMagazineNotEmpty)
 			return
 		}
 	}
-	if slices.Contains(s.lib.Status().Doors.OpenMagazines, id) {
+	if driveOriginInSlots(st.Drives, slots) {
+		writeError(w, http.StatusConflict, errMagazineVolumeOnDrive)
+		return
+	}
+	if slices.Contains(st.Doors.OpenMagazines, id) {
 		writeError(w, http.StatusConflict, errMagazineDoorOpen)
 		return
 	}
@@ -474,7 +553,65 @@ func (s *Server) handleDeleteMagazine(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// slotsInMagazine/ioslotsInMailbox filter a Status snapshot's Slots/IOSlots
+// down to one magazine's/mailbox's own elements, in the same offset order
+// buildTopologyLocked built them in (first match is offset 1, and so on) -
+// so slicing off the tail of the result is exactly "the slots a shrink
+// would remove".
+func slotsInMagazine(slots []*library.Slot, magazineID string) []*library.Slot {
+	var out []*library.Slot
+	for _, s := range slots {
+		if s.MagazineID == magazineID {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func ioslotsInMailbox(ioslots []*library.IOSlot, mailboxID string) []*library.IOSlot {
+	var out []*library.IOSlot
+	for _, io := range ioslots {
+		if io.MailboxID == mailboxID {
+			out = append(out, io)
+		}
+	}
+	return out
+}
+
+// driveOriginInSlots/driveOriginInIOSlots report whether any drive's
+// Origin currently references one of the given slots/ioslots - used
+// alongside the plain "is a slot occupied" check before a delete/shrink,
+// since a drive with a tape checked out of a slot leaves that slot's own
+// Volume nil (see Library.Load) even though the slot is still very much in
+// use.
+func driveOriginInSlots(drives []*library.Drive, slots []*library.Slot) bool {
+	addrs := make(map[int]bool, len(slots))
+	for _, s := range slots {
+		addrs[s.Address] = true
+	}
+	for _, d := range drives {
+		if d.Origin != nil && d.Origin.Kind == library.KindSlot && addrs[d.Origin.Address] {
+			return true
+		}
+	}
+	return false
+}
+
+func driveOriginInIOSlots(drives []*library.Drive, ioslots []*library.IOSlot) bool {
+	addrs := make(map[int]bool, len(ioslots))
+	for _, io := range ioslots {
+		addrs[io.Address] = true
+	}
+	for _, d := range drives {
+		if d.Origin != nil && d.Origin.Kind == library.KindIOSlot && addrs[d.Origin.Address] {
+			return true
+		}
+	}
+	return false
+}
+
 var errMagazineNotEmpty = writeErrorSentinel("magazine still has volumes in its slots; unload or delete them first")
+var errMagazineVolumeOnDrive = writeErrorSentinel("a drive currently has a tape checked out of a slot in this magazine; unload it first")
 var errMagazineDoorOpen = writeErrorSentinel("magazine's storage door is open; close it first")
 
 // ---- mailboxes ----
@@ -483,15 +620,32 @@ var errMagazineDoorOpen = writeErrorSentinel("magazine's storage door is open; c
 
 // mailboxView is the mailbox response DTO: never the raw PIN hash, only
 // whether one is configured, mirroring how UserInfo excludes PasswordHash.
+// Ordinal mirrors magazineView.Ordinal - mailboxes are numbered
+// independently from magazines (see IOSlot.Label).
 type mailboxView struct {
-	ID          string `json:"id"`
-	Slots       int    `json:"slots"`
-	BaseAddress int    `json:"base_address"`
-	PINSet      bool   `json:"pin_set"`
+	ID      string `json:"id"`
+	Slots   int    `json:"slots"`
+	Ordinal int    `json:"ordinal"`
+	PINSet  bool   `json:"pin_set"`
 }
 
-func mailboxViewFrom(m config.MailboxConfig) mailboxView {
-	return mailboxView{ID: m.ID, Slots: m.Slots, BaseAddress: m.BaseAddress, PINSet: m.PINHash != ""}
+func mailboxViewFrom(m config.MailboxConfig, ordinal int) mailboxView {
+	return mailboxView{ID: m.ID, Slots: m.Slots, Ordinal: ordinal, PINSet: m.PINHash != ""}
+}
+
+// mailboxViewByID re-lists mailboxes to find id's current ordinal - see
+// magazineViewByID.
+func (s *Server) mailboxViewByID(m config.MailboxConfig) (mailboxView, error) {
+	mbs, err := s.topology.ListMailboxes()
+	if err != nil {
+		return mailboxView{}, err
+	}
+	for i, mb := range mbs {
+		if mb.ID == m.ID {
+			return mailboxViewFrom(m, i+1), nil
+		}
+	}
+	return mailboxViewFrom(m, 0), nil
 }
 
 // mailboxRequest's PIN uses pointer semantics so a blank field can't be
@@ -532,7 +686,7 @@ func (s *Server) handleListMailboxes(w http.ResponseWriter, r *http.Request) {
 	}
 	views := make([]mailboxView, len(mbs))
 	for i, m := range mbs {
-		views[i] = mailboxViewFrom(m)
+		views[i] = mailboxViewFrom(m, i+1)
 	}
 	writeJSON(w, http.StatusOK, views)
 }
@@ -563,9 +717,16 @@ func (s *Server) handleCreateMailbox(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, mailboxViewFrom(m))
+	view, err := s.mailboxViewByID(m)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, view)
 }
 
+// handleUpdateMailbox resizes a mailbox's slot count - see
+// handleUpdateMagazine's doc comment, mirrored exactly for I/O slots.
 func (s *Server) handleUpdateMailbox(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req mailboxRequest
@@ -597,6 +758,21 @@ func (s *Server) handleUpdateMailbox(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	st := s.lib.Status()
+	current := ioslotsInMailbox(st.IOSlots, id)
+	if m.Slots < len(current) {
+		removed := current[m.Slots:]
+		for _, io := range removed {
+			if io.Volume != nil {
+				writeError(w, http.StatusConflict, errMailboxNotEmpty)
+				return
+			}
+		}
+		if driveOriginInIOSlots(st.Drives, removed) {
+			writeError(w, http.StatusConflict, errMailboxVolumeOnDrive)
+			return
+		}
+	}
 	if err := s.topology.UpdateMailbox(id, m); err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -605,20 +781,32 @@ func (s *Server) handleUpdateMailbox(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mailboxViewFrom(m))
+	view, err := s.mailboxViewByID(m)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 // handleDeleteMailbox refuses to remove a mailbox that still has volumes in
-// its I/O slots, rather than silently orphaning them.
+// its I/O slots, or that a drive currently has a tape checked out of, same
+// as handleDeleteMagazine.
 func (s *Server) handleDeleteMailbox(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	for _, io := range s.lib.Status().IOSlots {
-		if io.MailboxID == id && io.Volume != nil {
+	st := s.lib.Status()
+	ioslots := ioslotsInMailbox(st.IOSlots, id)
+	for _, io := range ioslots {
+		if io.Volume != nil {
 			writeError(w, http.StatusConflict, errMailboxNotEmpty)
 			return
 		}
 	}
-	if slices.Contains(s.lib.Status().Doors.OpenMailboxes, id) {
+	if driveOriginInIOSlots(st.Drives, ioslots) {
+		writeError(w, http.StatusConflict, errMailboxVolumeOnDrive)
+		return
+	}
+	if slices.Contains(st.Doors.OpenMailboxes, id) {
 		writeError(w, http.StatusConflict, errMailboxDoorOpen)
 		return
 	}
@@ -634,6 +822,7 @@ func (s *Server) handleDeleteMailbox(w http.ResponseWriter, r *http.Request) {
 }
 
 var errMailboxNotEmpty = writeErrorSentinel("mailbox still has volumes in its I/O slots; unload or delete them first")
+var errMailboxVolumeOnDrive = writeErrorSentinel("a drive currently has a tape checked out of a slot in this mailbox; unload it first")
 var errMailboxDoorOpen = writeErrorSentinel("mailbox's I/O door is open; close it first")
 
 // ---- drive devices ----

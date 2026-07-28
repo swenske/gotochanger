@@ -23,8 +23,8 @@ func newTestServer(t *testing.T) *Server {
 	tmp := t.TempDir()
 	cfg := config.Default()
 	cfg.DataDir = tmp
-	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2, BaseAddress: 1}}
-	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1, BaseAddress: 21}}
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.Mailboxes = []config.MailboxConfig{{ID: "Mailbox1", Slots: 1}}
 	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
 	cfg.Library.DefaultCapacity = "1MiB"
 	cfg.Library.TapeTypes = []config.TapeType{{Name: "TESTTYPE", Capacity: "1MiB", BarcodeFamily: "generic", VolSerLength: 8}}

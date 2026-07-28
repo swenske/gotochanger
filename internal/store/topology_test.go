@@ -362,97 +362,43 @@ func TestListMailboxesOrdersByInsertionNotAlphabetically(t *testing.T) {
 	}
 }
 
-// TestDeletingMagazineDoesNotShiftLaterMagazinesBaseAddress is a
-// regression test for a critical bug reported after the insertion-order
-// fix above: that fix only addressed *creation* reordering. Deletion (or
-// any topology rebuild) still re-derived every address from a running
-// counter across the current magazine list, so deleting an earlier
-// magazine shrank the counter's starting point for every later one -
-// exactly the reported scenario (deleting a 20-slot "Magazine5" shifted
-// a later "Cleaning Tapes" magazine's addresses down by 20, and its
-// tapes vanished because Reconfigure preserves volumes purely by
-// numeric address). base_address must now be permanent per magazine,
-// assigned once at creation and never recomputed from any other
-// magazine's existence.
-func TestDeletingMagazineDoesNotShiftLaterMagazinesBaseAddress(t *testing.T) {
+// TestDeleteMagazineOnlyRemovesTargetRow confirms the store layer's
+// DeleteMagazine is now plain row deletion - no addressing bookkeeping to
+// verify here anymore. Physical/label addressing is computed live from
+// this list's order and slot counts entirely by
+// library.Library.buildTopologyLocked (see its doc comment); the store's
+// only remaining job is persisting id/slots correctly and returning them
+// in stable insertion order (see TestListMagazinesOrdersByInsertionNotAlphabetically
+// above, which is what that live computation actually depends on).
+func TestDeleteMagazineOnlyRemovesTargetRow(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.CreateMagazine(config.MagazineConfig{ID: "Magazine5", Slots: 20}); err != nil {
-		t.Fatalf("create Magazine5: %v", err)
+	if err := s.CreateMagazine(config.MagazineConfig{ID: "Magazine1", Slots: 10}); err != nil {
+		t.Fatalf("create Magazine1: %v", err)
 	}
-	if err := s.CreateMagazine(config.MagazineConfig{ID: "Cleaning Tapes", Slots: 5}); err != nil {
-		t.Fatalf("create Cleaning Tapes: %v", err)
+	if err := s.CreateMagazine(config.MagazineConfig{ID: "Magazine2", Slots: 5}); err != nil {
+		t.Fatalf("create Magazine2: %v", err)
 	}
-	before, err := s.ListMagazines()
+	if err := s.DeleteMagazine("Magazine1"); err != nil {
+		t.Fatalf("delete Magazine1: %v", err)
+	}
+	got, err := s.ListMagazines()
 	if err != nil {
 		t.Fatalf("list magazines: %v", err)
 	}
-	var cleaningBaseBefore int
-	for _, m := range before {
-		if m.ID == "Cleaning Tapes" {
-			cleaningBaseBefore = m.BaseAddress
-		}
-	}
-	if cleaningBaseBefore == 0 {
-		t.Fatalf("expected Cleaning Tapes to have a nonzero base_address, got %+v", before)
-	}
-
-	if err := s.DeleteMagazine("Magazine5"); err != nil {
-		t.Fatalf("delete Magazine5: %v", err)
-	}
-
-	after, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines after delete: %v", err)
-	}
-	if len(after) != 1 || after[0].ID != "Cleaning Tapes" {
-		t.Fatalf("expected only Cleaning Tapes to remain, got %+v", after)
-	}
-	if after[0].BaseAddress != cleaningBaseBefore {
-		t.Fatalf("expected Cleaning Tapes' base_address to stay %d after deleting Magazine5, got %d", cleaningBaseBefore, after[0].BaseAddress)
+	if len(got) != 1 || got[0].ID != "Magazine2" || got[0].Slots != 5 {
+		t.Fatalf("expected only Magazine2 (5 slots) to remain, got %+v", got)
 	}
 }
 
-// TestCreateMagazineNeverReusesAFreedAddressRange verifies the
-// monotonically-increasing counter never reuses an address range freed
-// by a deletion, even if every magazine is deleted and a new one created
-// from scratch - reusing a freed range would risk exactly the same class
-// of silent volume misattribution the base_address fix exists to
-// prevent, just via a different trigger (delete-then-recreate instead of
-// delete-a-neighbor).
-func TestCreateMagazineNeverReusesAFreedAddressRange(t *testing.T) {
+// TestSaveMagazinesReplacesFullListInSubmittedOrder confirms SaveMagazines
+// (used by the wizard, which resubmits its full list on every step) is a
+// true replace: the stored list afterward exactly matches what was
+// submitted, in submission order. Order matters more than ever now -
+// buildTopologyLocked derives every magazine's live ordinal/address/label
+// directly from this order (see its doc comment) - so a resubmission that
+// silently reordered magazines would silently renumber them too.
+func TestSaveMagazinesReplacesFullListInSubmittedOrder(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.CreateMagazine(config.MagazineConfig{ID: "Temp", Slots: 5}); err != nil {
-		t.Fatalf("create Temp: %v", err)
-	}
-	list, _ := s.ListMagazines()
-	tempBase := list[0].BaseAddress
-
-	if err := s.DeleteMagazine("Temp"); err != nil {
-		t.Fatalf("delete Temp: %v", err)
-	}
-	if err := s.CreateMagazine(config.MagazineConfig{ID: "New", Slots: 5}); err != nil {
-		t.Fatalf("create New: %v", err)
-	}
-	list, _ = s.ListMagazines()
-	if list[0].BaseAddress <= tempBase {
-		t.Fatalf("expected the new magazine's base_address (%d) to be greater than the deleted one's (%d), got a reused/overlapping range", list[0].BaseAddress, tempBase)
-	}
-}
-
-// TestSaveMagazinesReusesExistingBaseAddress is a regression test for a
-// real-world bug: the setup wizard resubmits its full magazines list on
-// every step (Next/Previous/validation retry - see UpdateWizardState), and
-// SaveMagazines used to reserve a brand-new address block for every entry
-// on every call regardless of whether it already existed. Ordinary wizard
-// navigation could burn through dozens of blocks before the user ever
-// finished the wizard, landing the final configuration's addresses far
-// past 1 (observed in production: magazines starting at physical address
-// 121 instead of 1). SaveMagazines must now keep an already-existing ID's
-// base_address stable across repeated calls, and only reserve a fresh
-// block for IDs it hasn't seen before.
-func TestSaveMagazinesReusesExistingBaseAddress(t *testing.T) {
-	s := newTestStore(t)
-
 	mags := []config.MagazineConfig{
 		{ID: "Magazine1", Slots: 10},
 		{ID: "Magazine2", Slots: 5},
@@ -460,254 +406,51 @@ func TestSaveMagazinesReusesExistingBaseAddress(t *testing.T) {
 	if err := s.SaveMagazines(mags); err != nil {
 		t.Fatalf("save magazines: %v", err)
 	}
-	first, err := s.ListMagazines()
+	got, err := s.ListMagazines()
 	if err != nil {
 		t.Fatalf("list magazines: %v", err)
 	}
-	baseByID := make(map[string]int, len(first))
-	for _, m := range first {
-		baseByID[m.ID] = m.BaseAddress
+	if len(got) != 2 || got[0].ID != "Magazine1" || got[1].ID != "Magazine2" {
+		t.Fatalf("expected [Magazine1, Magazine2] in order, got %+v", got)
 	}
 
-	// Resubmitting the identical list (e.g. clicking Previous then Next
-	// through the wizard step) must not change either magazine's address.
-	if err := s.SaveMagazines(mags); err != nil {
-		t.Fatalf("resave identical magazines: %v", err)
-	}
-	afterIdentical, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines after identical resave: %v", err)
-	}
-	for _, m := range afterIdentical {
-		if m.BaseAddress != baseByID[m.ID] {
-			t.Fatalf("magazine %s base_address changed from %d to %d on an unchanged resubmission", m.ID, baseByID[m.ID], m.BaseAddress)
-		}
-	}
-
-	// Resubmitting with an existing ID's slot count edited must keep that
-	// ID's base_address (ValidateMagazine's 5-20 slot bound guarantees it
-	// still fits the block already reserved for that ID).
-	edited := []config.MagazineConfig{
-		{ID: "Magazine1", Slots: 15},
+	// Resubmitting with one entry dropped and a new one added replaces the
+	// whole list, in the new submission's order - not an incremental
+	// add/remove that could leave stale ordering behind.
+	mags = []config.MagazineConfig{
 		{ID: "Magazine2", Slots: 5},
+		{ID: "Magazine3", Slots: 20},
 	}
-	if err := s.SaveMagazines(edited); err != nil {
-		t.Fatalf("resave edited magazines: %v", err)
+	if err := s.SaveMagazines(mags); err != nil {
+		t.Fatalf("resave magazines: %v", err)
 	}
-	afterEdit, err := s.ListMagazines()
+	got, err = s.ListMagazines()
 	if err != nil {
-		t.Fatalf("list magazines after edit: %v", err)
+		t.Fatalf("list magazines after resave: %v", err)
 	}
-	for _, m := range afterEdit {
-		if m.BaseAddress != baseByID[m.ID] {
-			t.Fatalf("magazine %s base_address changed from %d to %d after only its slot count changed", m.ID, baseByID[m.ID], m.BaseAddress)
-		}
-		if m.ID == "Magazine1" && m.Slots != 15 {
-			t.Fatalf("expected Magazine1 slots to update to 15, got %d", m.Slots)
-		}
-	}
-
-	// Adding a genuinely new ID must reserve a fresh block for it alone -
-	// the two existing IDs still keep their original addresses.
-	withNew := append(append([]config.MagazineConfig{}, edited...), config.MagazineConfig{ID: "Magazine3", Slots: 5})
-	if err := s.SaveMagazines(withNew); err != nil {
-		t.Fatalf("resave with new magazine: %v", err)
-	}
-	afterNew, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines after adding new: %v", err)
-	}
-	var newBase int
-	for _, m := range afterNew {
-		if m.ID == "Magazine3" {
-			newBase = m.BaseAddress
-			continue
-		}
-		if m.BaseAddress != baseByID[m.ID] {
-			t.Fatalf("magazine %s base_address changed from %d to %d after adding an unrelated new magazine", m.ID, baseByID[m.ID], m.BaseAddress)
-		}
-	}
-	if newBase == 0 {
-		t.Fatalf("expected Magazine3 to have a nonzero base_address, got %+v", afterNew)
-	}
-	for _, base := range baseByID {
-		if newBase == base {
-			t.Fatalf("expected Magazine3's base_address (%d) to not collide with an existing magazine's", newBase)
-		}
+	if len(got) != 2 || got[0].ID != "Magazine2" || got[1].ID != "Magazine3" {
+		t.Fatalf("expected [Magazine2, Magazine3] in order after resave, got %+v", got)
 	}
 }
 
-// TestSaveMailboxesReusesExistingBaseAddress mirrors
-// TestSaveMagazinesReusesExistingBaseAddress for SaveMailboxes, which the
-// wizard's mailbox step (step 4) drives identically.
-func TestSaveMailboxesReusesExistingBaseAddress(t *testing.T) {
+// TestSaveMailboxesReplacesFullListInSubmittedOrder mirrors
+// TestSaveMagazinesReplacesFullListInSubmittedOrder for SaveMailboxes,
+// which the wizard's mailbox step (step 4) drives identically.
+func TestSaveMailboxesReplacesFullListInSubmittedOrder(t *testing.T) {
 	s := newTestStore(t)
-
 	mbs := []config.MailboxConfig{
 		{ID: "Mailbox1", Slots: 4},
+		{ID: "Mailbox2", Slots: 2},
 	}
 	if err := s.SaveMailboxes(mbs); err != nil {
 		t.Fatalf("save mailboxes: %v", err)
 	}
-	first, err := s.ListMailboxes()
+	got, err := s.ListMailboxes()
 	if err != nil {
 		t.Fatalf("list mailboxes: %v", err)
 	}
-	baseByID := make(map[string]int, len(first))
-	for _, m := range first {
-		baseByID[m.ID] = m.BaseAddress
-	}
-
-	// Resubmitting the identical list must not change the address.
-	if err := s.SaveMailboxes(mbs); err != nil {
-		t.Fatalf("resave identical mailboxes: %v", err)
-	}
-	afterIdentical, err := s.ListMailboxes()
-	if err != nil {
-		t.Fatalf("list mailboxes after identical resave: %v", err)
-	}
-	if afterIdentical[0].BaseAddress != baseByID["Mailbox1"] {
-		t.Fatalf("mailbox base_address changed from %d to %d on an unchanged resubmission", baseByID["Mailbox1"], afterIdentical[0].BaseAddress)
-	}
-
-	// Resubmitting with the slot count edited must keep the address
-	// (ValidateMailbox's 1-5 slot bound guarantees it still fits the
-	// block already reserved for this ID).
-	edited := []config.MailboxConfig{{ID: "Mailbox1", Slots: 2}}
-	if err := s.SaveMailboxes(edited); err != nil {
-		t.Fatalf("resave edited mailboxes: %v", err)
-	}
-	afterEdit, err := s.ListMailboxes()
-	if err != nil {
-		t.Fatalf("list mailboxes after edit: %v", err)
-	}
-	if afterEdit[0].BaseAddress != baseByID["Mailbox1"] {
-		t.Fatalf("mailbox base_address changed from %d to %d after only its slot count changed", baseByID["Mailbox1"], afterEdit[0].BaseAddress)
-	}
-	if afterEdit[0].Slots != 2 {
-		t.Fatalf("expected Mailbox1 slots to update to 2, got %d", afterEdit[0].Slots)
-	}
-
-	// Adding a genuinely new ID reserves a fresh block only for it.
-	withNew := []config.MailboxConfig{edited[0], {ID: "Mailbox2", Slots: 3}}
-	if err := s.SaveMailboxes(withNew); err != nil {
-		t.Fatalf("resave with new mailbox: %v", err)
-	}
-	afterNew, err := s.ListMailboxes()
-	if err != nil {
-		t.Fatalf("list mailboxes after adding new: %v", err)
-	}
-	var newBase int
-	for _, m := range afterNew {
-		if m.ID == "Mailbox2" {
-			newBase = m.BaseAddress
-			continue
-		}
-		if m.BaseAddress != baseByID[m.ID] {
-			t.Fatalf("mailbox %s base_address changed from %d to %d after adding an unrelated new mailbox", m.ID, baseByID[m.ID], m.BaseAddress)
-		}
-	}
-	if newBase == 0 || newBase == baseByID["Mailbox1"] {
-		t.Fatalf("expected Mailbox2 to reserve a distinct nonzero base_address, got %d", newBase)
-	}
-}
-
-// openStoreWithLegacyMagazines builds a database with a pre-base_address
-// magazines/mailboxes schema (no base_address column at all) and the
-// given rows already present, then opens a Store over it - exercising
-// migrateTopologyBaseAddresses' ALTER TABLE + backfill path exactly like
-// a real upgrade from a pre-existing database would.
-func openStoreWithLegacyMagazines(t *testing.T, magazineIDs, mailboxIDs []string) *Store {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "state.db")
-
-	db, err := sql.Open("sqlite3", path)
-	if err != nil {
-		t.Fatalf("open raw db: %v", err)
-	}
-	if _, err := db.Exec(`CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
-		t.Fatalf("create legacy config table: %v", err)
-	}
-	if _, err := db.Exec(`CREATE TABLE magazines (id TEXT PRIMARY KEY, slots INTEGER NOT NULL)`); err != nil {
-		t.Fatalf("create legacy magazines table: %v", err)
-	}
-	if _, err := db.Exec(`CREATE TABLE mailboxes (id TEXT PRIMARY KEY, slots INTEGER NOT NULL)`); err != nil {
-		t.Fatalf("create legacy mailboxes table: %v", err)
-	}
-	for _, id := range magazineIDs {
-		if _, err := db.Exec(`INSERT INTO magazines (id, slots) VALUES (?, 5)`, id); err != nil {
-			t.Fatalf("seed legacy magazine %s: %v", id, err)
-		}
-	}
-	for _, id := range mailboxIDs {
-		if _, err := db.Exec(`INSERT INTO mailboxes (id, slots) VALUES (?, 1)`, id); err != nil {
-			t.Fatalf("seed legacy mailbox %s: %v", id, err)
-		}
-	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("close raw db: %v", err)
-	}
-
-	s := New(path)
-	if err := s.Open(); err != nil {
-		t.Fatalf("open store over legacy schema: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
-
-func TestMigrateTopologyBaseAddressesBackfillsExistingRows(t *testing.T) {
-	s := openStoreWithLegacyMagazines(t, []string{"Magazine1", "Magazine2"}, []string{"Mailbox1"})
-
-	mags, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines: %v", err)
-	}
-	if len(mags) != 2 || mags[0].BaseAddress != 1 || mags[1].BaseAddress != 1+magazineAddressBlockSize {
-		t.Fatalf("expected backfilled base addresses 1 and %d, got %+v", 1+magazineAddressBlockSize, mags)
-	}
-
-	mbs, err := s.ListMailboxes()
-	if err != nil {
-		t.Fatalf("list mailboxes: %v", err)
-	}
-	wantMBBase := 1 + 2*magazineAddressBlockSize
-	if len(mbs) != 1 || mbs[0].BaseAddress != wantMBBase {
-		t.Fatalf("expected mailbox base address %d (after both magazines' reserved blocks), got %+v", wantMBBase, mbs)
-	}
-
-	// A newly created magazine after the upgrade must continue from
-	// where the backfill left off, not collide with anything backfilled.
-	if err := s.CreateMagazine(config.MagazineConfig{ID: "Magazine3", Slots: 5}); err != nil {
-		t.Fatalf("create Magazine3: %v", err)
-	}
-	mags, _ = s.ListMagazines()
-	for _, m := range mags {
-		if m.ID != "Magazine3" {
-			continue
-		}
-		wantBase := wantMBBase + mailboxAddressBlockSize
-		if m.BaseAddress != wantBase {
-			t.Fatalf("expected new Magazine3 base address %d, got %d", wantBase, m.BaseAddress)
-		}
-	}
-}
-
-func TestMigrateTopologyBaseAddressesIsIdempotent(t *testing.T) {
-	s := openStoreWithLegacyMagazines(t, []string{"Magazine1"}, nil)
-	before, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines: %v", err)
-	}
-	if err := s.migrateTopologyBaseAddresses(); err != nil {
-		t.Fatalf("re-run migration: %v", err)
-	}
-	after, err := s.ListMagazines()
-	if err != nil {
-		t.Fatalf("list magazines after re-run: %v", err)
-	}
-	if before[0].BaseAddress != after[0].BaseAddress {
-		t.Fatalf("expected base_address to stay %d across a second migration run, got %d", before[0].BaseAddress, after[0].BaseAddress)
+	if len(got) != 2 || got[0].ID != "Mailbox1" || got[1].ID != "Mailbox2" {
+		t.Fatalf("expected [Mailbox1, Mailbox2] in order, got %+v", got)
 	}
 }
 

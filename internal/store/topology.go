@@ -93,183 +93,7 @@ func (s *Store) initTopologySchema() error {
 	if err := s.migrateMailboxesPINSchema(); err != nil {
 		return err
 	}
-	if err := s.migrateTopologyBaseAddresses(); err != nil {
-		return err
-	}
 	return s.migrateLegacyLatencySetting()
-}
-
-// magazineAddressBlockSize/mailboxAddressBlockSize are the fixed number
-// of physical addresses permanently reserved for each magazine/mailbox
-// at creation time - see migrateTopologyBaseAddresses' doc comment for
-// why a fixed reservation (rather than a tightly packed running counter)
-// is what makes addresses stable. Set to each entity's hard slot-count
-// ceiling (ValidateMagazine caps at 20, ValidateMailbox at 5), so
-// growing an existing magazine/mailbox up to that ceiling can never
-// collide with the next one's reserved range.
-const (
-	magazineAddressBlockSize = 20
-	mailboxAddressBlockSize  = 5
-)
-
-// migrateTopologyBaseAddresses is a critical data-integrity fix: Slot/
-// IOSlot addresses used to be recomputed from scratch on every topology
-// rebuild by walking cfg.Library.Magazines/Mailboxes in list order and
-// incrementing a running counter (buildTopologyLocked). That makes every
-// magazine/mailbox's addresses depend on the slot counts of everything
-// listed before it - creating, deleting, or resizing *any* one of them
-// shifted every other one's addresses. Reconfigure preserves volume
-// placement purely by numeric address, not by magazine identity, so a
-// shift doesn't just renumber a magazine cosmetically - it silently
-// reassigns its cartridges to whatever entity now occupies its old
-// addresses, or drops them entirely if no slot ends up at that address
-// anymore (confirmed: deleting an earlier magazine so a later one's
-// range shrinks below where a volume used to be loses that volume from
-// every live data structure - not deleted from disk, but gone from the
-// running topology).
-//
-// Fixed by giving each magazine/mailbox a permanent base_address,
-// assigned once when it's created and never recomputed based on any
-// other entity. buildTopologyLocked now reads it directly instead of
-// running a counter across the whole list. New magazines/mailboxes draw
-// from a persisted, monotonically increasing singleton counter
-// (next_topology_base_address) that only ever advances - even across
-// deletions - so a freed address range is never reused and can never
-// collide with a still-live one. Each reservation is a fixed block
-// (magazineAddressBlockSize/mailboxAddressBlockSize) rather than exactly
-// the entity's current slot count, so later growing its slot count (up
-// to the same hard ceiling every entity is already capped at) can never
-// grow into its neighbor's range either.
-//
-// This intentionally produces gaps in the physical address space (e.g.
-// a 5-slot magazine still reserves 20 addresses) - safe and expected:
-// gotochanger-changer never exposes raw physical addresses to Bareos in
-// the first place, it always translates through its own
-// presentedAddressing into a dense, gapless, 1-based range scoped to
-// whatever logical library is in view (see "Logical-library-scoped slot
-// addressing must be renumbered from 1" in CLAUDE.md) - a physical gap
-// is invisible to Bareos either way.
-//
-// Guarded by "does next_topology_base_address already exist" so the
-// (idempotent) column-add always runs, but the one-time backfill for an
-// upgrade from a pre-existing database only ever runs once. The backfill
-// assigns addresses in the same order (magazines then mailboxes, each in
-// rowid/insertion order) buildTopologyLocked's old running-counter logic
-// would have produced, so an existing single-magazine/mailbox
-// installation sees no address change across the upgrade - only a
-// multi-magazine installation gains gaps between magazines, which is the
-// point.
-func (s *Store) migrateTopologyBaseAddresses() error {
-	for table, ddl := range map[string]string{
-		"magazines": `ALTER TABLE magazines ADD COLUMN base_address INTEGER NOT NULL DEFAULT 0`,
-		"mailboxes": `ALTER TABLE mailboxes ADD COLUMN base_address INTEGER NOT NULL DEFAULT 0`,
-	} {
-		cols, err := s.tableColumns(table)
-		if err != nil {
-			return fmt.Errorf("inspect %s schema: %w", table, err)
-		}
-		if !cols["base_address"] {
-			if _, err := s.db.Exec(ddl); err != nil {
-				return fmt.Errorf("add %s.base_address: %w", table, err)
-			}
-		}
-	}
-
-	if _, ok, err := s.GetSetting("next_topology_base_address"); err != nil {
-		return err
-	} else if ok {
-		return nil
-	}
-
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	next := 1
-	magRows, err := tx.Query("SELECT rowid FROM magazines ORDER BY rowid")
-	if err != nil {
-		return fmt.Errorf("scan magazines for backfill: %w", err)
-	}
-	var magRowids []int64
-	for magRows.Next() {
-		var rowid int64
-		if err := magRows.Scan(&rowid); err != nil {
-			magRows.Close()
-			return err
-		}
-		magRowids = append(magRowids, rowid)
-	}
-	if err := magRows.Err(); err != nil {
-		magRows.Close()
-		return err
-	}
-	magRows.Close()
-	for _, rowid := range magRowids {
-		if _, err := tx.Exec("UPDATE magazines SET base_address = ? WHERE rowid = ?", next, rowid); err != nil {
-			return fmt.Errorf("backfill magazine base_address: %w", err)
-		}
-		next += magazineAddressBlockSize
-	}
-
-	mbRows, err := tx.Query("SELECT rowid FROM mailboxes ORDER BY rowid")
-	if err != nil {
-		return fmt.Errorf("scan mailboxes for backfill: %w", err)
-	}
-	var mbRowids []int64
-	for mbRows.Next() {
-		var rowid int64
-		if err := mbRows.Scan(&rowid); err != nil {
-			mbRows.Close()
-			return err
-		}
-		mbRowids = append(mbRowids, rowid)
-	}
-	if err := mbRows.Err(); err != nil {
-		mbRows.Close()
-		return err
-	}
-	mbRows.Close()
-	for _, rowid := range mbRowids {
-		if _, err := tx.Exec("UPDATE mailboxes SET base_address = ? WHERE rowid = ?", next, rowid); err != nil {
-			return fmt.Errorf("backfill mailbox base_address: %w", err)
-		}
-		next += mailboxAddressBlockSize
-	}
-
-	if _, err := tx.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('next_topology_base_address', ?)", strconv.Itoa(next)); err != nil {
-		return fmt.Errorf("initialize next_topology_base_address: %w", err)
-	}
-	return tx.Commit()
-}
-
-// nextTopologyBaseAddressTx reserves and returns the next available base
-// address for a new magazine or mailbox, advancing the persisted
-// next_topology_base_address counter by blockSize within tx so the
-// reservation is atomic with the caller's row insert - see
-// migrateTopologyBaseAddresses' doc comment for why this counter only
-// ever increases.
-func nextTopologyBaseAddressTx(tx *sql.Tx, blockSize int) (int, error) {
-	var raw string
-	err := tx.QueryRow("SELECT value FROM config WHERE key = 'next_topology_base_address'").Scan(&raw)
-	base := 1
-	switch {
-	case err == nil:
-		base, err = strconv.Atoi(raw)
-		if err != nil {
-			return 0, fmt.Errorf("parse next_topology_base_address: %w", err)
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Not yet initialized (shouldn't happen post-migration, but
-		// fall back to 1 rather than fail outright).
-	default:
-		return 0, err
-	}
-	if _, err := tx.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('next_topology_base_address', ?)", strconv.Itoa(base+blockSize)); err != nil {
-		return 0, err
-	}
-	return base, nil
 }
 
 // legacyLatencyPresets carries forward the three numbers each pre-rework
@@ -912,20 +736,16 @@ func (s *Store) DeleteTapeType(name string) error {
 // ---- magazines ----
 
 // ListMagazines returns every magazine ordered by rowid (insertion order),
-// not by id (alphabetical) - buildTopologyLocked assigns Slot.Address
-// sequentially in this same order, so ordering by anything other than
-// insertion order would let a newly created magazine sort ahead of an
-// existing one alphabetically and steal its low addresses, shifting
-// every other magazine's slots and reassigning their volumes out from
-// under them on the next Reconfigure (which preserves volume placement
-// by numeric address, not by magazine identity - see Reconfigure's doc
-// comment). Ordering by rowid guarantees a new magazine always sorts
-// last in *listing* order - actual Slot.Address values now come from
-// each row's own persisted base_address (see
-// migrateTopologyBaseAddresses), not from list position, so this
-// ordering only affects Admin UI/CLI display order, not addressing.
+// not by id (alphabetical). This ordering is load-bearing now:
+// library.Library.buildTopologyLocked walks magazines in exactly this
+// order to compute both each slot's flat Address (a running counter) and
+// its magazine-relative Label ("<ordinal>.<offset>", ordinal = this
+// magazine's 1-based position in this same list) - live, on every
+// topology rebuild, never persisted. Ordering by rowid means a newly
+// created magazine always sorts last (and gets the highest ordinal),
+// regardless of its ID's alphabetical position.
 func (s *Store) ListMagazines() ([]config.MagazineConfig, error) {
-	rows, err := s.db.Query("SELECT id, slots, base_address FROM magazines ORDER BY rowid")
+	rows, err := s.db.Query("SELECT id, slots FROM magazines ORDER BY rowid")
 	if err != nil {
 		return nil, fmt.Errorf("list magazines: %w", err)
 	}
@@ -933,7 +753,7 @@ func (s *Store) ListMagazines() ([]config.MagazineConfig, error) {
 	var out []config.MagazineConfig
 	for rows.Next() {
 		var m config.MagazineConfig
-		if err := rows.Scan(&m.ID, &m.Slots, &m.BaseAddress); err != nil {
+		if err := rows.Scan(&m.ID, &m.Slots); err != nil {
 			return nil, fmt.Errorf("scan magazine: %w", err)
 		}
 		out = append(out, m)
@@ -941,25 +761,13 @@ func (s *Store) ListMagazines() ([]config.MagazineConfig, error) {
 	return out, rows.Err()
 }
 
-// CreateMagazine inserts a new magazine, rejecting a duplicate ID, and
-// reserves it a permanent base_address (see
-// migrateTopologyBaseAddresses' doc comment) - any BaseAddress on m is
-// ignored, the store always computes its own. Callers must validate
-// slot-count constraints (config.ValidateMagazine) first.
+// CreateMagazine inserts a new magazine, rejecting a duplicate ID. Callers
+// must validate slot-count constraints (config.ValidateMagazine) first.
 func (s *Store) CreateMagazine(m config.MagazineConfig) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-	base, err := nextTopologyBaseAddressTx(tx, magazineAddressBlockSize)
-	if err != nil {
-		return fmt.Errorf("reserve address for magazine %s: %w", m.ID, err)
-	}
-	if _, err := tx.Exec("INSERT INTO magazines (id, slots, base_address) VALUES (?, ?, ?)", m.ID, m.Slots, base); err != nil {
+	if _, err := s.db.Exec("INSERT INTO magazines (id, slots) VALUES (?, ?)", m.ID, m.Slots); err != nil {
 		return fmt.Errorf("magazine %s already exists or is invalid: %w", m.ID, err)
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) UpdateMagazine(id string, m config.MagazineConfig) error {
@@ -992,76 +800,33 @@ func (s *Store) DeleteMagazine(id string) error {
 // SaveMagazines replaces the whole magazines list. Used by the setup
 // wizard, which resubmits its full current list on every step (rather than
 // individual create/update/delete calls, which is what the Admin API uses
-// instead - see CreateMagazine/UpdateMagazine/DeleteMagazine). Every ID
-// already present keeps its existing base_address rather than drawing a
-// fresh one - the wizard's Next/Previous navigation and validation retries
-// resubmit a step's data repeatedly, and reserving a brand-new block on
-// every resubmission needlessly burns through next_topology_base_address
-// (this is exactly what produced a real installation's magazines starting
-// at physical address 121 instead of 1). Reuse is always safe: it never
-// hands an ID an address range it didn't already hold, and
-// ValidateMagazine's slot-count bounds (5-20) mean any resubmitted slot
-// count still fits inside the block already reserved for that ID. Only an
-// ID with no existing row (a genuinely new magazine) reserves a fresh
-// block, same as CreateMagazine. An ID dropped from mags is simply not
-// reinserted - its block is abandoned, same as DeleteMagazine.
+// instead - see CreateMagazine/UpdateMagazine/DeleteMagazine).
 func (s *Store) SaveMagazines(mags []config.MagazineConfig) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	existing, err := existingBaseAddressesTx(tx, "magazines")
-	if err != nil {
-		return fmt.Errorf("read existing magazine addresses: %w", err)
-	}
 	if _, err := tx.Exec("DELETE FROM magazines"); err != nil {
 		return fmt.Errorf("clear magazines: %w", err)
 	}
 	for _, m := range mags {
-		base, ok := existing[m.ID]
-		if !ok {
-			base, err = nextTopologyBaseAddressTx(tx, magazineAddressBlockSize)
-			if err != nil {
-				return fmt.Errorf("reserve address for magazine %s: %w", m.ID, err)
-			}
-		}
-		if _, err := tx.Exec("INSERT INTO magazines (id, slots, base_address) VALUES (?, ?, ?)", m.ID, m.Slots, base); err != nil {
+		if _, err := tx.Exec("INSERT INTO magazines (id, slots) VALUES (?, ?)", m.ID, m.Slots); err != nil {
 			return fmt.Errorf("save magazine %s: %w", m.ID, err)
 		}
 	}
 	return tx.Commit()
 }
 
-// existingBaseAddressesTx returns the current id -> base_address mapping
-// for "magazines" or "mailboxes", read within tx so it's consistent with
-// the delete+reinsert that follows in the same transaction.
-func existingBaseAddressesTx(tx *sql.Tx, table string) (map[string]int, error) {
-	rows, err := tx.Query(fmt.Sprintf("SELECT id, base_address FROM %s", table))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[string]int)
-	for rows.Next() {
-		var id string
-		var base int
-		if err := rows.Scan(&id, &base); err != nil {
-			return nil, err
-		}
-		out[id] = base
-	}
-	return out, rows.Err()
-}
-
 // ---- mailboxes (mirrors magazines exactly - real, independently
 // addressable groups of I/O slots, not just a flat count) ----
 
 // ListMailboxes returns every mailbox ordered by rowid (insertion order) -
-// see ListMagazines' doc comment for why: the identical addressing scheme
-// applies to IOSlot.Address via mailboxes.
+// see ListMagazines' doc comment for why: the identical live-addressing
+// scheme applies to IOSlot.Address/Label via mailboxes, numbered
+// independently from magazines.
 func (s *Store) ListMailboxes() ([]config.MailboxConfig, error) {
-	rows, err := s.db.Query("SELECT id, slots, base_address, pin_hash FROM mailboxes ORDER BY rowid")
+	rows, err := s.db.Query("SELECT id, slots, pin_hash FROM mailboxes ORDER BY rowid")
 	if err != nil {
 		return nil, fmt.Errorf("list mailboxes: %w", err)
 	}
@@ -1070,7 +835,7 @@ func (s *Store) ListMailboxes() ([]config.MailboxConfig, error) {
 	for rows.Next() {
 		var m config.MailboxConfig
 		var pinHash sql.NullString
-		if err := rows.Scan(&m.ID, &m.Slots, &m.BaseAddress, &pinHash); err != nil {
+		if err := rows.Scan(&m.ID, &m.Slots, &pinHash); err != nil {
 			return nil, fmt.Errorf("scan mailbox: %w", err)
 		}
 		m.PINHash = pinHash.String
@@ -1079,24 +844,14 @@ func (s *Store) ListMailboxes() ([]config.MailboxConfig, error) {
 	return out, rows.Err()
 }
 
-// CreateMailbox inserts a new mailbox, rejecting a duplicate ID, and
-// reserves it a permanent base_address - see CreateMagazine, which this
-// mirrors exactly. Callers must validate slot-count constraints
-// (config.ValidateMailbox) first.
+// CreateMailbox inserts a new mailbox, rejecting a duplicate ID - see
+// CreateMagazine, which this mirrors exactly. Callers must validate
+// slot-count constraints (config.ValidateMailbox) first.
 func (s *Store) CreateMailbox(m config.MailboxConfig) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-	base, err := nextTopologyBaseAddressTx(tx, mailboxAddressBlockSize)
-	if err != nil {
-		return fmt.Errorf("reserve address for mailbox %s: %w", m.ID, err)
-	}
-	if _, err := tx.Exec("INSERT INTO mailboxes (id, slots, base_address, pin_hash) VALUES (?, ?, ?, ?)", m.ID, m.Slots, base, nullIfEmpty(m.PINHash)); err != nil {
+	if _, err := s.db.Exec("INSERT INTO mailboxes (id, slots, pin_hash) VALUES (?, ?, ?)", m.ID, m.Slots, nullIfEmpty(m.PINHash)); err != nil {
 		return fmt.Errorf("mailbox %s already exists or is invalid: %w", m.ID, err)
 	}
-	return tx.Commit()
+	return nil
 }
 
 // UpdateMailbox updates slots and pin_hash. Callers that only want to
@@ -1131,30 +886,18 @@ func (s *Store) DeleteMailbox(id string) error {
 }
 
 // SaveMailboxes replaces the whole mailboxes list. Used by the setup
-// wizard; see SaveMagazines (mailbox base_address assignment - including
-// reuse-by-ID for already-existing rows - mirrors it exactly).
+// wizard; see SaveMagazines.
 func (s *Store) SaveMailboxes(mbs []config.MailboxConfig) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	existing, err := existingBaseAddressesTx(tx, "mailboxes")
-	if err != nil {
-		return fmt.Errorf("read existing mailbox addresses: %w", err)
-	}
 	if _, err := tx.Exec("DELETE FROM mailboxes"); err != nil {
 		return fmt.Errorf("clear mailboxes: %w", err)
 	}
 	for _, m := range mbs {
-		base, ok := existing[m.ID]
-		if !ok {
-			base, err = nextTopologyBaseAddressTx(tx, mailboxAddressBlockSize)
-			if err != nil {
-				return fmt.Errorf("reserve address for mailbox %s: %w", m.ID, err)
-			}
-		}
-		if _, err := tx.Exec("INSERT INTO mailboxes (id, slots, base_address, pin_hash) VALUES (?, ?, ?, ?)", m.ID, m.Slots, base, nullIfEmpty(m.PINHash)); err != nil {
+		if _, err := tx.Exec("INSERT INTO mailboxes (id, slots, pin_hash) VALUES (?, ?, ?)", m.ID, m.Slots, nullIfEmpty(m.PINHash)); err != nil {
 			return fmt.Errorf("save mailbox %s: %w", m.ID, err)
 		}
 	}
