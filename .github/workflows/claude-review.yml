@@ -35,6 +35,7 @@ jobs:
           claude_args: |
             --model claude-haiku-4-5-20251001
             --allowedTools "Read,Grep,Glob,Bash(gh pr comment:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment"
+          show_full_output: true   # temporary for debug
           prompt: |
             Review this pull request to gotochanger, a Bareos tape-autochanger simulator
             written in Go.
