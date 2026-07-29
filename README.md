@@ -26,11 +26,11 @@ actual SCSI changer rather than a changer-script convention — see
 
 ## Components
 
-| Binary                 | Purpose                                                                 |
-|------------------------|--------------------------------------------------------------------------|
+| Binary                 | Purpose                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------- |
 | `gotochangerd`         | The daemon: library state, REST API, embedded web UI, SNMP traps, setup wizard.        |
-| `gotochanger-changer`  | Drop-in replacement for Bareos's `disk-changer.in` "Changer Command".     |
-| `gotochangerctl`       | General purpose admin CLI (status, load/unload/move, volumes, backup/restore, tokens).   |
+| `gotochanger-changer`  | Drop-in replacement for Bareos's `disk-changer.in` "Changer Command".                  |
+| `gotochangerctl`       | General purpose admin CLI (status, load/unload/move, volumes, backup/restore, tokens). |
 | `gotochanger-tcmud`    | Optional kernel-mode backend (ships in the separate `gotochanger-kernel` package): exposes the same library as real SCSI devices (`/dev/sg*`, `/dev/nst*`) via TCMU/LIO, translating real SCSI CDBs into the same calls `gotochanger-changer` makes over the trusted socket. |
 
 ## Concepts
@@ -141,11 +141,11 @@ unauthenticated over the trusted local Unix socket (used by
 
 Three roles, in increasing order of privilege:
 
-| Role       | Can do                                                              |
-|------------|------------------------------------------------------------------------|
-| `viewer`   | Read-only: status, events, volumes list                              |
+| Role       | Can do                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------- |
+| `viewer`   | Read-only: status, events, volumes list                                                               |
 | `operator` | Everything a viewer can, plus load/unload/move/door operations/outside tape create-delete/drive fault |
-| `admin`    | Everything, plus the Admin section: users, tokens, settings          |
+| `admin`    | Everything, plus the Admin section: users, tokens, settings                                           |
 
 The built-in `Admin` account must have its password set on first visit to
 the web UI (enforced password policy: 12+ characters, at least 3 of
@@ -234,7 +234,7 @@ Point Bareos's Device resource at the changer shim exactly like
 matching the corresponding entry in `library.drive_devices` in
 `/etc/gotochanger/config.yaml`:
 
-```
+```text
 Autochanger {
   Name = FakeML3
   Device = Drive0, Drive1
@@ -297,7 +297,7 @@ add a static `--logical-library=NAME` flag to that Autochanger resource's
 it's a fixed per-Autochanger suffix — the Autochanger is already
 permanently bound to one logical library):
 
-```
+```bash
 Changer Command = "/usr/bin/gotochanger-changer %c %o %S %a %d %V --logical-library=Library1"
 ```
 
@@ -354,64 +354,64 @@ listener accepts either a browser session cookie or an API token
 (`X-Api-Key` header or `Authorization: Bearer <token>`), each carrying one
 of the `admin`/`operator`/`viewer` roles described above.
 
-| Method | Path                          | Role      | Purpose                          |
-|--------|-------------------------------|-----------|-----------------------------------|
-| POST   | `/api/v1/auth/bootstrap`       | none      | Set the initial Admin password    |
-| POST   | `/api/v1/auth/login`           | none      | Log in, start a session           |
-| POST   | `/api/v1/auth/logout`          | viewer+   | Log out                           |
-| GET    | `/api/v1/auth/state`           | none      | Am I logged in? Is bootstrap needed?|
-| POST   | `/api/v1/auth/change-password` | viewer+   | Change your own password          |
-| GET    | `/api/v1/status`               | viewer+   | Full library snapshot             |
-| GET    | `/api/v1/events`                | viewer+   | Recent activity log               |
-| GET    | `/api/v1/stream`                | viewer+   | Live event stream (Server-Sent Events) |
-| GET    | `/api/v1/volumes`               | viewer+   | List all volumes                  |
-| GET    | `/api/v1/outside`               | viewer+   | List outside-library tapes        |
-| POST   | `/api/v1/outside`               | operator+ | Create outside-library tape       |
-| DELETE | `/api/v1/outside/{label}`       | operator+ | Delete outside-library tape       |
-| GET    | `/api/v1/cleaning/tapes`        | viewer+   | List cleaning tapes and remaining uses |
-| POST   | `/api/v1/cleaning/tapes`        | operator+ | Create a cleaning tape            |
-| POST   | `/api/v1/load`                  | operator+ | Load a slot/ioslot into a drive   |
-| POST   | `/api/v1/unload`                | operator+ | Unload a drive to a slot/ioslot   |
-| POST   | `/api/v1/move`                  | operator+ | Move between slot/ioslot elements |
-| POST   | `/api/v1/doors/io/open`         | operator+ | Open I/O door                     |
-| POST   | `/api/v1/doors/io/close`        | operator+ | Close I/O door and process actions|
-| POST   | `/api/v1/doors/storage/open`    | operator+ | Open storage door                 |
-| POST   | `/api/v1/doors/storage/close`   | operator+ | Close storage door and process actions|
-| POST   | `/api/v1/drives/{index}/fault`  | operator+ | Inject/clear a simulated fault on one drive |
-| POST   | `/api/v1/robotics/fault`        | operator+ | Inject/clear a simulated fault on the shared robotic arm (blocks all Load/Unload/Move) |
-| POST   | `/api/v1/volumes/{barcode}/write-protect` | operator+ | Set/clear a volume's write-protect flag |
-| GET/POST/DELETE | `/api/v1/users`        | admin     | Manage user accounts              |
-| GET/POST/DELETE | `/api/v1/tokens`       | admin     | Manage scoped API tokens          |
-| GET/PUT | `/api/v1/settings`             | admin     | View/update application settings  |
-| GET/PUT | `/api/v1/settings/latency`     | admin     | View/update latency simulation settings |
-| GET/PUT | `/api/v1/settings/cleaning`    | admin     | View/update cleaning thresholds   |
-| GET/PUT | `/api/v1/settings/pin`         | admin     | View/update the magazine/mailbox door PIN |
-| GET    | `/api/v1/backup/download`      | admin     | Download an on-demand backup of `state.db` |
-| GET/PUT | `/api/v1/backup/schedule`     | admin     | View/update the recurring backup schedule |
-| GET    | `/api/v1/backups`              | admin     | List stored (scheduled) backups   |
-| GET    | `/api/v1/backups/{filename}/download` | admin | Download a stored backup   |
-| DELETE | `/api/v1/backups/{filename}`   | admin     | Delete a stored backup            |
-| POST   | `/api/v1/restore`              | admin     | Restore `state.db` from a backup file (requires restart) |
-| POST   | `/api/v1/reset`                | admin     | Factory reset (name-confirmed)    |
-| GET    | `/api/v1/wizard`               | none      | Current setup wizard state         |
-| POST   | `/api/v1/wizard`               | none      | Submit one wizard step (persists immediately) |
-| POST   | `/api/v1/wizard/complete`      | none      | Finish the wizard, hot-apply topology |
-| POST   | `/api/v1/wizard/reset`         | none      | Reset wizard progress              |
-| GET    | `/api/v1/wizard/options`       | none      | Catalogs + current state for the wizard UI |
+| Method | Path | Role | Purpose |
+| ------ | ------------------------------ | --------- | --------------------------------- |
+| POST | `/api/v1/auth/bootstrap` | none | Set the initial Admin password |
+| POST | `/api/v1/auth/login` | none | Log in, start a session |
+| POST | `/api/v1/auth/logout` | viewer+ | Log out |
+| GET | `/api/v1/auth/state` | none | Am I logged in? Is bootstrap needed? |
+| POST | `/api/v1/auth/change-password` | viewer+ | Change your own password |
+| GET | `/api/v1/status` | viewer+ | Full library snapshot |
+| GET | `/api/v1/events` | viewer+ | Recent activity log |
+| GET | `/api/v1/stream` | viewer+ | Live event stream (Server-Sent Events) |
+| GET | `/api/v1/volumes` | viewer+ | List all volumes |
+| GET | `/api/v1/outside` | viewer+ | List outside-library tapes |
+| POST | `/api/v1/outside` | operator+ | Create outside-library tape |
+| DELETE | `/api/v1/outside/{label}` | operator+ | Delete outside-library tape |
+| GET | `/api/v1/cleaning/tapes` | viewer+ | List cleaning tapes and remaining uses |
+| POST | `/api/v1/cleaning/tapes` | operator+ | Create a cleaning tape |
+| POST | `/api/v1/load` | operator+ | Load a slot/ioslot into a drive |
+| POST | `/api/v1/unload` | operator+ | Unload a drive to a slot/ioslot |
+| POST | `/api/v1/move` | operator+ | Move between slot/ioslot elements |
+| POST | `/api/v1/doors/io/open` | operator+ | Open I/O door |
+| POST | `/api/v1/doors/io/close` | operator+ | Close I/O door and process actions |
+| POST | `/api/v1/doors/storage/open` | operator+ | Open storage door |
+| POST | `/api/v1/doors/storage/close` | operator+ | Close storage door and process actions |
+| POST | `/api/v1/drives/{index}/fault` | operator+ | Inject/clear a simulated fault on one drive |
+| POST | `/api/v1/robotics/fault` | operator+ | Inject/clear a simulated fault on the shared robotic arm (blocks all Load/Unload/Move) |
+| POST | `/api/v1/volumes/{barcode}/write-protect` | operator+ | Set/clear a volume's write-protect flag |
+| GET/POST/DELETE | `/api/v1/users` | admin | Manage user accounts |
+| GET/POST/DELETE | `/api/v1/tokens` | admin | Manage scoped API tokens |
+| GET/PUT | `/api/v1/settings` | admin | View/update application settings |
+| GET/PUT | `/api/v1/settings/latency` | admin | View/update latency simulation settings |
+| GET/PUT | `/api/v1/settings/cleaning` | admin | View/update cleaning thresholds |
+| GET/PUT | `/api/v1/settings/pin` | admin | View/update the magazine/mailbox door PIN |
+| GET | `/api/v1/backup/download` | admin | Download an on-demand backup of `state.db` |
+| GET/PUT | `/api/v1/backup/schedule` | admin | View/update the recurring backup schedule |
+| GET | `/api/v1/backups` | admin | List stored (scheduled) backups |
+| GET | `/api/v1/backups/{filename}/download` | admin | Download a stored backup |
+| DELETE | `/api/v1/backups/{filename}` | admin | Delete a stored backup |
+| POST | `/api/v1/restore` | admin | Restore `state.db` from a backup file (requires restart) |
+| POST | `/api/v1/reset` | admin | Factory reset (name-confirmed) |
+| GET | `/api/v1/wizard` | none | Current setup wizard state |
+| POST | `/api/v1/wizard` | none | Submit one wizard step (persists immediately) |
+| POST | `/api/v1/wizard/complete` | none | Finish the wizard, hot-apply topology |
+| POST | `/api/v1/wizard/reset` | none | Reset wizard progress |
+| GET | `/api/v1/wizard/options` | none | Catalogs + current state for the wizard UI |
 | GET/POST/PUT/DELETE | `/api/v1/logical-libraries[/{name}]` | admin | Manage logical library partitions |
-| GET    | `/api/v1/unassigned`           | admin     | Drives/slots/mailboxes in no logical library |
-| GET/POST/PUT/DELETE | `/api/v1/drive-types[/{name}]` | admin | Manage the drive-type catalog     |
+| GET | `/api/v1/unassigned` | admin | Drives/slots/mailboxes in no logical library |
+| GET/POST/PUT/DELETE | `/api/v1/drive-types[/{name}]` | admin | Manage the drive-type catalog |
 | GET/POST/PUT/DELETE | `/api/v1/drives[/{index}]` | admin | Manage drives (device path + drive-type assignment, hot-applies) |
-| GET/POST/PUT/DELETE | `/api/v1/tape-types[/{name}]`  | admin | Manage the tape/media-type catalog|
-| GET/POST/PUT/DELETE | `/api/v1/tape-sets[/{name}]`   | admin | Manage tape sets (type + storage folder) |
-| GET    | `/api/v1/fs/browse`             | admin     | Browse server-side folders (tape-set storage picker) |
-| GET/POST/PUT/DELETE | `/api/v1/magazines[/{id}]`     | admin | Manage magazines (hot-applies)    |
-| GET/POST/PUT/DELETE | `/api/v1/mailboxes[/{id}]`     | admin | Manage mailboxes (hot-applies)    |
-| GET    | `/api/v1/offsite`               | viewer+   | List volumes in the offsite vault  |
-| POST   | `/api/v1/offsite/send`          | operator+ | Send a volume to the offsite vault |
-| POST   | `/api/v1/offsite/recall`        | operator+ | Recall a volume from the offsite vault |
-| GET    | `/api/v1/kernel-mode/status`    | viewer+   | Whether the `gotochanger-kernel` package/kernel module are available |
-| GET    | `/api/v1/kernel-mode/devices`   | viewer+   | Real device paths self-reported by running `gotochanger-tcmud` instances |
+| GET/POST/PUT/DELETE | `/api/v1/tape-types[/{name}]` | admin | Manage the tape/media-type catalog |
+| GET/POST/PUT/DELETE | `/api/v1/tape-sets[/{name}]` | admin | Manage tape sets (type + storage folder) |
+| GET | `/api/v1/fs/browse` | admin | Browse server-side folders (tape-set storage picker) |
+| GET/POST/PUT/DELETE | `/api/v1/magazines[/{id}]` | admin | Manage magazines (hot-applies) |
+| GET/POST/PUT/DELETE | `/api/v1/mailboxes[/{id}]` | admin | Manage mailboxes (hot-applies) |
+| GET | `/api/v1/offsite` | viewer+ | List volumes in the offsite vault |
+| POST | `/api/v1/offsite/send` | operator+ | Send a volume to the offsite vault |
+| POST | `/api/v1/offsite/recall` | operator+ | Recall a volume from the offsite vault |
+| GET | `/api/v1/kernel-mode/status` | viewer+ | Whether the `gotochanger-kernel` package/kernel module are available |
+| GET | `/api/v1/kernel-mode/devices` | viewer+ | Real device paths self-reported by running `gotochanger-tcmud` instances |
 | POST/DELETE | `/api/v1/kernel-mode/devices/{instance}` | operator+ | Used by `gotochanger-tcmud` itself to report/clear its devices |
 
 `Load`/`Unload`/`Move` (and `GET /api/v1/status`) additionally accept an
@@ -481,7 +481,7 @@ The endpoint renders the MIB using the currently configured
 ### Event code quick reference
 
 | Domain | Code prefix | Typical severity |
-|--------|-------------|------------------|
+| ------ | ----------- | ---------------- |
 | Robotics/media movement | `ROBOTICS.*`, `MEDIA.*` | `information` / `warning` |
 | Drive state | `DRIVE.*` | `information` / `error` |
 | Authentication | `AUTH.*` | `information` / `error` |
