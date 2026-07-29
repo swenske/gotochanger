@@ -11,8 +11,9 @@ If your organization publishes gotochanger to an apt repository, installation is
 
 ```sh
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL <your-repo-signing-key-url> | sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
-echo "deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] <your-repo-url> trixie main" \
+curl -fsSL https://apt.sw-servers.net/apt-sw-servers.net.gpg.asc \
+    sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
+echo "deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] https://apt.sw-servers.net/gotochanger trixie main" \
   | sudo tee /etc/apt/sources.list.d/gotochanger.list
 sudo apt-get update
 sudo apt-get install gotochanger
