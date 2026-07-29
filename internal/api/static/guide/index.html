@@ -333,10 +333,12 @@ the Bareos changer shim, and the admin CLI) and the optional <code>gotochanger-k
 <a href="#kernel-mode">Kernel Mode</a>). All three installation paths below produce the same binaries; pick whichever
 fits your environment.</p>
 <h2 id="install-from-a-deb-package">Install from a <code>.deb</code> package</h2>
-<p>If your organization publishes gotochanger to an apt repository, installation is the usual:</p>
+<p>Pre-built <code>.deb</code> packages for Debian 13 (trixie) (<code>gotochanger</code> and the optional
+<code>gotochanger-kernel</code> add-on) are published to an apt repository after
+every release:</p>
 <pre><code class="language-sh">sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL &lt;your-repo-signing-key-url&gt; | sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
-echo &quot;deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] &lt;your-repo-url&gt; trixie main&quot; \
+curl -fsSL https://apt.sw-servers.net/apt-sw-servers.net.gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
+echo &quot;deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] https://apt.sw-servers.net/gotochanger trixie main&quot; \
   | sudo tee /etc/apt/sources.list.d/gotochanger.list
 sudo apt-get update
 sudo apt-get install gotochanger
