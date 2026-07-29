@@ -7,12 +7,13 @@ fits your environment.
 
 ## Install from a `.deb` package
 
-If your organization publishes gotochanger to an apt repository, installation is the usual:
+Pre-built `.deb` packages for Debian 13 (trixie) (`gotochanger` and the optional
+`gotochanger-kernel` add-on) are published to an apt repository after
+every release:
 
 ```sh
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://apt.sw-servers.net/apt-sw-servers.net.gpg.asc \
-    sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
+curl -fsSL https://apt.sw-servers.net/apt-sw-servers.net.gpg.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gotochanger.gpg
 echo "deb [signed-by=/etc/apt/keyrings/gotochanger.gpg] https://apt.sw-servers.net/gotochanger trixie main" \
   | sudo tee /etc/apt/sources.list.d/gotochanger.list
 sudo apt-get update
