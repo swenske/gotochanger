@@ -247,6 +247,24 @@ main {
 
 .panel.collapsed > *:not(.panel-head) { display: none; }
 
+/* Collapsed-panel header summary ("TITLE | tapes: 4") - hidden while
+   expanded, shown only via .panel.collapsed since it lives inside
+   .panel-head (exempt from the rule above). :not(:empty) guards against
+   a bare "| " flashing on first load, before the first render pass has
+   populated the span's text (restoreCollapsedPanels() runs before the
+   first renderDashboard() call). */
+.panel-summary { display: none; }
+.panel.collapsed .panel-summary:not(:empty) {
+  display: inline;
+  margin-left: 0.5rem;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.panel-summary:not(:empty)::before { content: "| "; }
+
 .drag-handle {
   margin-right: 0.5rem;
   color: var(--accent);
@@ -310,12 +328,30 @@ main {
   color: var(--muted-dim);
 }
 
-/* Robotic Arm panel: status grid on the left, a live "what is the arm
-   doing right now" terminal-style feed on the right. align-items: stretch
+/* Library Status panel: two roughly-50/50 columns - the robot arm status/
+   activity (.robot-panel-row, unchanged below) on the left, aggregate
+   Library Statistics (.library-stats) on the right. align-items:
+   flex-start (not stretch) deliberately lets the stats column grow to
+   fit its own content instead of being clipped to robot-activity's fixed
+   240px height - that height limit only ever applied to the arm's
+   activity feed (see below), not to this panel as a whole. */
+.library-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.library-status-col {
+  flex: 1 1 380px;
+  min-width: 280px;
+}
+
+/* Robotic arm status grid on the left, a live "what is the arm doing
+   right now" terminal-style feed on the right. align-items: stretch
    makes #robotStatus match robot-activity's height, which is what keeps
-   the two columns - and so the whole panel - from growing past a single
-   fixed height, however many events accumulate (robot-activity scrolls
-   internally instead). */
+   the two columns - and so the whole left column - from growing past a
+   single fixed height, however many events accumulate (robot-activity
+   scrolls internally instead). */
 .robot-panel-row {
   display: flex;
   align-items: stretch;
@@ -346,6 +382,43 @@ main {
 .robot-activity-entry { display: flex; gap: 0.4rem; padding: 0.05rem 0; border-bottom: 1px solid var(--border); }
 .robot-activity-entry .time { color: var(--muted); flex: none; }
 .robot-activity-entry .message { flex: 1; word-break: break-word; }
+
+/* Library Statistics (right column) - grouped sections of small metric
+   tiles. .stat-section-label mirrors .magazine-group-head h3's look;
+   .stat-card reuses the existing .card look (border/background/hover)
+   so these tiles match the rest of the dashboard's card styling. */
+.library-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.stat-section-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.4rem;
+}
+/* .card.stat-card (not just .stat-card) so this outranks .card's own
+   flex-direction: column further down the file - same specificity, same
+   class count, so source order alone would otherwise let .card win. */
+.card.stat-card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem;
+}
+.stat-card .stat-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.stat-card .stat-value { font-size: 0.95rem; font-weight: 700; }
+.stat-card .stat-value.ok { color: var(--ok); }
+.stat-card .stat-value.warn { color: var(--warn); }
+.stat-card .stat-value.err { color: var(--err); }
 
 .magazine-groups {
   display: flex;
@@ -1186,9 +1259,15 @@ dialog input, dialog select {
 
   .events-dock .events { max-height: 160px; }
 
+  .library-status-row { flex-direction: column; }
   .robot-panel-row { flex-direction: column; }
   .robot-panel-row #robotStatus { flex-basis: auto; }
   .robot-activity { height: 180px; }
+
+  /* Collapsed-panel summaries (e.g. Library Status's) can be long enough
+     to overflow a narrow header next to the fixed-width collapse button
+     - let the title row wrap instead. */
+  .panel h2 { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

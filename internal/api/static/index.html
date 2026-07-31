@@ -93,7 +93,7 @@
 
     <section id="outside" class="panel" data-panel-id="outside" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>Outside Library Tapes</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>Outside Library Tapes<span class="panel-summary" id="outsideSummary"></span></h2>
         <div class="panel-head-actions">
           <button id="outsideCreateBtn">Create tape</button>
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
@@ -104,7 +104,7 @@
 
     <section id="offsite" class="panel" data-panel-id="offsite" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Vault</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Vault<span class="panel-summary" id="offsiteSummary"></span></h2>
         <div class="panel-head-actions">
           <button id="offsiteSendBtn">Send to offsite</button>
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
@@ -113,22 +113,29 @@
       <div id="offsiteGrid" class="grid"></div>
     </section>
 
-    <section id="robot" class="panel" data-panel-id="robot" draggable="true">
+    <section id="library-status" class="panel" data-panel-id="library-status" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2"/><path d="M5 17V11h6l4-4h4"/><circle cx="19" cy="7" r="1.6"/><path d="M11 11l2 2"/></svg>Robotic Arm</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 15l2.5-4 2.5 3 2-2.5L17 15"/><circle cx="7" cy="8" r="1"/></svg>Library Status<span class="panel-summary" id="librarySummary"></span></h2>
         <div class="panel-head-actions">
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
         </div>
       </div>
-      <div class="robot-panel-row">
-        <div id="robotStatus" class="grid"></div>
-        <div id="robotActivity" class="robot-activity" role="log" aria-label="Robotic arm live activity"></div>
+      <div class="library-status-row">
+        <div class="library-status-col">
+          <div class="robot-panel-row">
+            <div id="robotStatus" class="grid"></div>
+            <div id="robotActivity" class="robot-activity" role="log" aria-label="Robotic arm live activity"></div>
+          </div>
+        </div>
+        <div class="library-status-col">
+          <div id="libraryStats" class="library-stats"></div>
+        </div>
       </div>
     </section>
 
     <section id="drives" class="panel" data-panel-id="drives" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 12h18"/><circle cx="7" cy="9" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none"/></svg>Drives<span class="panel-summary" id="drivesSummary"></span></h2>
         <div class="panel-head-actions">
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
         </div>
@@ -138,7 +145,7 @@
 
     <section id="ioslots" class="panel" data-panel-id="ioslots" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>I/O Slots (mail slots)</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l9 5 9-5"/><rect x="3" y="6" width="18" height="13" rx="1.5"/></svg>I/O Slots (mail slots)<span class="panel-summary" id="ioslotsSummary"></span></h2>
         <div class="panel-head-actions">
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
         </div>
@@ -148,7 +155,7 @@
 
     <section id="slots" class="panel" data-panel-id="slots" draggable="true">
       <div class="panel-head">
-        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Storage Slots</h2>
+        <h2><span class="drag-handle" title="Drag to reorder" aria-hidden="true">::</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Storage Slots<span class="panel-summary" id="slotsSummary"></span></h2>
         <div class="panel-head-actions">
           <button class="panel-collapse-btn" aria-expanded="true" title="Collapse panel">▼</button>
         </div>
@@ -196,6 +203,7 @@
           <button class="subnav-btn" data-admin="latency"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Latency</button>
           <button class="subnav-btn" data-admin="cleaning-tapes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Cleaning Tapes</button>
           <button class="subnav-btn" data-admin="settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.02 5.98l-1.7 1.7M7.68 16.32l-1.7 1.7M18.02 18.02l-1.7-1.7M7.68 7.68l-1.7-1.7"/></svg>Settings</button>
+          <button class="subnav-btn" data-admin="prometheus"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M9 20V4M14 20v-7M19 20V8"/></svg>Prometheus</button>
           <button class="subnav-btn" data-admin="security"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Security</button>
           <button class="subnav-btn" data-admin="backup"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Backup</button>
           <button class="subnav-btn" data-admin="reset"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M4.5 13a8 8 0 1 0 2-8.5L4 10"/></svg>Reset</button>
@@ -327,6 +335,26 @@
           <button type="submit">Save</button>
         </div>
         <p class="auth-error" id="latencySettingsError"></p>
+      </form>
+    </section>
+
+    <section id="admin-prometheus" class="panel" hidden>
+      <h2>Prometheus</h2>
+      <p class="hint">Exposes library metrics in Prometheus text format for scraping by an external Prometheus server. The <code>/metrics</code> endpoint is intentionally unauthenticated (standard Prometheus scrape practice) - restrict network access to it if this daemon is reachable beyond trusted monitoring infrastructure.</p>
+      <form id="prometheusSettingsForm" class="settings-form">
+        <fieldset>
+          <legend>Enable</legend>
+          <label><input type="checkbox" id="prom_enabled"> Enable Prometheus metrics exporter</label>
+        </fieldset>
+        <fieldset>
+          <legend>Status</legend>
+          <p>Endpoint: <code id="prom_metrics_path">/metrics</code> (unauthenticated) - Status: <span id="prom_status">disabled</span></p>
+        </fieldset>
+        <div class="dialog-actions">
+          <button type="button" id="downloadGrafanaDashboardBtn">Download Grafana dashboard</button>
+          <button type="submit">Save</button>
+        </div>
+        <p class="auth-error" id="prometheusSettingsError"></p>
       </form>
     </section>
 

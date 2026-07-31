@@ -237,6 +237,9 @@ func run(args []string) error {
 	case "latency":
 		return runLatency(c, cmdArgs, *jsonOut)
 
+	case "prometheus":
+		return runPrometheus(c, cmdArgs, *jsonOut)
+
 	case "cleaning":
 		return runCleaning(c, cmdArgs, *jsonOut)
 
@@ -990,6 +993,52 @@ func setLatencyField(ls *config.LatencySettings, key, val string) error {
 		return fmt.Errorf("unknown latency field %q (expected one of: enabled, drive_load, drive_unload, tape_positioning, robot_move_tape, robot_move_scan, magazine_scan, door_action)", key)
 	}
 	return nil
+}
+
+func runPrometheus(c *apiclient.Client, args []string, jsonOut bool) error {
+	printSettings := func(out apiclient.PrometheusSettingsInfo) error {
+		return printResult(out, jsonOut, func() {
+			fmt.Printf("enabled:      %v\n", out.Enabled)
+			fmt.Printf("metrics_path: %s\n", out.MetricsPath)
+		})
+	}
+
+	if len(args) == 0 || args[0] == "status" {
+		out, err := c.GetPrometheusSettings()
+		if err != nil {
+			return err
+		}
+		return printSettings(out)
+	}
+	switch args[0] {
+	case "enable":
+		out, err := c.UpdatePrometheusSettings(true)
+		if err != nil {
+			return err
+		}
+		return printSettings(out)
+	case "disable":
+		out, err := c.UpdatePrometheusSettings(false)
+		if err != nil {
+			return err
+		}
+		return printSettings(out)
+	case "dashboard":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: prometheus dashboard <output-file>")
+		}
+		data, err := c.DownloadGrafanaDashboard()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(args[1], data, 0o640); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s (%d bytes)\n", args[1], len(data))
+		return nil
+	default:
+		return fmt.Errorf("usage: prometheus <status|enable|disable|dashboard <output-file>>")
+	}
 }
 
 func runLatency(c *apiclient.Client, args []string, jsonOut bool) error {

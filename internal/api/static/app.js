@@ -12,6 +12,7 @@ const state = {
   showLibraryColors: false,
   hideUnassigned: false,
   tapeSetFamily: {},          // tape_set name -> barcode family label, e.g. "LTO (L8)"
+  backupLastRun: null,        // RFC3339 string from GET /api/v1/backup/schedule (Admin-only - see loadBackupLastRun), null if unknown/not Admin
   pendingDriveOps: new Set(),      // drive indices with a same-tab in-flight load/unload
   pendingRobotOps: 0,              // counter, not bool - guards overlapping arm-invoking actions
   pendingElementOps: new Set(),     // "slot:<addr>"/"ioslot:<addr>"/"drive:<index>" keys with a same-tab in-flight Move/Load/Unload
@@ -120,7 +121,20 @@ async function boot() {
 // completed, otherwise on the wizard. Previously bootstrap/login called
 // showApp() directly without this check, so the wizard was unreachable
 // except via a raw page reload while already authenticated.
+//
+// GET /api/v1/wizard is Admin-only (server.go), since it exposes
+// in-progress topology setup state - only an Admin can ever complete the
+// wizard, and an Operator/Viewer account only gets created once an Admin
+// has already done so. So only gate admins on wizard completion here;
+// every other role goes straight to the dashboard. Skipping this check
+// for non-admins previously meant every non-admin login 403'd on this
+// call and surfaced as a bogus "role does not have admin access" error
+// on the login screen - non-admin accounts could never sign in at all.
 async function enterAppOrWizard(s) {
+  if (s.role !== "admin") {
+    showApp(s);
+    return;
+  }
   const wizardState = await api("/api/v1/wizard");
   if (wizardState.completed) {
     showApp(s);
@@ -159,6 +173,7 @@ function showApp(s) {
   initDashboardUI();
   switchView("dashboard");
   loadTapeSetFamilyMap();
+  loadBackupLastRun();
   refresh();
   connectStream();
 }
@@ -853,7 +868,7 @@ function switchView(view) {
 
 function selectAdminSection(section) {
   for (const b of document.querySelectorAll(".subnav-btn")) b.classList.toggle("active", b.dataset.admin === section);
-  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-security", "admin-backup", "admin-reset"]) {
+  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-prometheus", "admin-security", "admin-backup", "admin-reset"]) {
     document.getElementById(id).hidden = id !== "admin-" + section;
   }
   loadAdmin(section);
@@ -870,6 +885,7 @@ function loadAdmin(section) {
   else if (section === "tokens") loadTokens();
   else if (section === "settings") loadSettings();
   else if (section === "latency") loadLatencySettings();
+  else if (section === "prometheus") loadPrometheusSettings();
   else if (section === "cleaning-tapes") loadCleaningAdmin();
   else if (section === "security") loadSecuritySettings();
   else if (section === "backup") loadBackup();
@@ -1457,6 +1473,21 @@ async function loadTapeSetFamilyMap() {
   }
 }
 
+// Last backup run time for the Library Status panel's Tape Management
+// stats. GET /api/v1/backup/schedule is Admin-only (a backup snapshot
+// carries every admin's password hash - see server.go's route comment),
+// so this 403s for Viewer/Operator and is caught here exactly like
+// loadTapeSetFamilyMap above degrades for non-Admins: state.backupLastRun
+// stays null and renderLibraryStats simply omits the "Last backup" tile.
+async function loadBackupLastRun() {
+  try {
+    const info = await api("/api/v1/backup/schedule");
+    state.backupLastRun = (info && info.last_run) || null;
+  } catch (e) {
+    state.backupLastRun = null;
+  }
+}
+
 // ==================== Dashboard ====================
 
 async function refresh() {
@@ -1488,6 +1519,7 @@ function renderDashboard() {
   document.getElementById("offsite").hidden = !status.offsite_enabled;
   if (status.offsite_enabled) renderOffsite(status.offsite_volumes || []);
   renderRobotStatus(status.robotic_fault || { active: false }, status.arm_state);
+  renderLibraryStats(status);
   renderDrives(status.drives || [], maps, status);
   renderIOSlots(status.ioslots || [], status, maps);
   renderSlots(status.slots || [], status, maps);
@@ -1793,6 +1825,7 @@ function renderOutside(vols) {
       },
     });
   }
+  setPanelSummary("outsideSummary", `tapes: ${vols.length}`);
 }
 
 // Fault kinds for the "Raise robotic fault" dialog - values must match
@@ -1872,6 +1905,137 @@ function renderRobotStatus(fault, armStateFallback) {
     card.appendChild(actions);
   }
   grid.appendChild(card);
+}
+
+// ==================== Library Status: aggregate statistics ====================
+
+// Building blocks for the "Library Statistics" tiles in the right half of
+// the Library Status panel (see renderLibraryStats below). valueClass is
+// one of "ok"/"warn"/"err" (style.css), the same --ok/--warn/--err colors
+// used everywhere else on the dashboard (LEDs, .vol/.full/.fault on
+// cards) - kept as its own tiny modifier here rather than reusing those
+// tape/volume-specific class names on unrelated tiles like "Drive faults".
+function statCardHTML(label, value, valueClass, tooltip) {
+  const tt = tooltip ? ` data-tooltip="${tooltip}"` : "";
+  return `<div class="card stat-card"${tt}><div class="stat-label">${label}</div><div class="stat-value${valueClass ? " " + valueClass : ""}">${value}</div></div>`;
+}
+
+function statSectionHTML(title, cardsHTML) {
+  return `<div class="stat-section"><div class="stat-section-label">${title}</div><div class="stat-cards">${cardsHTML}</div></div>`;
+}
+
+function statPct(numerator, denominator) {
+  if (!denominator) return "—";
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+// computeSlotCounts/computeDriveCounts centralize the occupied/free and
+// active/idle/free/fault classification shared by renderLibraryStats'
+// stat cards below and each panel's collapsed-header summary (see
+// setPanelSummary calls in renderOutside/renderOffsite/renderDrives/
+// renderIOSlots/renderSlots) - one definition of "empty"/"occupied"/
+// "active"/"idle", not a second one invented per call site. Slot and
+// IOSlot share the same `.volume` field shape, so one helper covers both
+// the Storage Slots and I/O Slots panels.
+function computeSlotCounts(slots) {
+  const occupied = slots.filter((s) => s.volume).length;
+  return { total: slots.length, occupied, free: slots.length - occupied };
+}
+
+function computeDriveCounts(drives) {
+  let active = 0, idle = 0, free = 0, fault = 0;
+  for (const d of drives) {
+    if (d.fault) { fault++; continue; }
+    if (!d.volume) { free++; continue; }
+    if (d.activity === "reading" || d.activity === "writing") active++;
+    else idle++;
+  }
+  return { total: drives.length, active, idle, free, fault };
+}
+
+// setPanelSummary fills a panel's collapsed-header summary span (see
+// index.html's #outsideSummary/#offsiteSummary/#librarySummary/
+// #drivesSummary/#ioslotsSummary/#slotsSummary) - CSS
+// (.panel.collapsed .panel-summary) is what actually shows/hides it, so
+// this just needs to keep the text current on every render pass, whether
+// or not the panel happens to be collapsed right now.
+function setPanelSummary(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+// renderLibraryStats fills #libraryStats, added alongside the robotic arm
+// status/activity feed when the panel was renamed from "Robotic Arm" to
+// "Library Status". Every figure here is derived client-side from the
+// same /api/v1/status snapshot already polled every 4s for the rest of
+// the dashboard (see refresh/renderDashboard), so it updates live for
+// free - and reuses the exact occupied/free/active field names and rules
+// renderDrives/renderSlots already use (drive.fault/volume/activity,
+// slot.volume/magazine_id, ioslot.volume/mailbox_id) rather than a second
+// notion of "in use". Two Tape Management tiles (configured tape sets,
+// last backup) come from Admin-only endpoints fetched once elsewhere
+// (loadTapeSetFamilyMap/loadBackupLastRun) and are simply omitted when
+// that data isn't available (non-Admin roles), matching how those loaders
+// already degrade for lower roles rather than surfacing a 403.
+function renderLibraryStats(status) {
+  const el = document.getElementById("libraryStats");
+  if (!el) return;
+
+  const slots = status.slots || [];
+  const ioslots = status.ioslots || [];
+  const drives = status.drives || [];
+
+  const slotCounts = computeSlotCounts(slots);
+  const slotsHTML =
+    statCardHTML("Total slots", slotCounts.total) +
+    statCardHTML("Free", slotCounts.free, "ok") +
+    statCardHTML("Occupied", slotCounts.occupied) +
+    statCardHTML("Occupancy", statPct(slotCounts.occupied, slotCounts.total));
+
+  const driveCounts = computeDriveCounts(drives);
+  const drivesHTML =
+    statCardHTML("Total drives", driveCounts.total) +
+    statCardHTML("Free", driveCounts.free, "ok") +
+    statCardHTML("Active", driveCounts.active, driveCounts.active ? "warn" : undefined) +
+    statCardHTML("Idle", driveCounts.idle) +
+    statCardHTML("Faults", driveCounts.fault, driveCounts.fault ? "err" : "ok") +
+    statCardHTML("Utilization", statPct(driveCounts.active, driveCounts.total));
+
+  const inLibraryVolumes = [
+    ...slots.map((s) => s.volume).filter(Boolean),
+    ...ioslots.map((s) => s.volume).filter(Boolean),
+    ...drives.map((d) => d.volume).filter(Boolean),
+  ];
+  const magazineCount = new Set(slots.map((s) => s.magazine_id).filter(Boolean)).size;
+  const mailboxCount = new Set(ioslots.map((s) => s.mailbox_id).filter(Boolean)).size;
+  const tapeSetsInUse = new Set(inLibraryVolumes.map((v) => v.tape_set).filter(Boolean)).size;
+  let writtenBytes = 0, capacityBytes = 0;
+  for (const v of inLibraryVolumes) {
+    if (v.capacity_bytes > 0) {
+      writtenBytes += v.written_bytes || 0;
+      capacityBytes += v.capacity_bytes;
+    }
+  }
+  let tapeHTML =
+    statCardHTML("Volumes in library", inLibraryVolumes.length) +
+    statCardHTML("Magazines", magazineCount) +
+    statCardHTML("Mailboxes", mailboxCount) +
+    statCardHTML("Tape sets in use", tapeSetsInUse) +
+    statCardHTML("Capacity used", statPct(writtenBytes, capacityBytes));
+  const configuredTapeSets = Object.keys(state.tapeSetFamily || {}).length;
+  if (configuredTapeSets > 0) tapeHTML += statCardHTML("Configured tape sets", configuredTapeSets);
+  if (state.backupLastRun) tapeHTML += statCardHTML("Last backup", new Date(state.backupLastRun).toLocaleString());
+
+  el.innerHTML =
+    statSectionHTML("Storage Slots", slotsHTML) +
+    statSectionHTML("Drives", drivesHTML) +
+    statSectionHTML("Tape Management", tapeHTML);
+
+  const armState = state.armState || status.arm_state || { position: {} };
+  setPanelSummary(
+    "librarySummary",
+    `arm position: ${armPositionLabel(armState.position)}, total slots: ${slotCounts.total}, total volumes: ${inLibraryVolumes.length}`
+  );
 }
 
 // ==================== Drive front-panel LED simulation ====================
@@ -2055,6 +2219,17 @@ function renderDrives(drives, maps, status) {
     applyCleaningOverlay(card, d);
     grid.appendChild(card);
   }
+  const driveCounts = computeDriveCounts(drives);
+  const loaded = driveCounts.idle + driveCounts.active;
+  // Faults get their own always-visible tile in the expanded Library
+  // Status stat cards - not one of the 4 named buckets here - but a
+  // faulted drive shouldn't become invisible just because this panel is
+  // collapsed, so it's appended only when there's actually one to show.
+  const faultPart = driveCounts.fault ? ` fault: ${driveCounts.fault}` : "";
+  setPanelSummary(
+    "drivesSummary",
+    `drives: ${driveCounts.total} idle: ${driveCounts.idle} active: ${driveCounts.active} loaded: ${loaded} empty: ${driveCounts.free}${faultPart}`
+  );
 }
 
 // phaseLabel maps a door-phase key (see Status.doors.phases,
@@ -2287,6 +2462,8 @@ function renderIOSlots(ioslots, status, maps) {
     applyGroupLockOverlay(groupEl, phases["mailbox:" + mbId]);
     container.appendChild(groupEl);
   }
+  const ioCounts = computeSlotCounts(ioslots);
+  setPanelSummary("ioslotsSummary", `slots: ${ioCounts.total} empty: ${ioCounts.free} full: ${ioCounts.occupied}`);
 }
 
 function renderSlots(slots, status, maps) {
@@ -2516,6 +2693,8 @@ function renderSlots(slots, status, maps) {
     applyGroupLockOverlay(groupEl, phases["magazine:" + magId]);
     container.appendChild(groupEl);
   }
+  const slotCounts = computeSlotCounts(slots);
+  setPanelSummary("slotsSummary", `slots: ${slotCounts.total} empty: ${slotCounts.free} full: ${slotCounts.occupied}`);
 }
 
 function renderEvents(events) {
@@ -2917,6 +3096,31 @@ document.getElementById("latencySettingsForm").addEventListener("submit", async 
   }
 });
 
+// ==================== Admin: Prometheus ====================
+
+async function loadPrometheusSettings() {
+  const result = await api("/api/v1/settings/prometheus");
+  document.getElementById("prom_enabled").checked = !!result.enabled;
+  document.getElementById("prom_metrics_path").textContent = result.metrics_path;
+  document.getElementById("prom_status").textContent = result.enabled ? "enabled" : "disabled";
+}
+
+document.getElementById("prometheusSettingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const req = { enabled: document.getElementById("prom_enabled").checked };
+  try {
+    await api("/api/v1/settings/prometheus", { method: "PUT", body: JSON.stringify(req) });
+    document.getElementById("prometheusSettingsError").textContent = "";
+    loadPrometheusSettings();
+  } catch (err) {
+    document.getElementById("prometheusSettingsError").textContent = err.message;
+  }
+});
+
+document.getElementById("downloadGrafanaDashboardBtn").addEventListener("click", () => {
+  window.location.href = "/api/v1/prometheus/dashboard";
+});
+
 // ==================== Admin: Security (PIN codes) ====================
 
 async function loadSecuritySettings() {
@@ -3306,6 +3510,7 @@ async function loadTapeTypes() {
     tbody.appendChild(tr);
   }
   loadTapeSetFamilyMap(); // barcode family badges on the dashboard depend on tape types too
+  loadBackupLastRun();
 }
 
 document.getElementById("newTapeTypeBtn").addEventListener("click", async () => {
@@ -3383,6 +3588,7 @@ async function loadTapeSets() {
     tbody.appendChild(tr);
   }
   loadTapeSetFamilyMap();
+  loadBackupLastRun();
 }
 
 document.getElementById("newTapeSetBtn").addEventListener("click", async () => {
@@ -3984,6 +4190,7 @@ function renderOffsite(vols) {
     card.appendChild(actions);
     grid.appendChild(card);
   }
+  setPanelSummary("offsiteSummary", `tapes: ${(vols || []).length}`);
 }
 
 document.getElementById("offsiteSendBtn")?.addEventListener("click", async () => {

@@ -28,6 +28,8 @@ gotochangerctl token new|revoke|list [name] [role]             # API token manag
 gotochangerctl user new|list|delete|role|reset-password ...    # local user accounts
 gotochangerctl settings get | set <key>=<value> ...            # daemon-wide settings (snmp, offsite, ...)
 gotochangerctl latency get | set <k>=<v>... | reset            # simulated latency knobs
+gotochangerctl prometheus status | enable | disable            # Prometheus /metrics exporter toggle
+gotochangerctl prometheus dashboard <output-file>               # download the Grafana dashboard JSON
 gotochangerctl cleaning settings get|set|reset                 # cleaning tunables
 gotochangerctl cleaning tape new|list                          # create/list cleaning cartridges
 gotochangerctl logical-library new|list|show|update|delete ...
@@ -62,7 +64,9 @@ open/queue/close workflow described in
 All actions are available over HTTP. The Unix socket is trusted (every request is treated as Admin, access
 controlled by filesystem permissions); the TCP listener accepts either a browser session cookie or an API
 token (`X-Api-Key` header or `Authorization: Bearer <token>`), each carrying one of the
-`admin`/`operator`/`viewer` roles.
+`admin`/`operator`/`viewer` roles. Two routes outside `/api/v1` are deliberately unauthenticated: `GET
+/healthz` (liveness) and `GET /metrics` (Prometheus text exposition, 404 while the exporter is disabled - see
+[Monitoring](#monitoring)).
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|
@@ -94,6 +98,8 @@ token (`X-Api-Key` header or `Authorization: Bearer <token>`), each carrying one
 | GET/PUT | `/api/v1/settings/latency` | admin | View/update latency simulation settings |
 | GET/PUT | `/api/v1/settings/cleaning` | admin | View/update cleaning thresholds |
 | GET/PUT | `/api/v1/settings/pin` | admin | View/update the magazine/mailbox door PIN |
+| GET/PUT | `/api/v1/settings/prometheus` | admin | View/update whether the Prometheus exporter is enabled |
+| GET | `/api/v1/prometheus/dashboard` | admin | Download the pre-built Grafana dashboard JSON |
 | GET/POST/PUT/DELETE | `/api/v1/logical-libraries[/{name}]` | admin | Manage logical library partitions |
 | GET | `/api/v1/unassigned` | admin | Drives/slots/mailboxes in no logical library |
 | GET/POST/PUT/DELETE | `/api/v1/drive-types[/{name}]` | admin | Manage the drive-type catalog |

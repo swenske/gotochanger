@@ -81,6 +81,7 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 		return fmt.Errorf("load daemon settings: %w", err)
 	}
 	cfg.SNMP = daemonSettings.SNMP
+	cfg.Prometheus = daemonSettings.Prometheus
 	cfg.PollIntervalRaw = daemonSettings.PollIntervalRaw
 	cfg.LogLevel = daemonSettings.LogLevel
 	cfg.TokensFile = daemonSettings.TokensFile

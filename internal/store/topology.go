@@ -398,6 +398,7 @@ func (s *Store) SeedDefaults() error {
 		"snmp_enterprise_oid": "1.3.6.1.4.1.55555.1",
 		"snmp_agent_address":  "127.0.0.1",
 		"snmp_targets":        "[]",
+		"prometheus_enabled":  "false",
 		"tokens_file":         config.DefaultTokensFile,
 		"users_file":          config.DefaultUsersFile,
 	}
@@ -1298,6 +1299,7 @@ func (s *Store) LoadTopology() (config.LibraryConfig, error) {
 // settings fields above.
 type DaemonSettings struct {
 	SNMP            config.SNMPConfig
+	Prometheus      config.PrometheusConfig
 	PollIntervalRaw string
 	LogLevel        string
 	TokensFile      string
@@ -1334,6 +1336,9 @@ func (s *Store) LoadDaemonSettings() (DaemonSettings, error) {
 		if err := json.Unmarshal([]byte(targetsJSON), &ds.SNMP.Targets); err != nil {
 			return ds, fmt.Errorf("parse snmp_targets: %w", err)
 		}
+	}
+	if ds.Prometheus.Enabled, err = s.getBoolSetting("prometheus_enabled", false); err != nil {
+		return ds, err
 	}
 	if ds.PollIntervalRaw, err = s.getStringSetting("poll_interval", "5s"); err != nil {
 		return ds, err
