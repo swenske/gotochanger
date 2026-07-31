@@ -1824,6 +1824,7 @@ function renderOutside(vols) {
       },
     });
   }
+  setPanelSummary("outsideSummary", `tapes: ${vols.length}`);
 }
 
 // Fault kinds for the "Raise robotic fault" dialog - values must match
@@ -1927,6 +1928,41 @@ function statPct(numerator, denominator) {
   return `${Math.round((numerator / denominator) * 100)}%`;
 }
 
+// computeSlotCounts/computeDriveCounts centralize the occupied/free and
+// active/idle/free/fault classification shared by renderLibraryStats'
+// stat cards below and each panel's collapsed-header summary (see
+// setPanelSummary calls in renderOutside/renderOffsite/renderDrives/
+// renderIOSlots/renderSlots) - one definition of "empty"/"occupied"/
+// "active"/"idle", not a second one invented per call site. Slot and
+// IOSlot share the same `.volume` field shape, so one helper covers both
+// the Storage Slots and I/O Slots panels.
+function computeSlotCounts(slots) {
+  const occupied = slots.filter((s) => s.volume).length;
+  return { total: slots.length, occupied, free: slots.length - occupied };
+}
+
+function computeDriveCounts(drives) {
+  let active = 0, idle = 0, free = 0, fault = 0;
+  for (const d of drives) {
+    if (d.fault) { fault++; continue; }
+    if (!d.volume) { free++; continue; }
+    if (d.activity === "reading" || d.activity === "writing") active++;
+    else idle++;
+  }
+  return { total: drives.length, active, idle, free, fault };
+}
+
+// setPanelSummary fills a panel's collapsed-header summary span (see
+// index.html's #outsideSummary/#offsiteSummary/#librarySummary/
+// #drivesSummary/#ioslotsSummary/#slotsSummary) - CSS
+// (.panel.collapsed .panel-summary) is what actually shows/hides it, so
+// this just needs to keep the text current on every render pass, whether
+// or not the panel happens to be collapsed right now.
+function setPanelSummary(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 // renderLibraryStats fills #libraryStats, added alongside the robotic arm
 // status/activity feed when the panel was renamed from "Robotic Arm" to
 // "Library Status". Every figure here is derived client-side from the
@@ -1948,28 +1984,21 @@ function renderLibraryStats(status) {
   const ioslots = status.ioslots || [];
   const drives = status.drives || [];
 
-  const occupiedSlots = slots.filter((s) => s.volume).length;
-  const freeSlots = slots.length - occupiedSlots;
+  const slotCounts = computeSlotCounts(slots);
   const slotsHTML =
-    statCardHTML("Total slots", slots.length) +
-    statCardHTML("Free", freeSlots, "ok") +
-    statCardHTML("Occupied", occupiedSlots) +
-    statCardHTML("Occupancy", statPct(occupiedSlots, slots.length));
+    statCardHTML("Total slots", slotCounts.total) +
+    statCardHTML("Free", slotCounts.free, "ok") +
+    statCardHTML("Occupied", slotCounts.occupied) +
+    statCardHTML("Occupancy", statPct(slotCounts.occupied, slotCounts.total));
 
-  let activeDrives = 0, idleDrives = 0, freeDrives = 0, faultDrives = 0;
-  for (const d of drives) {
-    if (d.fault) { faultDrives++; continue; }
-    if (!d.volume) { freeDrives++; continue; }
-    if (d.activity === "reading" || d.activity === "writing") activeDrives++;
-    else idleDrives++;
-  }
+  const driveCounts = computeDriveCounts(drives);
   const drivesHTML =
-    statCardHTML("Total drives", drives.length) +
-    statCardHTML("Free", freeDrives, "ok") +
-    statCardHTML("Active", activeDrives, activeDrives ? "warn" : undefined) +
-    statCardHTML("Idle", idleDrives) +
-    statCardHTML("Faults", faultDrives, faultDrives ? "err" : "ok") +
-    statCardHTML("Utilization", statPct(activeDrives, drives.length));
+    statCardHTML("Total drives", driveCounts.total) +
+    statCardHTML("Free", driveCounts.free, "ok") +
+    statCardHTML("Active", driveCounts.active, driveCounts.active ? "warn" : undefined) +
+    statCardHTML("Idle", driveCounts.idle) +
+    statCardHTML("Faults", driveCounts.fault, driveCounts.fault ? "err" : "ok") +
+    statCardHTML("Utilization", statPct(driveCounts.active, driveCounts.total));
 
   const inLibraryVolumes = [
     ...slots.map((s) => s.volume).filter(Boolean),
@@ -2000,6 +2029,12 @@ function renderLibraryStats(status) {
     statSectionHTML("Storage Slots", slotsHTML) +
     statSectionHTML("Drives", drivesHTML) +
     statSectionHTML("Tape Management", tapeHTML);
+
+  const armState = state.armState || status.arm_state || { position: {} };
+  setPanelSummary(
+    "librarySummary",
+    `arm position: ${armPositionLabel(armState.position)}, total slots: ${slotCounts.total}, total volumes: ${inLibraryVolumes.length}`
+  );
 }
 
 // ==================== Drive front-panel LED simulation ====================
@@ -2183,6 +2218,17 @@ function renderDrives(drives, maps, status) {
     applyCleaningOverlay(card, d);
     grid.appendChild(card);
   }
+  const driveCounts = computeDriveCounts(drives);
+  const loaded = driveCounts.idle + driveCounts.active;
+  // Faults get their own always-visible tile in the expanded Library
+  // Status stat cards - not one of the 4 named buckets here - but a
+  // faulted drive shouldn't become invisible just because this panel is
+  // collapsed, so it's appended only when there's actually one to show.
+  const faultPart = driveCounts.fault ? ` fault: ${driveCounts.fault}` : "";
+  setPanelSummary(
+    "drivesSummary",
+    `drives: ${driveCounts.total} idle: ${driveCounts.idle} active: ${driveCounts.active} loaded: ${loaded} empty: ${driveCounts.free}${faultPart}`
+  );
 }
 
 // phaseLabel maps a door-phase key (see Status.doors.phases,
@@ -2415,6 +2461,8 @@ function renderIOSlots(ioslots, status, maps) {
     applyGroupLockOverlay(groupEl, phases["mailbox:" + mbId]);
     container.appendChild(groupEl);
   }
+  const ioCounts = computeSlotCounts(ioslots);
+  setPanelSummary("ioslotsSummary", `slots: ${ioCounts.total} empty: ${ioCounts.free} full: ${ioCounts.occupied}`);
 }
 
 function renderSlots(slots, status, maps) {
@@ -2644,6 +2692,8 @@ function renderSlots(slots, status, maps) {
     applyGroupLockOverlay(groupEl, phases["magazine:" + magId]);
     container.appendChild(groupEl);
   }
+  const slotCounts = computeSlotCounts(slots);
+  setPanelSummary("slotsSummary", `slots: ${slotCounts.total} empty: ${slotCounts.free} full: ${slotCounts.occupied}`);
 }
 
 function renderEvents(events) {
@@ -4114,6 +4164,7 @@ function renderOffsite(vols) {
     card.appendChild(actions);
     grid.appendChild(card);
   }
+  setPanelSummary("offsiteSummary", `tapes: ${(vols || []).length}`);
 }
 
 document.getElementById("offsiteSendBtn")?.addEventListener("click", async () => {

@@ -247,6 +247,24 @@ main {
 
 .panel.collapsed > *:not(.panel-head) { display: none; }
 
+/* Collapsed-panel header summary ("TITLE | tapes: 4") - hidden while
+   expanded, shown only via .panel.collapsed since it lives inside
+   .panel-head (exempt from the rule above). :not(:empty) guards against
+   a bare "| " flashing on first load, before the first render pass has
+   populated the span's text (restoreCollapsedPanels() runs before the
+   first renderDashboard() call). */
+.panel-summary { display: none; }
+.panel.collapsed .panel-summary:not(:empty) {
+  display: inline;
+  margin-left: 0.5rem;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.panel-summary:not(:empty)::before { content: "| "; }
+
 .drag-handle {
   margin-right: 0.5rem;
   color: var(--accent);
@@ -1245,6 +1263,11 @@ dialog input, dialog select {
   .robot-panel-row { flex-direction: column; }
   .robot-panel-row #robotStatus { flex-basis: auto; }
   .robot-activity { height: 180px; }
+
+  /* Collapsed-panel summaries (e.g. Library Status's) can be long enough
+     to overflow a narrow header next to the fixed-width collapse button
+     - let the title row wrap instead. */
+  .panel h2 { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
