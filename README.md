@@ -106,7 +106,7 @@ sudo systemctl status gotochanger
 journalctl -u gotochanger | grep 'bootstrap API token'   # save this token!
 ```
 
-Open the web UI at `http://127.0.0.1:8480/`. On first visit you'll be asked
+Open the web UI at `http://<gotochanger-host>:8480/`. On first visit you'll be asked
 to set a password for the built-in **Admin** account (username `Admin`),
 then — since a fresh install starts with nothing configured — you'll be
 guided through the setup wizard to name your VTL and create your drives,

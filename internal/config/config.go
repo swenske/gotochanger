@@ -338,7 +338,7 @@ func Default() Config {
 		TokensFile: DefaultTokensFile,
 		UsersFile:  DefaultUsersFile,
 		Listen: ListenConfig{
-			HTTP:        "127.0.0.1:8480",
+			HTTP:        "0.0.0.0:8480",
 			UnixSocket:  "/run/gotochanger/gotochanger.sock",
 			SocketMode:  "0660",
 			SocketGroup: "gotochanger",

@@ -14,9 +14,8 @@
 data_dir: /var/lib/gotochanger
 
 listen:
-  # Token-authenticated REST API + web UI. Bind to 0.0.0.0:8480 (or a
-  # specific interface) if you need to reach the UI from other hosts.
-  http: "127.0.0.1:8480"
+  # Token-authenticated REST API + web UI.
+  http: "0.0.0.0:8480"
   # Trusted local socket used by gotochanger-changer/gotochangerctl: no
   # token needed, access is controlled by filesystem permissions instead.
   unix_socket: "/run/gotochanger/gotochanger.sock"

@@ -59,7 +59,7 @@ gotochanger installed.
   * Config file:     /etc/gotochanger/config.yaml
   * Service account:  gotochanger:gotochanger
   * Trusted socket:  /run/gotochanger/gotochanger.sock (group gotochanger)
-  * Web UI:          http://127.0.0.1:8480/
+  * Web UI:          http://0.0.0.0:8480/
 
 Open the web UI to set the built-in Admin account's password (required on
 first visit), then use its Admin section to create Operator/Viewer users
