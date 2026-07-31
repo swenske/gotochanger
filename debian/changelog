@@ -1,3 +1,13 @@
+gotochanger (0.8.0) UNRELEASED; urgency=medium
+
+  * Update installation instructions with correct repository URLs for apt
+  * Refactor README formatting for improved readability and consistency
+  * Clarify installation instructions for pre-built .deb packages in the User Guide
+  * Update installation instructions for pre-built .deb packages with correct repository URLs
+  * Prometheus eporter / Library Status / Panel Summary
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Fri, 31 Jul 2026 10:34:12 +0000
+
 gotochanger (0.7.3) UNRELEASED; urgency=medium
 
   * cicd: Change issue permissions from read to write
