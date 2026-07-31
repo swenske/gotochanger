@@ -2,10 +2,12 @@
 # .github/workflows/release.yml, workflow_dispatch only). Builds all four
 # binaries, packages them into the same two Debian binary packages
 # (gotochanger / gotochanger-kernel) the hand-maintained debian/ directory
-# already produces via dpkg-buildpackage, generates a commit-based
-# changelog, and creates a GitHub Release with the binaries + both .debs
-# as assets. The release workflow's own last step pushes the produced
-# .debs into the internal aptly mirror - that part isn't goreleaser's job.
+# already produces via dpkg-buildpackage, builds and pushes the
+# swenske/gotochanger Docker image (non-kernel-mode only - see the
+# "dockers:" section below), generates a commit-based changelog, and
+# creates a GitHub Release with the binaries + both .debs as assets. The
+# release workflow's own last step pushes the produced .debs into the
+# internal aptly mirror - that part isn't goreleaser's job.
 version: 2
 
 project_name: gotochanger
@@ -189,6 +191,42 @@ nfpms:
         dst: /usr/share/polkit-1/rules.d/gotochanger-kernel.rules
     scripts:
       postinstall: packaging/nfpm/gotochanger-kernel-postinstall.sh
+
+# Docker Hub image for the non-kernel-mode gotochanger package (mirrors the
+# "gotochanger" .deb above; no image for gotochanger-kernel yet - that
+# backend needs host SCSI/TCMU kernel access a container can't provide, so
+# it's out of scope for now). Bundles the daemon plus both admin CLIs so
+# `docker run` (daemon) and `docker exec <container> gotochangerctl ...`
+# (one-off admin commands against the same container's trusted socket, or
+# --url/--token against a remote instance) both work from one image.
+# gotochanger-tcmud is deliberately excluded (belongs to the excluded
+# kernel-mode package). See docker/gotochanger/Dockerfile.
+dockers:
+  - id: gotochanger-image
+    ids: [gotochangerd, gotochanger-changer, gotochangerctl]
+    goos: linux
+    goarch: amd64
+    dockerfile: docker/gotochanger/Dockerfile
+    # configs/gotochanger.yaml lands at the same relative path inside the
+    # temporary docker build context, so the Dockerfile's own COPY line
+    # references it as "configs/gotochanger.yaml" too.
+    extra_files:
+      - configs/gotochanger.yaml
+    image_templates:
+      - "swenske/gotochanger:{{ .Version }}"
+      - "swenske/gotochanger:latest"
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/swenske/gotochanger"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    # Plain "docker build"/"docker push" - no buildx builder instance
+    # required. Only one platform is built, so there's nothing to
+    # assemble into a multi-arch manifest; no docker_manifests: entry.
+    use: docker
 
 # Changelog covers every commit since the last tag (or, for the first
 # release, every commit since the repo's initial commit) - satisfies

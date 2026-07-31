@@ -2,8 +2,9 @@
 
 gotochanger ships as two Debian binary packages built from the same source tree - `gotochanger` (the daemon,
 the Bareos changer shim, and the admin CLI) and the optional `gotochanger-kernel` add-on (see
-[Kernel Mode](#kernel-mode)). All three installation paths below produce the same binaries; pick whichever
-fits your environment.
+[Kernel Mode](#kernel-mode)) - plus a Docker image covering the `gotochanger` package's contents (no
+`gotochanger-kernel` image exists yet, see [Run with Docker](#run-with-docker) below for why). All paths
+below produce the same binaries; pick whichever fits your environment.
 
 ## Install from a `.deb` package
 
@@ -47,6 +48,51 @@ dpkg-buildpackage -us -uc -b
 
 Produces the same two binary packages (`gotochanger`, `gotochanger-kernel`) from a plain git checkout, no
 network access required.
+
+## Run with Docker
+
+A Docker image covering the `gotochanger` package's contents (`gotochangerd`, `gotochanger-changer`,
+`gotochangerctl`) is published to Docker Hub after every release:
+
+```sh
+docker pull swenske/gotochanger:latest
+docker run -d --name gotochanger \
+  -p 8480:8480 \
+  -v gotochanger-data:/var/lib/gotochanger \
+  swenske/gotochanger:latest
+```
+
+`-v gotochanger-data:/var/lib/gotochanger` persists `state.db` (topology, users, tokens, volumes - everything
+except `data_dir`/`listen`, which come from the config file baked into the image) across container restarts.
+The web UI is then reachable at `http://<host>:8480/` - continue with
+[First Run and Setup Wizard](#first-run-and-setup-wizard).
+
+Only `linux/amd64` is published, matching every other release artifact. There is no `gotochanger-kernel`
+image: `gotochanger-tcmud` needs real host kernel/TCMU access, and `gotochangerd`'s kernel-mode reconciler
+manages it via `systemctl` talking to a real host systemd/polkit - neither is available inside a plain
+container, so kernel mode currently requires a `.deb` install (see [Kernel Mode](#kernel-mode)).
+
+To read the one-time bootstrap admin API token (same as the systemd/journalctl flow below, just via
+`docker logs`):
+
+```sh
+docker logs gotochanger 2>&1 | grep 'bootstrap API token'
+```
+
+The admin CLI is included in the image for one-off commands. Against the same container's trusted Unix
+socket:
+
+```sh
+docker exec gotochanger gotochangerctl status
+```
+
+Or, from anywhere, against a remote gotochangerd (`--url`/`--token`, see
+[CLI Reference and REST API](#cli-and-rest-api-reference)):
+
+```sh
+docker run --rm --entrypoint gotochangerctl swenske/gotochanger \
+  --url http://<host>:8480 --token <api-token> status
+```
 
 ## First start
 

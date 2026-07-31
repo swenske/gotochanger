@@ -589,6 +589,36 @@ sudo apt-get install gotochanger-kernel
 Targets Debian trixie (amd64). Released versions and their changelogs are
 also available as [GitHub Releases](https://github.com/swenske/gotochanger/releases).
 
+## Install with Docker
+
+A Docker image covering the `gotochanger` package's contents (`gotochangerd`, `gotochanger-changer`,
+`gotochangerctl`) is published to Docker Hub as
+[`swenske/gotochanger`](https://hub.docker.com/r/swenske/gotochanger) after every release:
+
+```sh
+# 1. Pull the image
+docker pull swenske/gotochanger:latest
+
+# 2. Run it - -v persists state.db (topology/users/tokens/volumes) across restarts
+docker run -d --name gotochanger \
+  -p 8480:8480 \
+  -v gotochanger-data:/var/lib/gotochanger \
+  swenske/gotochanger:latest
+
+# 3. Grab the one-time bootstrap admin API token
+docker logs gotochanger 2>&1 | grep 'bootstrap API token'
+```
+
+Open the web UI at `http://<host>:8480/` and continue as in "Quick start" above. `gotochangerctl` is included
+for one-off admin commands, either against the same container (`docker exec gotochanger gotochangerctl
+status`) or a remote instance (`docker run --rm --entrypoint gotochangerctl swenske/gotochanger --url
+http://<host>:8480 --token <api-token> status`).
+
+Only `linux/amd64` is published. There is no `gotochanger-kernel` image yet: `gotochanger-tcmud` needs real
+host kernel/TCMU access, and `gotochangerd`'s kernel-mode reconciler controls it via `systemctl` talking to a
+real host systemd/polkit — neither is available inside a plain container, so kernel mode currently requires
+a `.deb` install (see "Kernel mode: real SCSI devices" above).
+
 ## Building from source
 
 ```sh
