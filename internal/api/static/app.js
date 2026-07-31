@@ -12,6 +12,7 @@ const state = {
   showLibraryColors: false,
   hideUnassigned: false,
   tapeSetFamily: {},          // tape_set name -> barcode family label, e.g. "LTO (L8)"
+  backupLastRun: null,        // RFC3339 string from GET /api/v1/backup/schedule (Admin-only - see loadBackupLastRun), null if unknown/not Admin
   pendingDriveOps: new Set(),      // drive indices with a same-tab in-flight load/unload
   pendingRobotOps: 0,              // counter, not bool - guards overlapping arm-invoking actions
   pendingElementOps: new Set(),     // "slot:<addr>"/"ioslot:<addr>"/"drive:<index>" keys with a same-tab in-flight Move/Load/Unload
@@ -172,6 +173,7 @@ function showApp(s) {
   initDashboardUI();
   switchView("dashboard");
   loadTapeSetFamilyMap();
+  loadBackupLastRun();
   refresh();
   connectStream();
 }
@@ -1470,6 +1472,21 @@ async function loadTapeSetFamilyMap() {
   }
 }
 
+// Last backup run time for the Library Status panel's Tape Management
+// stats. GET /api/v1/backup/schedule is Admin-only (a backup snapshot
+// carries every admin's password hash - see server.go's route comment),
+// so this 403s for Viewer/Operator and is caught here exactly like
+// loadTapeSetFamilyMap above degrades for non-Admins: state.backupLastRun
+// stays null and renderLibraryStats simply omits the "Last backup" tile.
+async function loadBackupLastRun() {
+  try {
+    const info = await api("/api/v1/backup/schedule");
+    state.backupLastRun = (info && info.last_run) || null;
+  } catch (e) {
+    state.backupLastRun = null;
+  }
+}
+
 // ==================== Dashboard ====================
 
 async function refresh() {
@@ -1501,6 +1518,7 @@ function renderDashboard() {
   document.getElementById("offsite").hidden = !status.offsite_enabled;
   if (status.offsite_enabled) renderOffsite(status.offsite_volumes || []);
   renderRobotStatus(status.robotic_fault || { active: false }, status.arm_state);
+  renderLibraryStats(status);
   renderDrives(status.drives || [], maps, status);
   renderIOSlots(status.ioslots || [], status, maps);
   renderSlots(status.slots || [], status, maps);
@@ -1885,6 +1903,103 @@ function renderRobotStatus(fault, armStateFallback) {
     card.appendChild(actions);
   }
   grid.appendChild(card);
+}
+
+// ==================== Library Status: aggregate statistics ====================
+
+// Building blocks for the "Library Statistics" tiles in the right half of
+// the Library Status panel (see renderLibraryStats below). valueClass is
+// one of "ok"/"warn"/"err" (style.css), the same --ok/--warn/--err colors
+// used everywhere else on the dashboard (LEDs, .vol/.full/.fault on
+// cards) - kept as its own tiny modifier here rather than reusing those
+// tape/volume-specific class names on unrelated tiles like "Drive faults".
+function statCardHTML(label, value, valueClass, tooltip) {
+  const tt = tooltip ? ` data-tooltip="${tooltip}"` : "";
+  return `<div class="card stat-card"${tt}><div class="stat-label">${label}</div><div class="stat-value${valueClass ? " " + valueClass : ""}">${value}</div></div>`;
+}
+
+function statSectionHTML(title, cardsHTML) {
+  return `<div class="stat-section"><div class="stat-section-label">${title}</div><div class="stat-cards">${cardsHTML}</div></div>`;
+}
+
+function statPct(numerator, denominator) {
+  if (!denominator) return "—";
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+// renderLibraryStats fills #libraryStats, added alongside the robotic arm
+// status/activity feed when the panel was renamed from "Robotic Arm" to
+// "Library Status". Every figure here is derived client-side from the
+// same /api/v1/status snapshot already polled every 4s for the rest of
+// the dashboard (see refresh/renderDashboard), so it updates live for
+// free - and reuses the exact occupied/free/active field names and rules
+// renderDrives/renderSlots already use (drive.fault/volume/activity,
+// slot.volume/magazine_id, ioslot.volume/mailbox_id) rather than a second
+// notion of "in use". Two Tape Management tiles (configured tape sets,
+// last backup) come from Admin-only endpoints fetched once elsewhere
+// (loadTapeSetFamilyMap/loadBackupLastRun) and are simply omitted when
+// that data isn't available (non-Admin roles), matching how those loaders
+// already degrade for lower roles rather than surfacing a 403.
+function renderLibraryStats(status) {
+  const el = document.getElementById("libraryStats");
+  if (!el) return;
+
+  const slots = status.slots || [];
+  const ioslots = status.ioslots || [];
+  const drives = status.drives || [];
+
+  const occupiedSlots = slots.filter((s) => s.volume).length;
+  const freeSlots = slots.length - occupiedSlots;
+  const slotsHTML =
+    statCardHTML("Total slots", slots.length) +
+    statCardHTML("Free", freeSlots, "ok") +
+    statCardHTML("Occupied", occupiedSlots) +
+    statCardHTML("Occupancy", statPct(occupiedSlots, slots.length));
+
+  let activeDrives = 0, idleDrives = 0, freeDrives = 0, faultDrives = 0;
+  for (const d of drives) {
+    if (d.fault) { faultDrives++; continue; }
+    if (!d.volume) { freeDrives++; continue; }
+    if (d.activity === "reading" || d.activity === "writing") activeDrives++;
+    else idleDrives++;
+  }
+  const drivesHTML =
+    statCardHTML("Total drives", drives.length) +
+    statCardHTML("Free", freeDrives, "ok") +
+    statCardHTML("Active", activeDrives, activeDrives ? "warn" : undefined) +
+    statCardHTML("Idle", idleDrives) +
+    statCardHTML("Faults", faultDrives, faultDrives ? "err" : "ok") +
+    statCardHTML("Utilization", statPct(activeDrives, drives.length));
+
+  const inLibraryVolumes = [
+    ...slots.map((s) => s.volume).filter(Boolean),
+    ...ioslots.map((s) => s.volume).filter(Boolean),
+    ...drives.map((d) => d.volume).filter(Boolean),
+  ];
+  const magazineCount = new Set(slots.map((s) => s.magazine_id).filter(Boolean)).size;
+  const mailboxCount = new Set(ioslots.map((s) => s.mailbox_id).filter(Boolean)).size;
+  const tapeSetsInUse = new Set(inLibraryVolumes.map((v) => v.tape_set).filter(Boolean)).size;
+  let writtenBytes = 0, capacityBytes = 0;
+  for (const v of inLibraryVolumes) {
+    if (v.capacity_bytes > 0) {
+      writtenBytes += v.written_bytes || 0;
+      capacityBytes += v.capacity_bytes;
+    }
+  }
+  let tapeHTML =
+    statCardHTML("Volumes in library", inLibraryVolumes.length) +
+    statCardHTML("Magazines", magazineCount) +
+    statCardHTML("Mailboxes", mailboxCount) +
+    statCardHTML("Tape sets in use", tapeSetsInUse) +
+    statCardHTML("Capacity used", statPct(writtenBytes, capacityBytes));
+  const configuredTapeSets = Object.keys(state.tapeSetFamily || {}).length;
+  if (configuredTapeSets > 0) tapeHTML += statCardHTML("Configured tape sets", configuredTapeSets);
+  if (state.backupLastRun) tapeHTML += statCardHTML("Last backup", new Date(state.backupLastRun).toLocaleString());
+
+  el.innerHTML =
+    statSectionHTML("Storage Slots", slotsHTML) +
+    statSectionHTML("Drives", drivesHTML) +
+    statSectionHTML("Tape Management", tapeHTML);
 }
 
 // ==================== Drive front-panel LED simulation ====================
@@ -3319,6 +3434,7 @@ async function loadTapeTypes() {
     tbody.appendChild(tr);
   }
   loadTapeSetFamilyMap(); // barcode family badges on the dashboard depend on tape types too
+  loadBackupLastRun();
 }
 
 document.getElementById("newTapeTypeBtn").addEventListener("click", async () => {
@@ -3396,6 +3512,7 @@ async function loadTapeSets() {
     tbody.appendChild(tr);
   }
   loadTapeSetFamilyMap();
+  loadBackupLastRun();
 }
 
 document.getElementById("newTapeSetBtn").addEventListener("click", async () => {
