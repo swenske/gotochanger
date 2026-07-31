@@ -51,6 +51,9 @@
       <div class="guide-toc-group-label">Build the Debian package directly</div>
     </div>
     <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Run with Docker</div>
+    </div>
+    <div class="guide-toc-group">
       <div class="guide-toc-group-label">First start</div>
     </div>
     <div class="guide-toc-group">
@@ -334,8 +337,9 @@ configured interval, simulating routine tape rotation without a human doing it b
 <h1 id="installation">Installation</h1>
 <p>gotochanger ships as two Debian binary packages built from the same source tree - <code>gotochanger</code> (the daemon,
 the Bareos changer shim, and the admin CLI) and the optional <code>gotochanger-kernel</code> add-on (see
-<a href="#kernel-mode">Kernel Mode</a>). All three installation paths below produce the same binaries; pick whichever
-fits your environment.</p>
+<a href="#kernel-mode">Kernel Mode</a>) - plus a Docker image covering the <code>gotochanger</code> package's contents (no
+<code>gotochanger-kernel</code> image exists yet, see <a href="#run-with-docker">Run with Docker</a> below for why). All paths
+below produce the same binaries; pick whichever fits your environment.</p>
 <h2 id="install-from-a-deb-package">Install from a <code>.deb</code> package</h2>
 <p>Pre-built <code>.deb</code> packages for Debian 13 (trixie) (<code>gotochanger</code> and the optional
 <code>gotochanger-kernel</code> add-on) are published to an apt repository after
@@ -366,6 +370,36 @@ preview it with <code>make site</code> before publishing.</p>
 </code></pre>
 <p>Produces the same two binary packages (<code>gotochanger</code>, <code>gotochanger-kernel</code>) from a plain git checkout, no
 network access required.</p>
+<h2 id="run-with-docker">Run with Docker</h2>
+<p>A Docker image covering the <code>gotochanger</code> package's contents (<code>gotochangerd</code>, <code>gotochanger-changer</code>,
+<code>gotochangerctl</code>) is published to Docker Hub after every release:</p>
+<pre><code class="language-sh">docker pull swenske/gotochanger:latest
+docker run -d --name gotochanger \
+  -p 8480:8480 \
+  -v gotochanger-data:/var/lib/gotochanger \
+  swenske/gotochanger:latest
+</code></pre>
+<p><code>-v gotochanger-data:/var/lib/gotochanger</code> persists <code>state.db</code> (topology, users, tokens, volumes - everything
+except <code>data_dir</code>/<code>listen</code>, which come from the config file baked into the image) across container restarts.
+The web UI is then reachable at <code>http://&lt;host&gt;:8480/</code> - continue with
+<a href="#first-run-and-setup-wizard">First Run and Setup Wizard</a>.</p>
+<p>Only <code>linux/amd64</code> is published, matching every other release artifact. There is no <code>gotochanger-kernel</code>
+image: <code>gotochanger-tcmud</code> needs real host kernel/TCMU access, and <code>gotochangerd</code>'s kernel-mode reconciler
+manages it via <code>systemctl</code> talking to a real host systemd/polkit - neither is available inside a plain
+container, so kernel mode currently requires a <code>.deb</code> install (see <a href="#kernel-mode">Kernel Mode</a>).</p>
+<p>To read the one-time bootstrap admin API token (same as the systemd/journalctl flow below, just via
+<code>docker logs</code>):</p>
+<pre><code class="language-sh">docker logs gotochanger 2&gt;&amp;1 | grep 'bootstrap API token'
+</code></pre>
+<p>The admin CLI is included in the image for one-off commands. Against the same container's trusted Unix
+socket:</p>
+<pre><code class="language-sh">docker exec gotochanger gotochangerctl status
+</code></pre>
+<p>Or, from anywhere, against a remote gotochangerd (<code>--url</code>/<code>--token</code>, see
+<a href="#cli-and-rest-api-reference">CLI Reference and REST API</a>):</p>
+<pre><code class="language-sh">docker run --rm --entrypoint gotochangerctl swenske/gotochanger \
+  --url http://&lt;host&gt;:8480 --token &lt;api-token&gt; status
+</code></pre>
 <h2 id="first-start">First start</h2>
 <pre><code class="language-sh">sudo systemctl status gotochanger
 journalctl -u gotochanger | grep 'bootstrap API token'   # save this - it's an admin-scoped token, shown once
