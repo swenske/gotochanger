@@ -64,3 +64,65 @@ currently documents the most commonly used routes but not every admin/topology e
 <a href="#cli-and-rest-api-reference">CLI Reference and REST API</a> - treat the CLI reference and this guide
 as the source of truth for anything not yet in Swagger.</div>
 </div>
+
+## Prometheus metrics
+
+Disabled by default, like SNMP. Enable it from Admin > Settings > "Prometheus" (Enable checkbox, current
+status, and a "Download Grafana dashboard" button), or from the CLI:
+
+```sh
+gotochangerctl prometheus enable
+```
+
+Once enabled, `GET /metrics` serves metrics in the standard Prometheus text exposition format.
+
+<div class="callout callout-warning">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 16H3l9-16z"/><path d="M12 9v4M12 16h.01"/></svg>
+<div><code>/metrics</code> is <strong>intentionally unauthenticated</strong> - matching standard Prometheus
+scrape practice, and reachable even on the authenticated TCP listener with no session cookie or API token.
+Restrict network access to it (firewall, reverse proxy, or a scrape-only security group) if this daemon is
+reachable beyond trusted monitoring infrastructure: it exposes slot/volume/tape-set naming and library
+topology to anyone who can reach it, even though it never exposes credentials.</div>
+</div>
+
+Example Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: 'gotochanger'
+    static_configs:
+      - targets: ['localhost:8480']  # adjust host:port to your listen address
+```
+
+Metrics are recorded regardless of transport: both the TCP API and the trusted Unix socket (used by
+`gotochanger-changer`/`gotochangerctl`/`gotochanger-tcmud` - i.e. how Bareos actually drives this daemon)
+share the same routing, so `gotochanger_operations_total`/`gotochanger_operation_duration_seconds` reflect
+real Bareos-driven activity, not just direct API calls.
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `gotochanger_slots_total` | gauge | | Total storage slots |
+| `gotochanger_slots_free` | gauge | | Free storage slots |
+| `gotochanger_slots_occupied` | gauge | | Occupied storage slots |
+| `gotochanger_readers_total` | gauge | | Total tape drives |
+| `gotochanger_readers_idle` | gauge | | Drives loaded but not currently reading/writing |
+| `gotochanger_readers_active` | gauge | | Drives currently reading or writing |
+| `gotochanger_readers_free` | gauge | | Drives with no volume loaded |
+| `gotochanger_readers_error` | gauge | | Drives in a simulated fault state |
+| `gotochanger_volumes_total` | gauge | | Total tape volumes known to the library |
+| `gotochanger_volumes_by_status` | gauge | `status` (`in_slot`, `in_ioslot`, `in_drive`, `outside`, `offsite`) | Volumes by current location |
+| `gotochanger_magazines_total` | gauge | | Total storage magazines |
+| `gotochanger_capacity_utilization_percent` | gauge | | Occupied storage slots as a percentage of total |
+| `gotochanger_queue_depth` | gauge | | 1 if the single robotic arm is currently busy, 0 if idle - this simulator has one arm and no operation queue |
+| `gotochanger_uptime_seconds` | gauge | | Seconds since the daemon started |
+| `gotochanger_last_backup_timestamp` | gauge | | Unix timestamp of the last configuration backup (Admin > Backup, a `state.db` snapshot) - absent if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs |
+| `gotochanger_operations_total` | counter | `operation_type` (`load`, `unload`, `move`, `door_open`, `door_close`, `offsite_send`, `offsite_recall`) | Total library operations executed, whether they succeeded or failed |
+| `gotochanger_operation_duration_seconds` | histogram | `operation_type` | Library operation latency in seconds |
+| `gotochanger_errors_total` | counter | `error_type` (`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `internal`, `other`) | Total request errors, bucketed by HTTP status class |
+
+A ready-to-import Grafana dashboard (Overview, Storage Capacity, Reader Status, Tape Inventory, Operations
+Timeline, and System Health rows, with threshold-based coloring on capacity/error-rate panels) is available
+from Admin > Settings > Prometheus > "Download Grafana dashboard", or `gotochangerctl prometheus dashboard
+gotochanger-dashboard.json`. See
+[Monitor gotochanger via Prometheus and Grafana](#monitor-gotochanger-via-prometheus-and-grafana) for a full
+worked example: enabling the exporter, scraping it, and importing the dashboard.

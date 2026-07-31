@@ -868,7 +868,7 @@ function switchView(view) {
 
 function selectAdminSection(section) {
   for (const b of document.querySelectorAll(".subnav-btn")) b.classList.toggle("active", b.dataset.admin === section);
-  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-security", "admin-backup", "admin-reset"]) {
+  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-prometheus", "admin-security", "admin-backup", "admin-reset"]) {
     document.getElementById(id).hidden = id !== "admin-" + section;
   }
   loadAdmin(section);
@@ -885,6 +885,7 @@ function loadAdmin(section) {
   else if (section === "tokens") loadTokens();
   else if (section === "settings") loadSettings();
   else if (section === "latency") loadLatencySettings();
+  else if (section === "prometheus") loadPrometheusSettings();
   else if (section === "cleaning-tapes") loadCleaningAdmin();
   else if (section === "security") loadSecuritySettings();
   else if (section === "backup") loadBackup();
@@ -3093,6 +3094,31 @@ document.getElementById("latencySettingsForm").addEventListener("submit", async 
   } catch (err) {
     document.getElementById("latencySettingsError").textContent = err.message;
   }
+});
+
+// ==================== Admin: Prometheus ====================
+
+async function loadPrometheusSettings() {
+  const result = await api("/api/v1/settings/prometheus");
+  document.getElementById("prom_enabled").checked = !!result.enabled;
+  document.getElementById("prom_metrics_path").textContent = result.metrics_path;
+  document.getElementById("prom_status").textContent = result.enabled ? "enabled" : "disabled";
+}
+
+document.getElementById("prometheusSettingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const req = { enabled: document.getElementById("prom_enabled").checked };
+  try {
+    await api("/api/v1/settings/prometheus", { method: "PUT", body: JSON.stringify(req) });
+    document.getElementById("prometheusSettingsError").textContent = "";
+    loadPrometheusSettings();
+  } catch (err) {
+    document.getElementById("prometheusSettingsError").textContent = err.message;
+  }
+});
+
+document.getElementById("downloadGrafanaDashboardBtn").addEventListener("click", () => {
+  window.location.href = "/api/v1/prometheus/dashboard";
 });
 
 // ==================== Admin: Security (PIN codes) ====================

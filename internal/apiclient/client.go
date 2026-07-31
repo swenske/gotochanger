@@ -306,6 +306,36 @@ func (c *Client) UpdateLatencySettings(ls config.LatencySettings) (LatencySettin
 	return out, err
 }
 
+// PrometheusSettingsInfo mirrors api.prometheusSettingsResponse without
+// importing the api package (see WizardStateInfo's doc comment for why).
+type PrometheusSettingsInfo struct {
+	Enabled     bool   `json:"enabled"`
+	MetricsPath string `json:"metrics_path"`
+}
+
+// GetPrometheusSettings returns whether the Prometheus /metrics exporter is
+// enabled, plus its (fixed) scrape path.
+func (c *Client) GetPrometheusSettings() (PrometheusSettingsInfo, error) {
+	var out PrometheusSettingsInfo
+	err := c.do(http.MethodGet, "/api/v1/settings/prometheus", nil, &out)
+	return out, err
+}
+
+// UpdatePrometheusSettings enables or disables the Prometheus /metrics
+// exporter.
+func (c *Client) UpdatePrometheusSettings(enabled bool) (PrometheusSettingsInfo, error) {
+	var out PrometheusSettingsInfo
+	err := c.do(http.MethodPut, "/api/v1/settings/prometheus", map[string]bool{"enabled": enabled}, &out)
+	return out, err
+}
+
+// DownloadGrafanaDashboard returns the pre-built Grafana dashboard JSON for
+// this daemon's Prometheus metrics.
+func (c *Client) DownloadGrafanaDashboard() ([]byte, error) {
+	data, _, err := c.getBytes("/api/v1/prometheus/dashboard")
+	return data, err
+}
+
 // CleaningSettingsInfo mirrors api.CleaningSettingsResult without
 // importing the api package (see WizardStateInfo's doc comment for why).
 type CleaningSettingsInfo struct {

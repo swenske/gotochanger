@@ -96,6 +96,9 @@
       <div class="guide-toc-group-label">The dynamic MIB</div>
     </div>
     <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Prometheus metrics</div>
+    </div>
+    <div class="guide-toc-group">
       <div class="guide-toc-group-label">gotochangerctl</div>
     </div>
     <div class="guide-toc-group">
@@ -113,6 +116,7 @@
       <a href="#monitor-gotochanger-via-snmp">Monitor gotochanger via SNMP</a>
       <a href="#managing-cleaning-tapes">Managing cleaning tapes</a>
       <a href="#set-up-a-scoped-operator-api-token-for-a-ci-script">Set up a scoped operator API token for a CI script</a>
+      <a href="#monitor-gotochanger-via-prometheus-and-grafana">Monitor gotochanger via Prometheus and Grafana</a>
     </div>
     <div class="guide-toc-group">
       <div class="guide-toc-group-label">Troubleshooting and FAQ</div>
@@ -686,6 +690,155 @@ currently documents the most commonly used routes but not every admin/topology e
 <a href="#cli-and-rest-api-reference">CLI Reference and REST API</a> - treat the CLI reference and this guide
 as the source of truth for anything not yet in Swagger.</div>
 </div>
+<h2 id="prometheus-metrics">Prometheus metrics</h2>
+<p>Disabled by default, like SNMP. Enable it from Admin &gt; Settings &gt; &quot;Prometheus&quot; (Enable checkbox, current
+status, and a &quot;Download Grafana dashboard&quot; button), or from the CLI:</p>
+<pre><code class="language-sh">gotochangerctl prometheus enable
+</code></pre>
+<p>Once enabled, <code>GET /metrics</code> serves metrics in the standard Prometheus text exposition format.</p>
+<div class="callout callout-warning">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 16H3l9-16z"/><path d="M12 9v4M12 16h.01"/></svg>
+<div><code>/metrics</code> is <strong>intentionally unauthenticated</strong> - matching standard Prometheus
+scrape practice, and reachable even on the authenticated TCP listener with no session cookie or API token.
+Restrict network access to it (firewall, reverse proxy, or a scrape-only security group) if this daemon is
+reachable beyond trusted monitoring infrastructure: it exposes slot/volume/tape-set naming and library
+topology to anyone who can reach it, even though it never exposes credentials.</div>
+</div>
+<p>Example Prometheus scrape config:</p>
+<pre><code class="language-yaml">scrape_configs:
+  - job_name: 'gotochanger'
+    static_configs:
+      - targets: ['localhost:8480']  # adjust host:port to your listen address
+</code></pre>
+<p>Metrics are recorded regardless of transport: both the TCP API and the trusted Unix socket (used by
+<code>gotochanger-changer</code>/<code>gotochangerctl</code>/<code>gotochanger-tcmud</code> - i.e. how Bareos actually drives this daemon)
+share the same routing, so <code>gotochanger_operations_total</code>/<code>gotochanger_operation_duration_seconds</code> reflect
+real Bareos-driven activity, not just direct API calls.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gotochanger_slots_total</code></td>
+<td>gauge</td>
+<td></td>
+<td>Total storage slots</td>
+</tr>
+<tr>
+<td><code>gotochanger_slots_free</code></td>
+<td>gauge</td>
+<td></td>
+<td>Free storage slots</td>
+</tr>
+<tr>
+<td><code>gotochanger_slots_occupied</code></td>
+<td>gauge</td>
+<td></td>
+<td>Occupied storage slots</td>
+</tr>
+<tr>
+<td><code>gotochanger_readers_total</code></td>
+<td>gauge</td>
+<td></td>
+<td>Total tape drives</td>
+</tr>
+<tr>
+<td><code>gotochanger_readers_idle</code></td>
+<td>gauge</td>
+<td></td>
+<td>Drives loaded but not currently reading/writing</td>
+</tr>
+<tr>
+<td><code>gotochanger_readers_active</code></td>
+<td>gauge</td>
+<td></td>
+<td>Drives currently reading or writing</td>
+</tr>
+<tr>
+<td><code>gotochanger_readers_free</code></td>
+<td>gauge</td>
+<td></td>
+<td>Drives with no volume loaded</td>
+</tr>
+<tr>
+<td><code>gotochanger_readers_error</code></td>
+<td>gauge</td>
+<td></td>
+<td>Drives in a simulated fault state</td>
+</tr>
+<tr>
+<td><code>gotochanger_volumes_total</code></td>
+<td>gauge</td>
+<td></td>
+<td>Total tape volumes known to the library</td>
+</tr>
+<tr>
+<td><code>gotochanger_volumes_by_status</code></td>
+<td>gauge</td>
+<td><code>status</code> (<code>in_slot</code>, <code>in_ioslot</code>, <code>in_drive</code>, <code>outside</code>, <code>offsite</code>)</td>
+<td>Volumes by current location</td>
+</tr>
+<tr>
+<td><code>gotochanger_magazines_total</code></td>
+<td>gauge</td>
+<td></td>
+<td>Total storage magazines</td>
+</tr>
+<tr>
+<td><code>gotochanger_capacity_utilization_percent</code></td>
+<td>gauge</td>
+<td></td>
+<td>Occupied storage slots as a percentage of total</td>
+</tr>
+<tr>
+<td><code>gotochanger_queue_depth</code></td>
+<td>gauge</td>
+<td></td>
+<td>1 if the single robotic arm is currently busy, 0 if idle - this simulator has one arm and no operation queue</td>
+</tr>
+<tr>
+<td><code>gotochanger_uptime_seconds</code></td>
+<td>gauge</td>
+<td></td>
+<td>Seconds since the daemon started</td>
+</tr>
+<tr>
+<td><code>gotochanger_last_backup_timestamp</code></td>
+<td>gauge</td>
+<td></td>
+<td>Unix timestamp of the last configuration backup (Admin &gt; Backup, a <code>state.db</code> snapshot) - absent if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs</td>
+</tr>
+<tr>
+<td><code>gotochanger_operations_total</code></td>
+<td>counter</td>
+<td><code>operation_type</code> (<code>load</code>, <code>unload</code>, <code>move</code>, <code>door_open</code>, <code>door_close</code>, <code>offsite_send</code>, <code>offsite_recall</code>)</td>
+<td>Total library operations executed, whether they succeeded or failed</td>
+</tr>
+<tr>
+<td><code>gotochanger_operation_duration_seconds</code></td>
+<td>histogram</td>
+<td><code>operation_type</code></td>
+<td>Library operation latency in seconds</td>
+</tr>
+<tr>
+<td><code>gotochanger_errors_total</code></td>
+<td>counter</td>
+<td><code>error_type</code> (<code>bad_request</code>, <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>conflict</code>, <code>internal</code>, <code>other</code>)</td>
+<td>Total request errors, bucketed by HTTP status class</td>
+</tr>
+</tbody>
+</table>
+<p>A ready-to-import Grafana dashboard (Overview, Storage Capacity, Reader Status, Tape Inventory, Operations
+Timeline, and System Health rows, with threshold-based coloring on capacity/error-rate panels) is available
+from Admin &gt; Settings &gt; Prometheus &gt; &quot;Download Grafana dashboard&quot;, or <code>gotochangerctl prometheus dashboard gotochanger-dashboard.json</code>. See
+<a href="#monitor-gotochanger-via-prometheus-and-grafana">Monitor gotochanger via Prometheus and Grafana</a> for a full
+worked example: enabling the exporter, scraping it, and importing the dashboard.</p>
 <h1 id="cli-and-rest-api-reference">CLI and REST API Reference</h1>
 <p>Every action available in the web UI is also available over the <code>gotochangerctl</code> CLI and the REST API - the
 dashboard is a client of the same API, nothing more.</p>
@@ -711,6 +864,8 @@ gotochangerctl token new|revoke|list [name] [role]             # API token manag
 gotochangerctl user new|list|delete|role|reset-password ...    # local user accounts
 gotochangerctl settings get | set &lt;key&gt;=&lt;value&gt; ...            # daemon-wide settings (snmp, offsite, ...)
 gotochangerctl latency get | set &lt;k&gt;=&lt;v&gt;... | reset            # simulated latency knobs
+gotochangerctl prometheus status | enable | disable            # Prometheus /metrics exporter toggle
+gotochangerctl prometheus dashboard &lt;output-file&gt;               # download the Grafana dashboard JSON
 gotochangerctl cleaning settings get|set|reset                 # cleaning tunables
 gotochangerctl cleaning tape new|list                          # create/list cleaning cartridges
 gotochangerctl logical-library new|list|show|update|delete ...
@@ -741,7 +896,8 @@ open/queue/close workflow described in
 <p>All actions are available over HTTP. The Unix socket is trusted (every request is treated as Admin, access
 controlled by filesystem permissions); the TCP listener accepts either a browser session cookie or an API
 token (<code>X-Api-Key</code> header or <code>Authorization: Bearer &lt;token&gt;</code>), each carrying one of the
-<code>admin</code>/<code>operator</code>/<code>viewer</code> roles.</p>
+<code>admin</code>/<code>operator</code>/<code>viewer</code> roles. Two routes outside <code>/api/v1</code> are deliberately unauthenticated: <code>GET /healthz</code> (liveness) and <code>GET /metrics</code> (Prometheus text exposition, 404 while the exporter is disabled - see
+<a href="#monitoring">Monitoring</a>).</p>
 <table>
 <thead>
 <tr>
@@ -919,6 +1075,18 @@ token (<code>X-Api-Key</code> header or <code>Authorization: Bearer &lt;token&gt
 <td><code>/api/v1/settings/pin</code></td>
 <td>admin</td>
 <td>View/update the magazine/mailbox door PIN</td>
+</tr>
+<tr>
+<td>GET/PUT</td>
+<td><code>/api/v1/settings/prometheus</code></td>
+<td>admin</td>
+<td>View/update whether the Prometheus exporter is enabled</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/v1/prometheus/dashboard</code></td>
+<td>admin</td>
+<td>Download the pre-built Grafana dashboard JSON</td>
 </tr>
 <tr>
 <td>GET/POST/PUT/DELETE</td>
@@ -1545,6 +1713,54 @@ freely load/unload/move volumes and inject faults. When the CI script is decommi
 than leaving it live:</p>
 <pre><code class="language-sh">gotochangerctl token revoke ci-pipeline
 </code></pre>
+<h1 id="monitor-gotochanger-via-prometheus-and-grafana">Monitor gotochanger via Prometheus and Grafana</h1>
+<p>You want an existing Prometheus server to scrape library metrics (slot/reader/volume counts, operation
+throughput and latency, error rates) and a Grafana dashboard to visualize them.</p>
+<h2 id="prerequisites-11">Prerequisites</h2>
+<ul>
+<li>A Prometheus server that can reach the gotochangerd host's HTTP listener.</li>
+<li>A Grafana instance with a Prometheus data source configured (or you'll add one during import).</li>
+<li>Admin access to gotochangerd.</li>
+</ul>
+<h2 id="steps-10">Steps</h2>
+<ol>
+<li>Enable the exporter:
+<pre><code class="language-sh">gotochangerctl prometheus enable
+</code></pre>
+(Or from the web UI: Admin &gt; Settings &gt; &quot;Prometheus&quot; &gt; enable the checkbox &gt; Save.)</li>
+<li>Confirm it's serving real values - no credentials needed:
+<pre><code class="language-sh">curl http://localhost:8480/metrics
+</code></pre>
+</li>
+<li>Point your Prometheus server at it:
+<pre><code class="language-yaml">scrape_configs:
+  - job_name: 'gotochanger'
+    static_configs:
+      - targets: ['&lt;gotochangerd-host&gt;:8480']
+</code></pre>
+Reload/restart Prometheus to pick up the new scrape config.</li>
+<li>Download the pre-built Grafana dashboard:
+<pre><code class="language-sh">gotochangerctl prometheus dashboard gotochanger-dashboard.json
+</code></pre>
+(Or click &quot;Download Grafana dashboard&quot; from the same Admin &gt; Settings &gt; Prometheus panel.)</li>
+<li>In Grafana: Dashboards &gt; New &gt; Import &gt; upload <code>gotochanger-dashboard.json</code> &gt; when prompted, select the
+Prometheus data source scraping this gotochangerd instance.</li>
+<li>Generate some activity to see the dashboard populate - a load/unload cycle is the simplest:
+<pre><code class="language-sh">gotochangerctl load slot 1 0
+gotochangerctl unload 0 slot 1
+</code></pre>
+</li>
+</ol>
+<h2 id="verify-11">Verify</h2>
+<p>The imported dashboard's Overview row should show your real slot/reader/volume counts within one Prometheus
+scrape interval. After the load/unload cycle in step 6, the Operations Timeline row's rate graph should show
+a <code>load</code> and an <code>unload</code> sample, and the latency panel a non-zero p95 for both. If a panel shows &quot;No data,&quot;
+double-check the data source selected during import matches the one actually scraping this instance - the
+dashboard's queries assume metric names exactly as gotochangerd exports them (<code>gotochanger_*</code>), so a
+differently-labeled or relabeled scrape job will need its queries adjusted.</p>
+<p>Metrics reflect activity from <em>any</em> client - the web UI, <code>gotochangerctl</code>/<code>gotochanger-changer</code> over the
+trusted socket, or direct API calls - so a real Bareos backup job driving this daemon shows up here exactly
+like the manual load/unload above did.</p>
 <h1 id="troubleshooting-and-faq">Troubleshooting and FAQ</h1>
 <h4 id="i-forgot-the-admin-password">I forgot the Admin password.</h4>
 <p>There's no in-app recovery flow for the built-in account by design (sessions and credentials are kept

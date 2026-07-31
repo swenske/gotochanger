@@ -110,6 +110,8 @@ type Server struct {
 	// deliberately not persisted: these are kernel-assigned identifiers
 	// tied to a specific running process, meaningless across a restart.
 	kernelModeDevices map[string]KernelModeDeviceReport
+	startedAt         time.Time
+	pm                *prometheusMetrics
 }
 
 // New builds a Server. lib, tokens, users and sessions must be non-nil; log
@@ -118,7 +120,7 @@ func New(lib *library.Library, tokens *TokenStore, users *UserStore, sessions *S
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{lib: lib, tokens: tokens, users: users, sessions: sessions, settings: settings, cfg: cfg, log: log, persist: persist, topology: topology, backup: backup, backupsDir: backupsDir, kernelModeDevices: map[string]KernelModeDeviceReport{}}
+	s := &Server{lib: lib, tokens: tokens, users: users, sessions: sessions, settings: settings, cfg: cfg, log: log, persist: persist, topology: topology, backup: backup, backupsDir: backupsDir, kernelModeDevices: map[string]KernelModeDeviceReport{}, startedAt: time.Now(), pm: newPrometheusMetrics()}
 	if topology != nil {
 		s.wizardState = loadWizardState(topology)
 	}
@@ -159,7 +161,7 @@ func (s *Server) SetBroadcaster(b *Broadcaster) {
 // API token), meant to be served on the TCP listener (remote/UI access).
 func (s *Server) PublicHandler() http.Handler {
 	mux := s.routes()
-	return s.authenticate(s.audit(mux))
+	return s.authenticate(s.audit(s.metricsMiddleware(mux)))
 }
 
 // TrustedHandler returns the handler tree with every request treated as an
@@ -169,7 +171,7 @@ func (s *Server) PublicHandler() http.Handler {
 // gotochanger group).
 func (s *Server) TrustedHandler() http.Handler {
 	mux := s.routes()
-	audited := s.audit(mux)
+	audited := s.audit(s.metricsMiddleware(mux))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := Principal{Subject: "trusted-socket", Role: RoleAdmin, Via: "trusted"}
 		audited.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), p)))
@@ -296,6 +298,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("PUT /api/v1/settings/latency", requireRole(RoleAdmin, s.handleUpdateLatencySettings))
 	mux.HandleFunc("GET /api/v1/settings/cleaning", requireRole(RoleAdmin, s.handleGetCleaningSettings))
 	mux.HandleFunc("PUT /api/v1/settings/cleaning", requireRole(RoleAdmin, s.handleUpdateCleaningSettings))
+	mux.HandleFunc("GET /api/v1/settings/prometheus", requireRole(RoleAdmin, s.handleGetPrometheusSettings))
+	mux.HandleFunc("PUT /api/v1/settings/prometheus", requireRole(RoleAdmin, s.handleUpdatePrometheusSettings))
+	mux.HandleFunc("GET /api/v1/prometheus/dashboard", requireRole(RoleAdmin, s.handleDownloadGrafanaDashboard))
 	mux.HandleFunc("GET /api/v1/settings/pin", requireRole(RoleAdmin, s.handleGetPINSettings))
 	mux.HandleFunc("PUT /api/v1/settings/pin", requireRole(RoleAdmin, s.handleUpdatePINSettings))
 
@@ -384,6 +389,10 @@ func (s *Server) routes() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Unauthenticated by design (standard Prometheus scrape practice, and
+	// this ticket's explicit requirement) - same pattern as /healthz above.
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 
 	RegisterWebUI(mux)
 	RegisterSwaggerUI(mux)

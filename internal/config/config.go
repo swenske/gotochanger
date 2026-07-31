@@ -29,6 +29,13 @@ type SNMPConfig struct {
 	AgentAddress  string       `yaml:"agent_address" json:"agent_address"`
 }
 
+// PrometheusConfig controls the /metrics exporter. Enabled defaults to
+// false, matching every other optional feature (SNMP, latency simulation,
+// cleaning) - an operator opts in explicitly.
+type PrometheusConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+}
+
 // ListenConfig configures the two listeners exposed by the daemon.
 type ListenConfig struct {
 	HTTP        string `yaml:"http" json:"http"`               // TCP address for the token-authenticated API + Web UI
@@ -298,15 +305,16 @@ type LibraryConfig struct {
 // require a daemon restart to take effect if changed, since the token/user
 // JSON stores are only ever loaded once.
 type Config struct {
-	DataDir         string        `yaml:"data_dir" json:"data_dir"`
-	TokensFile      string        `yaml:"-" json:"tokens_file"`
-	UsersFile       string        `yaml:"-" json:"users_file"`
-	Listen          ListenConfig  `yaml:"listen" json:"listen"`
-	Library         LibraryConfig `yaml:"-" json:"library"`
-	SNMP            SNMPConfig    `yaml:"-" json:"snmp"`
-	PollInterval    time.Duration `yaml:"-" json:"-"`
-	PollIntervalRaw string        `yaml:"-" json:"poll_interval"`
-	LogLevel        string        `yaml:"-" json:"log_level"`
+	DataDir         string           `yaml:"data_dir" json:"data_dir"`
+	TokensFile      string           `yaml:"-" json:"tokens_file"`
+	UsersFile       string           `yaml:"-" json:"users_file"`
+	Listen          ListenConfig     `yaml:"listen" json:"listen"`
+	Library         LibraryConfig    `yaml:"-" json:"library"`
+	SNMP            SNMPConfig       `yaml:"-" json:"snmp"`
+	Prometheus      PrometheusConfig `yaml:"-" json:"prometheus"`
+	PollInterval    time.Duration    `yaml:"-" json:"-"`
+	PollIntervalRaw string           `yaml:"-" json:"poll_interval"`
+	LogLevel        string           `yaml:"-" json:"log_level"`
 }
 
 // DefaultTokensFile and DefaultUsersFile are the fallback paths used when
@@ -340,6 +348,7 @@ func Default() Config {
 			EnterpriseOID: "1.3.6.1.4.1.55555.1",
 			AgentAddress:  "127.0.0.1",
 		},
+		Prometheus:      PrometheusConfig{Enabled: false},
 		PollIntervalRaw: "5s",
 		LogLevel:        "info",
 	}

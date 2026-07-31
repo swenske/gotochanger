@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -65,9 +66,19 @@ func (s *Store) VacuumSnapshot(destPath string) error {
 // the file back and then deletes it) and the scheduled backup ticker (which
 // leaves it in place for later download/pruning).
 func (s *Store) CreateBackupFile(backupsDir, vtlName string) (string, error) {
-	name := BackupFilename(vtlName, time.Now())
+	at := time.Now()
+	name := BackupFilename(vtlName, at)
 	dest := filepath.Join(backupsDir, name)
 	if err := s.VacuumSnapshot(dest); err != nil {
+		return "", err
+	}
+	// Recorded here rather than at each of this method's three call sites
+	// (manual download, the scheduled backup ticker, the pre-reset safety
+	// backup) so gotochanger_last_backup_timestamp reflects all of them from
+	// one place. Persisted (not just an in-memory value) so it survives a
+	// restart and isn't lost the way the capped, in-memory-only event
+	// history would eventually lose it.
+	if err := s.SetSetting("last_backup_at", strconv.FormatInt(at.Unix(), 10)); err != nil {
 		return "", err
 	}
 	return name, nil

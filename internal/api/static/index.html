@@ -203,6 +203,7 @@
           <button class="subnav-btn" data-admin="latency"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Latency</button>
           <button class="subnav-btn" data-admin="cleaning-tapes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Cleaning Tapes</button>
           <button class="subnav-btn" data-admin="settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.02 5.98l-1.7 1.7M7.68 16.32l-1.7 1.7M18.02 18.02l-1.7-1.7M7.68 7.68l-1.7-1.7"/></svg>Settings</button>
+          <button class="subnav-btn" data-admin="prometheus"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M9 20V4M14 20v-7M19 20V8"/></svg>Prometheus</button>
           <button class="subnav-btn" data-admin="security"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Security</button>
           <button class="subnav-btn" data-admin="backup"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Backup</button>
           <button class="subnav-btn" data-admin="reset"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M4.5 13a8 8 0 1 0 2-8.5L4 10"/></svg>Reset</button>
@@ -334,6 +335,26 @@
           <button type="submit">Save</button>
         </div>
         <p class="auth-error" id="latencySettingsError"></p>
+      </form>
+    </section>
+
+    <section id="admin-prometheus" class="panel" hidden>
+      <h2>Prometheus</h2>
+      <p class="hint">Exposes library metrics in Prometheus text format for scraping by an external Prometheus server. The <code>/metrics</code> endpoint is intentionally unauthenticated (standard Prometheus scrape practice) - restrict network access to it if this daemon is reachable beyond trusted monitoring infrastructure.</p>
+      <form id="prometheusSettingsForm" class="settings-form">
+        <fieldset>
+          <legend>Enable</legend>
+          <label><input type="checkbox" id="prom_enabled"> Enable Prometheus metrics exporter</label>
+        </fieldset>
+        <fieldset>
+          <legend>Status</legend>
+          <p>Endpoint: <code id="prom_metrics_path">/metrics</code> (unauthenticated) - Status: <span id="prom_status">disabled</span></p>
+        </fieldset>
+        <div class="dialog-actions">
+          <button type="button" id="downloadGrafanaDashboardBtn">Download Grafana dashboard</button>
+          <button type="submit">Save</button>
+        </div>
+        <p class="auth-error" id="prometheusSettingsError"></p>
       </form>
     </section>
 
