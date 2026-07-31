@@ -1,3 +1,10 @@
+gotochanger (0.8.1) UNRELEASED; urgency=medium
+
+  * Update API/web UI address to 0.0.0.0
+  * Add docker image release (#12)
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Fri, 31 Jul 2026 19:48:01 +0000
+
 gotochanger (0.8.0) UNRELEASED; urgency=medium
 
   * Update installation instructions with correct repository URLs for apt
