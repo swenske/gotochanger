@@ -120,7 +120,20 @@ async function boot() {
 // completed, otherwise on the wizard. Previously bootstrap/login called
 // showApp() directly without this check, so the wizard was unreachable
 // except via a raw page reload while already authenticated.
+//
+// GET /api/v1/wizard is Admin-only (server.go), since it exposes
+// in-progress topology setup state - only an Admin can ever complete the
+// wizard, and an Operator/Viewer account only gets created once an Admin
+// has already done so. So only gate admins on wizard completion here;
+// every other role goes straight to the dashboard. Skipping this check
+// for non-admins previously meant every non-admin login 403'd on this
+// call and surfaced as a bogus "role does not have admin access" error
+// on the login screen - non-admin accounts could never sign in at all.
 async function enterAppOrWizard(s) {
+  if (s.role !== "admin") {
+    showApp(s);
+    return;
+  }
   const wizardState = await api("/api/v1/wizard");
   if (wizardState.completed) {
     showApp(s);
