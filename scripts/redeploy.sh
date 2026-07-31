@@ -74,6 +74,24 @@ log() {
   echo "==> $*"
 }
 
+# Local dev builds report a distinct app version - debian/changelog's
+# version with its patch component bumped by one, plus a "-dev" suffix
+# (e.g. changelog 0.7.3 -> app version 0.7.4-dev) - so a binary built and
+# deployed by this script is never mistaken for a real numbered release.
+# Only the manual release.yml pipeline (self-hosted runner, tagged
+# builds) is supposed to produce a binary reporting an exact
+# changelog/tag version. This only overrides the embedded main.version
+# string via Makefile's `VERSION ?=` (which leaves an already-set
+# environment variable alone) - the .deb's own package version/filename
+# still comes from debian/changelog as usual, so dpkg's version
+# bookkeeping on the target host is untouched.
+dev_version() {
+  local changelog_version major minor patch
+  changelog_version="$(dpkg-parsechangelog --file "$ROOT_DIR/debian/changelog" -SVersion)"
+  IFS='.' read -r major minor patch <<<"$changelog_version"
+  echo "${major}.${minor}.$((patch + 1))-dev"
+}
+
 check_build_deps() {
   local missing=()
 
@@ -160,10 +178,11 @@ fi
 if [[ -z "$DEB_PATH" ]]; then
   if [[ "$SKIP_BUILD" -eq 0 ]]; then
     check_build_deps
-    log "Building Debian package"
+    DEV_VERSION="$(dev_version)"
+    log "Building Debian package (local dev build, app version $DEV_VERSION)"
     (
       cd "$ROOT_DIR"
-      dpkg-buildpackage -us -uc -b
+      VERSION="$DEV_VERSION" dpkg-buildpackage -us -uc -b
     )
   else
     log "Skipping build (using newest existing package)"
