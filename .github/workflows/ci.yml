@@ -33,8 +33,14 @@ jobs:
           go-version-file: go.mod
           cache: false # golangci-lint-action manages its own cache
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
+          # v6 only knows how to run golangci-lint v1, whose latest release
+          # (v1.64.8) was built with go1.24 - it refuses to analyze a module
+          # declaring go1.26 ("the Go language version used to build
+          # golangci-lint is lower than the targeted Go version"). v7+
+          # supports v2, so "latest" here now actually tracks current
+          # releases instead of being stuck resolving the newest v1.x.
           version: latest
         env:
           # This project vendors its two dependencies (go-sqlite3, yaml.v3)
