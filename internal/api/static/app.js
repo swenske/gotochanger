@@ -17,6 +17,7 @@ const state = {
   pendingRobotOps: 0,              // counter, not bool - guards overlapping arm-invoking actions
   pendingElementOps: new Set(),     // "slot:<addr>"/"ioslot:<addr>"/"drive:<index>" keys with a same-tab in-flight Move/Load/Unload
   doorPhases: {},             // "magazine:<id>"/"mailbox:<id>" -> "opening"|"closing"|"scanning", pushed live via SSE
+  busyElements: new Set(),   // "slot:<addr>"/"ioslot:<addr>"/"drive:<index>" keys the SERVER reports as mid-Move/Load/Unload, pushed live via SSE "busy" messages - unlike pendingElementOps, survives a page refresh (see applyCardProcessingOverlay)
   armState: null,             // { busy, position } - pushed live via SSE "arm" messages (see connectStream); falls back to status.arm_state until the first one arrives
   robotActivity: [],          // recent live-only arm-narration steps ({time, message}), newest first, pushed live via SSE "arm" messages - never derived from /api/v1/events (see connectStream)
 };
@@ -2049,12 +2050,14 @@ function renderLibraryStats(status) {
 
 // Marks driveIndexes as busy for the duration of fn() (used around the
 // load/unload/move fetches below); pendingRobotOps is a counter (not a bool)
-// since arm-invoking dialogs could in principle overlap. Ordinary Move/
-// Load/Unload hold the server's exclusive lock for their whole simulated
-// duration, so a concurrent status poll simply blocks behind it until the
-// operation finishes (see internal/library/library.go) - painting the
-// busy LED from already-cached state immediately is what keeps the UI
-// responsive despite that.
+// since arm-invoking dialogs could in principle overlap. gotochangerd
+// exposes no per-drive "busy" flag in Status() - only the single global
+// ArmState (see internal/library/library.go) - so there is no way to learn
+// "this drive has a Move/Load/Unload in flight" from a status fetch alone,
+// whether it's this tab's own pending POST or another client's. Painting
+// the busy LED from this tab's own optimistic, already-cached state
+// immediately, rather than waiting for its POST's own response, is what
+// gives instant feedback for the operation this tab itself triggered.
 async function withDriveOp(driveIndexes, fn) {
   for (const i of driveIndexes) state.pendingDriveOps.add(i);
   state.pendingRobotOps++;
@@ -2157,6 +2160,12 @@ function renderDrives(drives, maps, status) {
   const grid = document.getElementById("drivesGrid");
   grid.innerHTML = "";
   const canOperate = state.role === "admin" || state.role === "operator";
+  // See the identical comment in renderIOSlots/renderSlots: merges the
+  // last-fetched status snapshot with SSE-pushed live state, since either
+  // alone could momentarily miss an in-progress operation (a stale
+  // snapshot right after a refresh, or a "busy" push that arrived before
+  // this render's status did).
+  const busyElements = new Set([...(status.busy_elements || []), ...state.busyElements]);
   for (const d of drives) {
     const color = maps.driveColor[d.index];
     // An unassigned drive stays visible if it currently holds a tape.
@@ -2215,7 +2224,7 @@ function renderDrives(drives, maps, status) {
       }));
     }
     card.appendChild(actions);
-    applyCardProcessingOverlay(card, `drive:${d.index}`, "Unloading…");
+    applyCardProcessingOverlay(card, `drive:${d.index}`, "Unloading…", busyElements.has(`drive:${d.index}`));
     applyCleaningOverlay(card, d);
     grid.appendChild(card);
   }
@@ -2259,12 +2268,21 @@ function applyGroupLockOverlay(groupEl, phase) {
 }
 
 // applyCardProcessingOverlay grays out a single slot/I-O-slot/drive card
-// and overlays a spinner + text (default "Processing…") while this tab
-// has a same-tab in-flight Move/Load/Unload for it (state.pendingElementOps,
-// set by withElementOp) - mirrors applyGroupLockOverlay but scoped to one
-// card instead of a whole magazine/mailbox group.
-function applyCardProcessingOverlay(card, key, text = "Processing…") {
-  if (!state.pendingElementOps.has(key)) return;
+// and overlays a spinner + text while either this tab has a same-tab
+// in-flight Move/Load/Unload for it (state.pendingElementOps, set by
+// withElementOp - shows the specific text passed in, default
+// "Processing…", since this tab knows exactly which action it requested)
+// or the server itself reports it busy (serverBusy, from
+// status.busy_elements/state.busyElements - see the callers below; shown
+// as a generic "Busy…" since a refreshed or different tab has no way to
+// know which specific operation is running). The server-truth path is
+// what keeps the card grayed out across a page refresh, unlike
+// pendingElementOps alone, which is lost on reload - mirrors
+// applyGroupLockOverlay but scoped to one card instead of a whole
+// magazine/mailbox group.
+function applyCardProcessingOverlay(card, key, text = "Processing…", serverBusy = false) {
+  const pending = state.pendingElementOps.has(key);
+  if (!pending && !serverBusy) return;
   card.classList.add("card-processing");
   const overlay = document.createElement("div");
   overlay.className = "card-processing-overlay";
@@ -2273,7 +2291,7 @@ function applyCardProcessingOverlay(card, key, text = "Processing…") {
   spinner.setAttribute("aria-hidden", "true");
   overlay.appendChild(spinner);
   const label = document.createElement("span");
-  label.textContent = text;
+  label.textContent = pending ? text : "Busy…";
   overlay.appendChild(label);
   card.appendChild(overlay);
 }
@@ -2306,11 +2324,15 @@ function renderIOSlots(ioslots, status, maps) {
   const canOperate = state.role === "admin" || state.role === "operator";
   const openMailboxes = (status.doors && status.doors.open_mailboxes) || [];
   // state.doorPhases (pushed live via SSE) takes precedence over
-  // status.doors.phases: the latter is read behind the same lock a door
-  // operation holds for its entire duration, so a GET /api/v1/status made
-  // while one is in flight blocks until it's over and always sees it
-  // already cleared - see connectStream()'s "phase" listener.
+  // status.doors.phases: status is only ever a point-in-time snapshot from
+  // whenever that fetch happened to land, so SSE's push-as-it-happens
+  // phase is always at least as fresh - see connectStream()'s "phase"
+  // listener.
   const phases = Object.assign({}, (status.doors && status.doors.phases) || {}, state.doorPhases);
+  // Merges the last-fetched status snapshot's busy_elements with the
+  // SSE-pushed live set for the same reason phases merges above - either
+  // source alone could momentarily miss an in-progress Move/Load/Unload.
+  const busyElements = new Set([...(status.busy_elements || []), ...state.busyElements]);
 
   const groups = [];
   const groupByID = {};
@@ -2455,7 +2477,7 @@ function renderIOSlots(ioslots, status, maps) {
         }
         card.appendChild(actions);
       }
-      applyCardProcessingOverlay(card, `ioslot:${io.address}`);
+      applyCardProcessingOverlay(card, `ioslot:${io.address}`, undefined, busyElements.has(`ioslot:${io.address}`));
       grid.appendChild(card);
     }
     groupEl.appendChild(grid);
@@ -2472,10 +2494,11 @@ function renderSlots(slots, status, maps) {
   const canOperate = state.role === "admin" || state.role === "operator";
   const openMagazines = (status.doors && status.doors.open_magazines) || [];
   // See the identical comment in renderIOSlots: state.doorPhases (pushed
-  // live via SSE) takes precedence over status.doors.phases, which a
-  // blocked-until-the-operation-finishes GET /api/v1/status can never
-  // observe mid-operation.
+  // live via SSE) takes precedence over status.doors.phases, since status
+  // is only ever a point-in-time snapshot that may already be stale by
+  // render time.
   const phases = Object.assign({}, (status.doors && status.doors.phases) || {}, state.doorPhases);
+  const busyElements = new Set([...(status.busy_elements || []), ...state.busyElements]);
 
   const groups = [];
   const groupByID = {};
@@ -2686,7 +2709,7 @@ function renderSlots(slots, status, maps) {
         }
         card.appendChild(actions);
       }
-      applyCardProcessingOverlay(card, `slot:${s.address}`);
+      applyCardProcessingOverlay(card, `slot:${s.address}`, undefined, busyElements.has(`slot:${s.address}`));
       grid.appendChild(card);
     }
     groupEl.appendChild(grid);
@@ -2806,14 +2829,15 @@ function stopFallbackPolling() {
 
 function connectStream() {
   disconnectStream();
-  // A stale phase/arm-state from before a drop/reconnect must not linger
-  // forever - the server's reconnect catch-up (see handleStream) always
-  // re-sends the current arm state and only re-sends door phases that are
-  // still actually active, so anything not re-sent here needs to start
-  // cleared, not carried over.
+  // A stale phase/arm-state/busy-element set from before a drop/reconnect
+  // must not linger forever - the server's reconnect catch-up (see
+  // handleStream) always re-sends the current arm state and only re-sends
+  // door phases/busy elements that are still actually active, so anything
+  // not re-sent here needs to start cleared, not carried over.
   state.doorPhases = {};
   state.armState = null;
   state.robotActivity = [];
+  state.busyElements = new Set();
   eventSource = new EventSource("/api/v1/stream");
   eventSource.addEventListener("update", (e) => {
     if (!state.username) return;
@@ -2821,10 +2845,11 @@ function connectStream() {
   });
   eventSource.addEventListener("phase", (e) => {
     // Door phase transitions are pushed with their actual data rather than
-    // as a bare nudge: GET /api/v1/status blocks for a door operation's
-    // entire duration (same lock), so a refresh()-driven catch-up could
-    // never observe an in-progress phase - only a direct push can. Render
-    // straight from the cached status instead of re-fetching it.
+    // as a bare nudge: GET /api/v1/status only ever returns a point-in-time
+    // snapshot, which may already be stale by the time a refresh()-driven
+    // catch-up renders it - a direct push is what makes an in-progress
+    // phase visible as it happens, not just eventually. Render straight
+    // from the cached status instead of re-fetching it.
     let msg;
     try {
       msg = JSON.parse(e.data);
@@ -2840,11 +2865,11 @@ function connectStream() {
     renderDashboard();
   });
   eventSource.addEventListener("arm", (e) => {
-    // Same reasoning as "phase" above: GET /api/v1/status blocks for a
-    // Move/Load/Unload's entire duration (same lock), so this is the only
-    // way to see the arm's busy/position state - and its step-by-step
-    // narration - live, in real time, regardless of which client (this
-    // tab, another tab, or a real Bareos job) triggered the operation.
+    // Same reasoning as "phase" above: a fetched status snapshot may
+    // already be stale by render time, so this direct push is what shows
+    // the arm's busy/position state - and its step-by-step narration -
+    // live, in real time, regardless of which client (this tab, another
+    // tab, or a real Bareos job) triggered the operation.
     let msg;
     try {
       msg = JSON.parse(e.data);
@@ -2853,6 +2878,31 @@ function connectStream() {
     }
     state.armState = { busy: !!msg.busy, position: msg.position || {} };
     if (msg.step) pushArmStep(msg.step_time || new Date().toISOString(), msg.step);
+    renderDashboard();
+  });
+  eventSource.addEventListener("busy", (e) => {
+    // Same reasoning as "phase"/"arm" above: this is what keeps a slot/
+    // drive grayed out across a page refresh for as long as its
+    // Move/Load/Unload is genuinely still running server-side, instead of
+    // only for as long as this tab remembers its own in-flight request
+    // (state.pendingElementOps, lost on reload) - see
+    // applyCardProcessingOverlay. keys is plural (both ends of a Move/
+    // Load/Unload, marked/cleared together in one message) - see
+    // library.Library.setElementsBusy's doc comment for why batching
+    // these matters for the shared SSE channel's buffer.
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch (err) {
+      return;
+    }
+    for (const key of msg.keys || []) {
+      if (msg.busy) {
+        state.busyElements.add(key);
+      } else {
+        state.busyElements.delete(key);
+      }
+    }
     renderDashboard();
   });
   eventSource.onopen = () => stopFallbackPolling();

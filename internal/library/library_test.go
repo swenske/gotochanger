@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1181,9 +1182,11 @@ func (f *fakePhaseNotifier) NotifyPhase(kind, id, phase string) {
 	f.got = append(f.got, kind+":"+id+":"+phase)
 }
 
-// NotifyArm satisfies PhaseNotifier; fakePhaseNotifier only records door
-// phases (see snapshot), arm-state notifications are ignored here.
-func (f *fakePhaseNotifier) NotifyArm(ArmState, ArmStep) {}
+// NotifyArm and NotifyElementBusy satisfy PhaseNotifier; fakePhaseNotifier
+// only records door phases (see snapshot), arm-state/busy-element
+// notifications are ignored here.
+func (f *fakePhaseNotifier) NotifyArm(ArmState, ArmStep)                {}
+func (f *fakePhaseNotifier) NotifyElementBusy(keys []string, busy bool) {}
 
 func (f *fakePhaseNotifier) snapshot() []string {
 	f.mu.Lock()
@@ -1390,4 +1393,622 @@ func TestEmitNotifyDoesNotRaceWithAnnotateEventsSince(t *testing.T) {
 
 	<-notifier.started
 	lib.AnnotateEventsSince(time.Time{}, "actor", "source", map[string]string{"d": "4", "e": "5"})
+}
+
+// --- opMu/sleepUnlocked rework: read-path unblocking, arm-exclusivity,
+// Reconfigure interaction, and freshness re-checks. ---
+
+// TestStatusDoesNotBlockDuringInFlightMove is the direct regression test
+// for the reported bug: Status() must return promptly even while a Move is
+// mid-flight, instead of blocking for the operation's full simulated
+// duration (see sleepUnlocked's doc comment).
+func TestStatusDoesNotBlockDuringInFlightMove(t *testing.T) {
+	const delay = 300 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4) // let the move actually start and grab the arm
+
+	start := time.Now()
+	_ = lib.Status()
+	if elapsed := time.Since(start); elapsed > delay/2 {
+		t.Fatalf("expected Status() to return quickly while a Move is mid-sleep, took %s", elapsed)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("move: %v", err)
+	}
+}
+
+// TestEventsDoesNotBlockDuringInFlightLoad mirrors
+// TestStatusDoesNotBlockDuringInFlightMove for Events() against a Load.
+func TestEventsDoesNotBlockDuringInFlightLoad(t *testing.T) {
+	const delay = 300 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: delay.String(), DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, "")
+	}()
+	time.Sleep(delay / 4)
+
+	start := time.Now()
+	_ = lib.Events()
+	if elapsed := time.Since(start); elapsed > delay/2 {
+		t.Fatalf("expected Events() to return quickly while a Load is mid-sleep, took %s", elapsed)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("load: %v", err)
+	}
+}
+
+// TestAllVolumesDoesNotBlockDuringInFlightCloseStorageDoorScan mirrors the
+// above for AllVolumes() against CloseStorageDoor's post-close magazine
+// scan - structurally different from Move/Load (many small release/
+// reacquire cycles via the per-slot loop, not one or two sleeps), so
+// exercised separately.
+func TestAllVolumesDoesNotBlockDuringInFlightCloseStorageDoorScan(t *testing.T) {
+	const delay = 300 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: delay.String(), MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	if err := lib.OpenStorageDoor("Magazine1", ""); err != nil {
+		t.Fatalf("open storage door: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.CloseStorageDoor("Magazine1", nil)
+	}()
+	time.Sleep(delay / 4) // let the close/scan actually start
+
+	start := time.Now()
+	_ = lib.AllVolumes()
+	if elapsed := time.Since(start); elapsed > delay/2 {
+		t.Fatalf("expected AllVolumes() to return quickly while a magazine scan is mid-flight, took %s", elapsed)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("close storage door: %v", err)
+	}
+}
+
+// TestLogicalLibraryStatusDoesNotBlockDuringInFlightUnload mirrors the
+// above for LogicalLibraryStatus() against an Unload.
+func TestLogicalLibraryStatusDoesNotBlockDuringInFlightUnload(t *testing.T) {
+	const delay = 300 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.LogicalLibraries = []config.LogicalLibraryConfig{
+		{Name: "Library1", Drives: []int{0}, Magazines: []string{"Magazine1"}},
+	}
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: delay.String(), TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Unload(0, ElementRef{Kind: KindSlot, Address: fromAddr}, "")
+	}()
+	time.Sleep(delay / 4)
+
+	start := time.Now()
+	_ = lib.LogicalLibraryStatus("Library1")
+	if elapsed := time.Since(start); elapsed > delay/2 {
+		t.Fatalf("expected LogicalLibraryStatus() to return quickly while an Unload is mid-sleep, took %s", elapsed)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("unload: %v", err)
+	}
+}
+
+// TestTwoConcurrentMovesAreFullySerialized is the regression guard for
+// opMu genuinely preserving "one robotic arm, no concurrent robotic
+// actions": two independent Move calls must still take roughly the sum of
+// their latencies, not the max, even though l.mu itself is now released
+// during each one's sleep.
+func TestTwoConcurrentMovesAreFullySerialized(t *testing.T) {
+	const delay = 150 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 4}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	lib.slots[0].Volume = &Volume{Barcode: "VOLA0001", Path: filepath.Join(tmp, "VOLA0001")}
+	lib.slots[2].Volume = &Volume{Barcode: "VOLB0001", Path: filepath.Join(tmp, "VOLB0001")}
+	addr := func(i int) int { return lib.slots[i].Address }
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = lib.Move(ElementRef{Kind: KindSlot, Address: addr(0)}, ElementRef{Kind: KindSlot, Address: addr(1)}, "")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = lib.Move(ElementRef{Kind: KindSlot, Address: addr(2)}, ElementRef{Kind: KindSlot, Address: addr(3)}, "")
+	}()
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("move %d: %v", i, err)
+		}
+	}
+	if elapsed < 2*delay {
+		t.Fatalf("expected two concurrent Move calls to be fully serialized by opMu (~%s total), took only %s", 2*delay, elapsed)
+	}
+	if elapsed > 3*delay {
+		t.Fatalf("two serialized Move calls took implausibly long: %s", elapsed)
+	}
+}
+
+// TestMoveAndCloseStorageDoorAreMutuallyExclusive is
+// TestTwoConcurrentMovesAreFullySerialized's cross-operation-type
+// counterpart: opMu is one shared lock, not one per method, so a Move and
+// a CloseStorageDoor must serialize against each other too.
+func TestMoveAndCloseStorageDoorAreMutuallyExclusive(t *testing.T) {
+	const delay = 150 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: delay.String(),
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+
+	if err := lib.OpenStorageDoor("Magazine1", ""); err != nil {
+		t.Fatalf("open storage door: %v", err)
+	}
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	var moveErr, closeErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		moveErr = lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4) // let Move grab opMu first
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		closeErr = lib.CloseStorageDoor("Magazine1", nil)
+	}()
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	if moveErr != nil {
+		t.Fatalf("move: %v", moveErr)
+	}
+	if closeErr != nil {
+		t.Fatalf("close storage door: %v", closeErr)
+	}
+	if elapsed < 2*delay {
+		t.Fatalf("expected Move and CloseStorageDoor to be mutually exclusive via opMu (~%s total), took only %s", 2*delay, elapsed)
+	}
+}
+
+// TestReconfigureWaitsForInFlightMoveToComplete confirms Reconfigure now
+// also acquires opMu, so it can't run (and so can't invalidate a pointer/
+// closure the in-flight operation captured) until the Move releases it.
+func TestReconfigureWaitsForInFlightMoveToComplete(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4) // let Move grab opMu first
+
+	start := time.Now()
+	newCfg := lib.cfg
+	newCfg.Library.Magazines = append(append([]config.MagazineConfig(nil), newCfg.Library.Magazines...),
+		config.MagazineConfig{ID: "Magazine2", Slots: 2})
+	if err := lib.Reconfigure(newCfg); err != nil {
+		t.Fatalf("reconfigure: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < delay/2 {
+		t.Fatalf("expected Reconfigure to wait for the in-flight Move to release opMu, returned too quickly after %s", elapsed)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("move: %v", err)
+	}
+}
+
+// TestMoveAbortsWhenSourceVolumeRacedAwayDuringSleep exercises the new
+// freshness re-check in Move: opMu excludes a concurrent Reconfigure, but
+// not OffsiteSend (which never takes opMu - see its own doc comment), so a
+// volume can genuinely be pulled out of Move's source slot during the
+// window l.mu is released for the robotic-transport sleep.
+func TestMoveAbortsWhenSourceVolumeRacedAwayDuringSleep(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.OffsiteLocation = true
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	lib.slots[0].Volume = &Volume{Barcode: "VOLA0001", Path: filepath.Join(tmp, "VOLA0001")}
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4) // let Move grab the arm and release l.mu for its sleep
+
+	if _, err := lib.OffsiteSend(ElementRef{Kind: KindSlot, Address: fromAddr}); err != nil {
+		t.Fatalf("offsite send raced in during the move's sleep: %v", err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrEmpty) {
+		t.Fatalf("expected Move to abort with ErrEmpty once its source volume was raced away, got %v", err)
+	}
+	if !containsBarcode(lib.OffsiteVolumes(), "VOLA0001") {
+		t.Fatalf("expected the volume to remain offsite (not lost/duplicated) after Move's abort")
+	}
+}
+
+// TestMoveAbortsWhenDestinationRacedFullDuringSleep mirrors
+// TestMoveAbortsWhenSourceVolumeRacedAwayDuringSleep for the destination
+// side, via a concurrent OffsiteRecall.
+func TestMoveAbortsWhenDestinationRacedFullDuringSleep(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.OffsiteLocation = true
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	lib.slots[0].Volume = &Volume{Barcode: "VOLA0001", Path: filepath.Join(tmp, "VOLA0001")}
+	lib.offsite = append(lib.offsite, &Volume{Barcode: "VOLB0001", Path: filepath.Join(tmp, "VOLB0001")})
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4)
+
+	if err := lib.OffsiteRecall("VOLB0001", ElementRef{Kind: KindSlot, Address: toAddr}); err != nil {
+		t.Fatalf("offsite recall raced in during the move's sleep: %v", err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrFull) {
+		t.Fatalf("expected Move to abort with ErrFull once its destination was filled, got %v", err)
+	}
+
+	lib.mu.RLock()
+	var toVol *Volume
+	for _, s := range lib.slots {
+		if s.Address == toAddr {
+			toVol = s.Volume
+		}
+	}
+	lib.mu.RUnlock()
+	if toVol == nil || toVol.Barcode != "VOLB0001" {
+		t.Fatalf("expected the recalled volume to remain in place (not clobbered) after Move's abort, got %+v", toVol)
+	}
+}
+
+// TestLoadAbortsWhenSourceVolumeRacedAwayDuringSleep is
+// TestMoveAbortsWhenSourceVolumeRacedAwayDuringSleep's counterpart for
+// Load's own mechanical-transport sleep.
+func TestLoadAbortsWhenSourceVolumeRacedAwayDuringSleep(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.OffsiteLocation = true
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: delay.String(), DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	lib.slots[0].Volume = &Volume{Barcode: "VOLA0001", Path: filepath.Join(tmp, "VOLA0001")}
+	fromAddr := lib.slots[0].Address
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, "")
+	}()
+	time.Sleep(delay / 4)
+
+	if _, err := lib.OffsiteSend(ElementRef{Kind: KindSlot, Address: fromAddr}); err != nil {
+		t.Fatalf("offsite send raced in during the load's sleep: %v", err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrEmpty) {
+		t.Fatalf("expected Load to abort with ErrEmpty once its source volume was raced away, got %v", err)
+	}
+	if lib.drives[0].Volume != nil {
+		t.Fatalf("expected the drive to remain empty after Load's abort")
+	}
+}
+
+// TestUnloadFallsBackToOutsideWhenDestinationRacedFull exercises Unload's
+// new fallback path: by the time the post-sleep freshness check runs, the
+// mechanical unload has already committed (watcher torn down, symlink
+// removed), so a destination filled by a concurrent OffsiteRecall can't be
+// cleanly aborted - the volume falls back to outside the library instead,
+// and Unload still reports an error (unlike the internal cleaning
+// auto-eject's silent fallback), since it has a synchronous caller that
+// asked for a specific destination.
+func TestUnloadFallsBackToOutsideWhenDestinationRacedFull(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.OffsiteLocation = true
+	cfg.Library.Latency = config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: delay.String(), TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	lib.slots[0].Volume = &Volume{Barcode: "VOLA0001", Path: filepath.Join(tmp, "VOLA0001")}
+	fromAddr := lib.slots[0].Address
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	toAddr := lib.slots[1].Address
+	lib.offsite = append(lib.offsite, &Volume{Barcode: "VOLB0001", Path: filepath.Join(tmp, "VOLB0001")})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Unload(0, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+	time.Sleep(delay / 4)
+
+	if err := lib.OffsiteRecall("VOLB0001", ElementRef{Kind: KindSlot, Address: toAddr}); err != nil {
+		t.Fatalf("offsite recall raced in during the unload's sleep: %v", err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrFull) {
+		t.Fatalf("expected Unload to fall back with an error wrapping ErrFull once its destination was filled, got %v", err)
+	}
+	if lib.drives[0].Volume != nil {
+		t.Fatalf("expected the drive to end up empty regardless of the fallback")
+	}
+	if !containsBarcode(lib.OutsideVolumes(), "VOLA0001") {
+		t.Fatalf("expected the unloaded volume to fall back to outside the library")
+	}
+	found := false
+	for _, e := range lib.Events() {
+		if e.Code == EventCodeRoboticsUnloadFallback {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a ROBOTICS.UNLOAD.FALLBACK.WARNING event to be logged")
+	}
+}
+
+// --- busy-elements: server-truth per-slot/drive busy tracking, so the web
+// UI's grayed-out/unavailable state survives a page refresh instead of
+// only reflecting the initiating tab's own in-flight request (see
+// PhaseNotifier.NotifyElementBusy's doc comment). ---
+
+// TestBusyElementsDuringInFlightMove mirrors
+// TestArmBusyReflectsRealOperationRegardlessOfCaller's polling pattern:
+// both the source and destination elements must report busy for the
+// whole in-flight duration, and neither afterward.
+func TestBusyElementsDuringInFlightMove(t *testing.T) {
+	const delay = 150 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: delay.String(), RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	toAddr := lib.slots[1].Address
+	fromKey := fmt.Sprintf("slot:%d", fromAddr)
+	toKey := fmt.Sprintf("slot:%d", toAddr)
+
+	if busy := lib.BusyElements(); len(busy) != 0 {
+		t.Fatalf("expected no busy elements before any operation, got %v", busy)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Move(ElementRef{Kind: KindSlot, Address: fromAddr}, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	sawBoth := false
+	for time.Now().Before(deadline) {
+		busy := lib.BusyElements()
+		if slices.Contains(busy, fromKey) && slices.Contains(busy, toKey) {
+			sawBoth = true
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !sawBoth {
+		t.Fatalf("expected to observe both %q and %q in BusyElements() while Move was in flight", fromKey, toKey)
+	}
+	// Also confirm it's reachable through Status(), not just the internal
+	// accessor - this is what actually reaches the API/web UI.
+	if status := lib.Status(); !slices.Contains(status.BusyElements, fromKey) || !slices.Contains(status.BusyElements, toKey) {
+		t.Fatalf("expected Status().BusyElements to include %q and %q mid-move, got %v", fromKey, toKey, status.BusyElements)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if busy := lib.BusyElements(); len(busy) != 0 {
+		t.Fatalf("expected no busy elements once Move returned, got %v", busy)
+	}
+}
+
+// TestBusyElementsDuringInFlightLoad mirrors the above for Load's source
+// slot and destination drive.
+func TestBusyElementsDuringInFlightLoad(t *testing.T) {
+	const delay = 150 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: delay.String(), DriveUnload: "0s", TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	fromKey := fmt.Sprintf("slot:%d", fromAddr)
+	const driveKey = "drive:0"
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, "")
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	sawBoth := false
+	for time.Now().Before(deadline) {
+		busy := lib.BusyElements()
+		if slices.Contains(busy, fromKey) && slices.Contains(busy, driveKey) {
+			sawBoth = true
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !sawBoth {
+		t.Fatalf("expected to observe both %q and %q in BusyElements() while Load was in flight", fromKey, driveKey)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if busy := lib.BusyElements(); len(busy) != 0 {
+		t.Fatalf("expected no busy elements once Load returned, got %v", busy)
+	}
+}
+
+// TestBusyElementsDuringInFlightUnload mirrors the above for Unload's
+// drive and destination slot.
+func TestBusyElementsDuringInFlightUnload(t *testing.T) {
+	const delay = 150 * time.Millisecond
+	ls := config.LatencySettings{
+		Enabled: true, DriveLoad: "0s", DriveUnload: delay.String(), TapePositioning: "0s",
+		RobotMoveTape: "0s", RobotMoveScan: "0s", MagazineScan: "0s", DoorAction: "0s",
+	}
+	lib := newTestLibraryWithLatency(t, ls)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	toAddr := lib.slots[0].Address // now empty, the tape's back out of it
+	toKey := fmt.Sprintf("slot:%d", toAddr)
+	const driveKey = "drive:0"
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Unload(0, ElementRef{Kind: KindSlot, Address: toAddr}, "")
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	sawBoth := false
+	for time.Now().Before(deadline) {
+		busy := lib.BusyElements()
+		if slices.Contains(busy, toKey) && slices.Contains(busy, driveKey) {
+			sawBoth = true
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !sawBoth {
+		t.Fatalf("expected to observe both %q and %q in BusyElements() while Unload was in flight", toKey, driveKey)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("unload: %v", err)
+	}
+	if busy := lib.BusyElements(); len(busy) != 0 {
+		t.Fatalf("expected no busy elements once Unload returned, got %v", busy)
+	}
 }

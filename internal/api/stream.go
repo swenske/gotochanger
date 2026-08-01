@@ -29,13 +29,13 @@ type sseMessage struct {
 // refresh() the web UI already used for its old 4s poll loop (keeping
 // every grid/card render function's data path unchanged), but also read
 // the event straight off the message for the live robotic-activity panel.
-// That second use is what the payload is actually for: Move/Load/Unload
-// hold Library's main lock for their entire simulated sleep, and so does
-// GET /api/v1/status's handler (Library.Status()) and GET /api/v1/events
-// (Library.Events()) - a client that only reacted to a bare nudge by
-// re-fetching one of those would simply block until the whole operation
-// finished, so a burst of granular in-flight events would never actually
-// be visible in real time. Notify itself is dispatched via "go
+// That second use is what the payload is actually for: GET /api/v1/status
+// (Library.Status()) and GET /api/v1/events (Library.Events()) only ever
+// return a point-in-time snapshot, which may already be stale by the time
+// a client renders it - a burst of granular in-flight events (moving to
+// slot N, grabbed tape, ...) needs to be pushed as it happens to be
+// visible in real time at all, not just be "eventually not blocked".
+// Notify itself is dispatched via "go
 // l.notifier.Notify(e)" from inside Library.emit, which touches neither
 // Library's lock nor its internals, so delivering the payload here is
 // already lock-free - no second phase-map-style mechanism is needed the
@@ -55,12 +55,22 @@ func NewBroadcaster() *Broadcaster {
 }
 
 // Subscribe registers a new subscriber and returns its message channel,
-// buffered a handful deep so a short burst of transitions (at most a
-// few per single door operation) doesn't get dropped by a slow reader,
-// without ever blocking the caller (see broadcast). The caller must call
-// Unsubscribe when done (e.g. via defer) to avoid leaking the entry.
+// buffered deep enough to absorb a real burst without a slow reader
+// causing drops (see broadcast, which never blocks the caller - a full
+// channel just silently drops the message instead). A single Move/Load/
+// Unload alone can emit close to a dozen live messages in quick
+// succession (arm narration steps, a batched "busy" start and a batched
+// "busy" clear, plus the audited started/success events) clustered right
+// at its start and end - and on a library with several drives, more than
+// one such operation can be finishing at the same moment. 8 (this
+// buffer's original size, sized only for "a few per single door
+// operation") was measured to intermittently drop messages under that
+// load - including an unrelated door's phase transition sharing the same
+// subscriber channel, which is what made an "Opening…"/"Closing…"
+// overlay sometimes flash briefly or not appear at all. The caller must
+// call Unsubscribe when done (e.g. via defer) to avoid leaking the entry.
 func (b *Broadcaster) Subscribe() chan sseMessage {
-	ch := make(chan sseMessage, 8)
+	ch := make(chan sseMessage, 64)
 	b.mu.Lock()
 	b.subs[ch] = struct{}{}
 	b.mu.Unlock()
@@ -129,6 +139,19 @@ func encodeArmMessage(state library.ArmState, step library.ArmStep) string {
 	return string(payload)
 }
 
+// NotifyElementBusy implements library.PhaseNotifier.
+func (b *Broadcaster) NotifyElementBusy(keys []string, busy bool) {
+	b.broadcast(sseMessage{event: "busy", data: encodeBusyMessage(keys, busy)})
+}
+
+func encodeBusyMessage(keys []string, busy bool) string {
+	payload, _ := json.Marshal(struct {
+		Keys []string `json:"keys"`
+		Busy bool     `json:"busy"`
+	}{Keys: keys, Busy: busy})
+	return string(payload)
+}
+
 // writeSSE writes one complete SSE message (event + data + terminating
 // blank line) and flushes it immediately.
 func writeSSE(w http.ResponseWriter, flusher http.Flusher, event, data string) {
@@ -186,6 +209,17 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		writeSSE(w, flusher, "arm", encodeArmMessage(s.lib.ArmState(), library.ArmStep{}))
 		for _, step := range s.lib.ArmSteps() {
 			writeSSE(w, flusher, "arm", encodeArmMessage(s.lib.ArmState(), step))
+		}
+
+		// Same catch-up idea for busy elements: a freshly (re)connected
+		// client - including a plain page refresh, which loses all
+		// client-side pendingElementOps state - must not show a slot/drive
+		// as available while it's still the target of an in-flight
+		// Move/Load/Unload. BusyElements never blocks on Library's main
+		// lock either. One message for every currently-busy key, not one
+		// per key - mirrors NotifyElementBusy's own batching.
+		if busy := s.lib.BusyElements(); len(busy) > 0 {
+			writeSSE(w, flusher, "busy", encodeBusyMessage(busy, true))
 		}
 	}
 

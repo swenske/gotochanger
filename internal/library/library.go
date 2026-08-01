@@ -61,6 +61,39 @@ type LogicalLibrary struct {
 // Library is the concurrency-safe in-memory model of the simulated
 // autochanger.
 type Library struct {
+	// opMu is the single-robotic-arm exclusivity lock: Move, Load, Unload,
+	// OpenIODoor, CloseIODoor, OpenStorageDoor, CloseStorageDoor,
+	// Reconfigure, and the logical-library admin methods each acquire it
+	// for their entire duration - the role mu used to play alone. Splitting
+	// it out is what lets mu itself be released around every
+	// simulated-latency time.Sleep (see sleepUnlocked) without giving up
+	// "one robotic arm, no concurrent robotic actions": a second
+	// Move/Load/Unload/door call, or a concurrent topology/logical-library
+	// change, still simply blocks on opMu the same way it used to block on
+	// mu, while a read-only caller (Status/Events/AllVolumes/
+	// LogicalLibraryStatus, all mu.RLock() only) is never affected by opMu
+	// and gets through during the gaps.
+	//
+	// Reconfigure holding opMu is what makes every getFrom/setFrom/getTo/
+	// setTo closure and every *Drive pointer captured before a
+	// sleepUnlocked call in Move/Load/Unload still safe to use afterward
+	// without re-resolving it: buildTopologyLocked (the only thing that
+	// ever replaces slots/ioslots/drives wholesale) cannot run while any of
+	// those is mid-flight. What opMu does NOT exclude - OffsiteSend/
+	// OffsiteRecall, and any other write that doesn't rebuild topology or
+	// touch logical-library membership - can still change a specific
+	// slot's occupancy during a released window; that's why Move/Load/
+	// Unload each do one final freshness re-check immediately before their
+	// last mutation (see each method's own comment at that point).
+	//
+	// MUST always be acquired before mu and released after mu, with no
+	// exception - including the one place (Load's cleaning-duration sleep)
+	// that releases both mid-function: mu is unlocked first (inner-to-outer
+	// on the way out) and opMu is re-locked first on the way back in
+	// (outer-to-inner), mirroring every other entry point's ordering.
+	// Getting this backwards deadlocks against a concurrent caller sitting
+	// between the two locks.
+	opMu                 sync.Mutex
 	mu                   sync.RWMutex
 	cfg                  config.Config
 	slots                []*Slot
@@ -93,11 +126,19 @@ type Library struct {
 	// phaseMu guards doorPhases/phaseNotifier and, as of the robotic-arm
 	// live-state rework, armBusy/armLastPosition/armOpenDoors/armSteps too
 	// - deliberately independent of mu: a phase/arm read or write must
-	// never block behind the multi-second sleep a door/Move/Load/Unload
-	// method holds mu for, or a live status read couldn't observe the
-	// in-progress phase/arm state until the operation already finished.
+	// never block behind mu at all, whether a door/Move/Load/Unload method
+	// currently holds it briefly for a state-mutation step or has released
+	// it for a simulated sleep (see opMu/sleepUnlocked) - a live status
+	// read must be able to observe the in-progress phase/arm state at any
+	// point during the operation, not only after it returns. busyElements
+	// (added alongside opMu/sleepUnlocked) is guarded by the same mutex
+	// for the same reason: which specific slot/ioslot/drive a Move/Load/
+	// Unload targets must stay observable - by any client, including one
+	// that only just (re)connected or refreshed the page, not just the
+	// tab that issued the request - for the operation's whole duration.
 	phaseMu       sync.Mutex
 	doorPhases    map[string]string // "magazine:<id>" / "mailbox:<id>" -> "opening"|"closing"|"scanning"
+	busyElements  map[string]bool   // elementKey(ref) -> true, present only while ref is an in-flight Move/Load/Unload's target
 	phaseNotifier PhaseNotifier
 
 	// armBusy/armLastPosition/armOpenDoors/armSteps: the robotic arm's
@@ -142,7 +183,7 @@ const maxArmSteps = 50
 // New builds a Library from configuration, optionally restoring dynamic
 // state previously produced by State() (e.g. loaded from disk at startup).
 func New(cfg config.Config, restored *State, notifier Notifier, persist Persister) (*Library, error) {
-	l := &Library{cfg: cfg, notifier: notifier, persist: persist, stDoorOpen: map[string]bool{}, ioDoorOpen: map[string]bool{}, doorPhases: map[string]string{}, driveWatchers: map[int]driveActivityWatcher{}}
+	l := &Library{cfg: cfg, notifier: notifier, persist: persist, stDoorOpen: map[string]bool{}, ioDoorOpen: map[string]bool{}, doorPhases: map[string]string{}, busyElements: map[string]bool{}, driveWatchers: map[int]driveActivityWatcher{}}
 	l.buildTopologyLocked(cfg)
 
 	if restored != nil {
@@ -502,6 +543,9 @@ func shiftOriginAcrossRebuild(origin *ElementRef, oldSlotKeyByAddress map[int]ma
 // already refused a removal that would orphan a volume - see the Admin
 // API's magazine-delete handler).
 func (l *Library) Reconfigure(cfg config.Config) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -760,6 +804,7 @@ func (l *Library) LogicalLibraryStatus(name string) Status {
 			LogicalLibs:         []*LogicalLibrary{scoped},
 			RoboticFault:        l.roboticFault,
 			ArmState:            l.ArmState(),
+			BusyElements:        l.BusyElements(),
 			MagazinePINRequired: l.magazinePINHash != "",
 			MailboxPINRequired:  l.mailboxPINRequiredLocked(),
 		}
@@ -868,6 +913,9 @@ func (l *Library) exclusivityConflictLocked(libCfg config.LogicalLibraryConfig, 
 // indices) against the live elements and adds it, rejecting a duplicate
 // name or any element already claimed by another logical library.
 func (l *Library) AddLogicalLibrary(libCfg config.LogicalLibraryConfig) (*LogicalLibrary, error) {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, existing := range l.logicalLibs {
@@ -888,6 +936,9 @@ func (l *Library) AddLogicalLibrary(libCfg config.LogicalLibraryConfig) (*Logica
 // assignments and color, with the same exclusivity check as AddLogicalLibrary
 // (excluding the library being updated from the conflict check).
 func (l *Library) UpdateLogicalLibrary(name string, libCfg config.LogicalLibraryConfig) (*LogicalLibrary, error) {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	idx := -1
@@ -912,6 +963,9 @@ func (l *Library) UpdateLogicalLibrary(name string, libCfg config.LogicalLibrary
 
 // DeleteLogicalLibrary deletes a logical library by name.
 func (l *Library) DeleteLogicalLibrary(name string) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for i, lib := range l.logicalLibs {
@@ -1136,6 +1190,7 @@ func (l *Library) Status() Status {
 		LogicalLibs:            l.snapshotLogicalLibsLocked(byAddr, byIOAddr, byDriveIndex),
 		RoboticFault:           l.roboticFault,
 		ArmState:               l.ArmState(),
+		BusyElements:           l.BusyElements(),
 		CleaningEnabled:        l.cleaningEnabled,
 		CleaningMountThreshold: l.cleaningMountThreshold,
 		CleaningMaxUses:        l.cleaningMaxUses,
@@ -1232,9 +1287,10 @@ func (l *Library) SetPhaseNotifier(pn PhaseNotifier) {
 
 // setDoorPhase records that kind ("magazine" or "mailbox") id is now in
 // phase, or clears it when phase is "". Deliberately uses its own mutex
-// instead of l.mu, which the four door methods hold for their entire
-// sleep - a phase transition must be observable (via DoorPhases/Status)
-// while that sleep is still in progress, not only after it returns.
+// instead of l.mu, which the four door methods only hold briefly (see
+// opMu/sleepUnlocked, not for their entire sleep) - a phase transition
+// must be observable (via DoorPhases/Status) while that sleep is still in
+// progress, not only after it returns.
 func (l *Library) setDoorPhase(kind, id, phase string) {
 	l.phaseMu.Lock()
 	key := kind + ":" + id
@@ -1263,6 +1319,62 @@ func (l *Library) DoorPhases() map[string]string {
 	for k, v := range l.doorPhases {
 		out[k] = v
 	}
+	return out
+}
+
+// elementKey formats ref the same way the web UI's client-side element
+// keys are formatted ("slot:5", "ioslot:2", "drive:0" - see app.js's
+// withElementOp/applyCardProcessingOverlay): ElementRef.Kind is already
+// exactly "slot"/"ioslot"/"drive", so no translation is needed on either
+// side of the wire.
+func elementKey(ref ElementRef) string {
+	return fmt.Sprintf("%s:%d", ref.Kind, ref.Address)
+}
+
+// setElementsBusy records that every slot/ioslot/drive addressed by keys
+// is now the target of an in-progress Move/Load/Unload, or no longer is
+// (busy == false) - mirrors setDoorPhase's lock/mutate/capture/unlock/
+// notify shape. Takes every key in one call (Move/Load/Unload each mark
+// both ends of their operation at once, not two separate calls) so only
+// one SSE "busy" message is broadcast per transition, not one per key -
+// this matters because NotifyElementBusy fires right alongside the
+// existing arm-narration/phase burst at exactly the moment an operation
+// starts or ends, and the live SSE subscriber channel is only buffered a
+// handful deep (see Subscribe's doc comment); doubling that burst risked
+// a full buffer silently dropping an unrelated message (e.g., another
+// magazine's door-phase transition) under real concurrent load - this
+// coalescing is half the fix, a wider buffer is the other half.
+func (l *Library) setElementsBusy(busy bool, keys ...string) {
+	if len(keys) == 0 {
+		return
+	}
+	l.phaseMu.Lock()
+	for _, key := range keys {
+		if busy {
+			l.busyElements[key] = true
+		} else {
+			delete(l.busyElements, key)
+		}
+	}
+	pn := l.phaseNotifier
+	l.phaseMu.Unlock()
+	if pn != nil {
+		pn.NotifyElementBusy(keys, busy)
+	}
+}
+
+// BusyElements returns a snapshot of every elementKey currently the
+// target of an in-progress Move/Load/Unload, sorted for a deterministic
+// result. Safe to call concurrently with an in-progress operation (never
+// blocks on l.mu) - mirrors DoorPhases/ArmState.
+func (l *Library) BusyElements() []string {
+	l.phaseMu.Lock()
+	defer l.phaseMu.Unlock()
+	out := make([]string, 0, len(l.busyElements))
+	for k := range l.busyElements {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -1683,6 +1795,24 @@ func (l *Library) volumeSlot(ref ElementRef) (get func() *Volume, set func(*Volu
 	}
 }
 
+// sleepUnlocked releases l.mu, sleeps for d (a no-op if d <= 0), then
+// reacquires l.mu - the shape every simulated mechanical/latency delay in
+// this file uses so a concurrent Status()/Events()/AllVolumes()/
+// LogicalLibraryStatus() read (l.mu.RLock() only) is never blocked for the
+// sleep's duration. Deliberately does NOT touch opMu: the caller remains
+// the single robotic arm's exclusive owner for the sleep's duration in
+// every case except Load's cleaning-duration sleep, which releases opMu
+// itself (see Load) because that sleep is drive-internal, not arm
+// movement. Callers must hold l.mu on entry and opMu throughout.
+func (l *Library) sleepUnlocked(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	l.mu.Unlock()
+	time.Sleep(d)
+	l.mu.Lock()
+}
+
 // Move relocates a volume from one element to another (slot<->slot,
 // slot<->ioslot, ioslot<->ioslot). Use Load/Unload for drive interaction,
 // which additionally manage the Bareos-facing device symlink. If
@@ -1695,6 +1825,9 @@ func (l *Library) Move(from, to ElementRef, logicalLibrary string) error {
 	if from.Kind == KindDrive || to.Kind == KindDrive {
 		return fmt.Errorf("%w: use Load/Unload for drive elements", ErrInvalidTarget)
 	}
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -1727,6 +1860,14 @@ func (l *Library) Move(from, to ElementRef, logicalLibrary string) error {
 	l.setArmBusy(true)
 	defer l.setArmBusy(false)
 
+	// Marks both ends of the move busy for its whole duration, not just
+	// this tab's own optimistic client-side state - see
+	// PhaseNotifier.NotifyElementBusy's doc comment for why this must
+	// survive a page refresh/another client's view.
+	fromKey, toKey := elementKey(from), elementKey(to)
+	l.setElementsBusy(true, fromKey, toKey)
+	defer l.setElementsBusy(false, fromKey, toKey)
+
 	// Plain bracketing message, matching this codebase's convention for
 	// every other coarse Move/Load/Unload started/success event - this
 	// one stays audited (persisted + SNMP). The atomic "moving to"/
@@ -1738,15 +1879,22 @@ func (l *Library) Move(from, to ElementRef, logicalLibrary string) error {
 
 	half := l.robotMoveTapeLatency / 2
 	l.recordArmStep(fmt.Sprintf("moving to %s", fromLabel))
-	if half > 0 {
-		time.Sleep(half)
-	}
+	l.sleepUnlocked(half)
 	l.recordArmStep(fmt.Sprintf("grabbed tape %s from %s", vol.Barcode, fromLabel))
 	l.recordArmStep(fmt.Sprintf("moving to %s", toLabel))
-	if rem := l.robotMoveTapeLatency - half; rem > 0 {
-		time.Sleep(rem)
-	}
+	l.sleepUnlocked(l.robotMoveTapeLatency - half)
 	l.recordArmStep(fmt.Sprintf("placed tape %s into %s", vol.Barcode, toLabel))
+
+	// opMu already rules out a concurrent Reconfigure, so getFrom/setFrom/
+	// getTo/setTo above still point at the live objects - but not a
+	// concurrent OffsiteSend/OffsiteRecall, which could have changed
+	// from's/to's occupancy during the sleeps just released above.
+	if getFrom() != vol {
+		return fmt.Errorf("%s: %w (volume moved by a concurrent operation while this move was in progress)", fromLabel, ErrEmpty)
+	}
+	if getTo() != nil {
+		return fmt.Errorf("%s: %w (filled by a concurrent operation while this move was in progress)", toLabel, ErrFull)
+	}
 
 	setFrom(nil)
 	setTo(vol)
@@ -1765,6 +1913,9 @@ func (l *Library) Move(from, to ElementRef, logicalLibrary string) error {
 // no-op because the door is already open, so a PIN can never be bypassed by
 // calling Open twice.
 func (l *Library) OpenIODoor(mailboxID, pin string) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.mailboxExistsLocked(mailboxID) {
@@ -1778,9 +1929,7 @@ func (l *Library) OpenIODoor(mailboxID, pin string) error {
 	}
 	l.setDoorPhase("mailbox", mailboxID, "opening")
 	defer l.setDoorPhase("mailbox", mailboxID, "")
-	if l.doorActionLatency > 0 {
-		time.Sleep(l.doorActionLatency)
-	}
+	l.sleepUnlocked(l.doorActionLatency)
 	l.ioDoorOpen[mailboxID] = true
 	l.setArmDoorsOpenDelta(+1)
 	l.emit("io-door", fmt.Sprintf("opened IO mail slot door for mailbox %q", mailboxID), map[string]string{"mailbox": mailboxID})
@@ -1791,6 +1940,9 @@ func (l *Library) OpenIODoor(mailboxID, pin string) error {
 // CloseIODoor applies staged I/O actions scoped to mailboxID then closes
 // that mailbox's door.
 func (l *Library) CloseIODoor(mailboxID string, actions []DoorAction) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.ioDoorOpen[mailboxID] {
@@ -1798,9 +1950,7 @@ func (l *Library) CloseIODoor(mailboxID string, actions []DoorAction) error {
 	}
 	l.setDoorPhase("mailbox", mailboxID, "closing")
 	defer l.setDoorPhase("mailbox", mailboxID, "")
-	if l.doorActionLatency > 0 {
-		time.Sleep(l.doorActionLatency)
-	}
+	l.sleepUnlocked(l.doorActionLatency)
 	if err := l.applyIOActionsLocked(mailboxID, actions); err != nil {
 		return err
 	}
@@ -1818,6 +1968,9 @@ func (l *Library) CloseIODoor(mailboxID string, actions []DoorAction) error {
 // checked on every call, even one that's about to no-op because the door
 // is already open, so a PIN can never be bypassed by calling Open twice.
 func (l *Library) OpenStorageDoor(magazineID, pin string) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.magazineExistsLocked(magazineID) {
@@ -1831,9 +1984,7 @@ func (l *Library) OpenStorageDoor(magazineID, pin string) error {
 	}
 	l.setDoorPhase("magazine", magazineID, "opening")
 	defer l.setDoorPhase("magazine", magazineID, "")
-	if l.doorActionLatency > 0 {
-		time.Sleep(l.doorActionLatency)
-	}
+	l.sleepUnlocked(l.doorActionLatency)
 	l.stDoorOpen[magazineID] = true
 	l.setArmDoorsOpenDelta(+1)
 	l.emit("storage-door", fmt.Sprintf("opened storage door for magazine %q", magazineID), map[string]string{"magazine": magazineID})
@@ -1844,6 +1995,9 @@ func (l *Library) OpenStorageDoor(magazineID, pin string) error {
 // CloseStorageDoor applies staged storage actions scoped to magazineID
 // then closes that magazine's door.
 func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) error {
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.stDoorOpen[magazineID] {
@@ -1851,9 +2005,7 @@ func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) erro
 	}
 	l.setDoorPhase("magazine", magazineID, "closing")
 	defer l.setDoorPhase("magazine", magazineID, "")
-	if l.doorActionLatency > 0 {
-		time.Sleep(l.doorActionLatency)
-	}
+	l.sleepUnlocked(l.doorActionLatency)
 	if err := l.applyStorageActionsLocked(magazineID, actions); err != nil {
 		return err
 	}
@@ -1867,9 +2019,7 @@ func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) erro
 	// coarse "scanned magazine ... contents" event below stays audited.
 	l.setDoorPhase("magazine", magazineID, "scanning")
 	l.setArmBusy(true)
-	if l.robotMoveScanLatency > 0 {
-		time.Sleep(l.robotMoveScanLatency)
-	}
+	l.sleepUnlocked(l.robotMoveScanLatency)
 
 	// Divide the magazine's total scan time evenly across its own slots
 	// and record one live-only "scanning slot N: <status>" step per slot
@@ -1896,9 +2046,7 @@ func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) erro
 			perSlot = l.magazineScanLatency / time.Duration(len(magSlots))
 		}
 		for _, s := range magSlots {
-			if perSlot > 0 {
-				time.Sleep(perSlot)
-			}
+			l.sleepUnlocked(perSlot)
 			status := "empty"
 			if s.Volume != nil {
 				status = fmt.Sprintf("occupied (%s)", s.Volume.Barcode)
@@ -1913,8 +2061,8 @@ func (l *Library) CloseStorageDoor(magazineID string, actions []DoorAction) erro
 			// the door actually closes.
 			l.recordArmStepAndPosition(fmt.Sprintf("scanning slot %s: %s", displayLabel(s.Label, s.Address), status), ArmPosition{Kind: "slot", Address: s.Address, Label: s.Label})
 		}
-	} else if l.magazineScanLatency > 0 {
-		time.Sleep(l.magazineScanLatency)
+	} else {
+		l.sleepUnlocked(l.magazineScanLatency)
 	}
 	l.setArmBusy(false)
 	delete(l.stDoorOpen, magazineID)
@@ -2549,6 +2697,9 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	if from.Kind == KindDrive {
 		return fmt.Errorf("%w: source cannot be a drive", ErrInvalidTarget)
 	}
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -2593,6 +2744,13 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	l.setArmBusy(true)
 	defer l.setArmBusy(false)
 
+	// See the explicit clear below (right before the cleaning branch) for
+	// why these use the same explicit-plus-deferred-safety-net pattern as
+	// setArmBusy above, instead of a bare defer.
+	fromKey, driveKey := elementKey(from), elementKey(ElementRef{Kind: KindDrive, Address: driveIndex})
+	l.setElementsBusy(true, fromKey, driveKey)
+	defer l.setElementsBusy(false, fromKey, driveKey)
+
 	// Emitted now, not before the checks above: this announces a load
 	// that is actually about to happen, not one that might still be
 	// rejected - real-time progression means "starting" events only
@@ -2604,14 +2762,10 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 
 	half := l.driveLoadLatency / 2
 	l.recordArmStep(fmt.Sprintf("moving to %s", fromLabel))
-	if half > 0 {
-		time.Sleep(half)
-	}
+	l.sleepUnlocked(half)
 	l.recordArmStep(fmt.Sprintf("grabbed tape %s from %s", vol.Barcode, fromLabel))
 	l.recordArmStep(fmt.Sprintf("moving to drive %d", driveIndex))
-	if rem := l.driveLoadLatency - half; rem > 0 {
-		time.Sleep(rem)
-	}
+	l.sleepUnlocked(l.driveLoadLatency - half)
 	l.recordArmStep(fmt.Sprintf("loaded tape %s into drive %d", vol.Barcode, driveIndex))
 	l.setArmPosition(ArmPosition{Kind: "drive", Address: driveIndex})
 
@@ -2620,8 +2774,14 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	// arm has already stepped away), so this gets no step/event of its
 	// own; the "load" success event below already brackets the whole
 	// load+position sequence.
-	if l.tapePositionLatency > 0 {
-		time.Sleep(l.tapePositionLatency)
+	l.sleepUnlocked(l.tapePositionLatency)
+
+	// opMu already rules out a concurrent Reconfigure, so drive and
+	// getFrom/setFrom above still point at the live objects - but not a
+	// concurrent OffsiteSend, which could have pulled vol out of from
+	// during the sleeps just released above.
+	if getFrom() != vol {
+		return fmt.Errorf("%s: %w (volume moved by a concurrent operation while this load was in progress)", fromLabel, ErrEmpty)
 	}
 
 	// The Bareos-facing device-path symlink is only created now, once the
@@ -2657,7 +2817,13 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	// withCleaningOp's doc comment in app.js) - the arm is genuinely free
 	// during that sleep. The defer remains as a safety net for early
 	// returns above this point; calling both is harmless (idempotent).
+	// fromKey/driveKey clear here too, for the same reason and at the same
+	// point: the mechanical load has already committed above (setFrom/
+	// drive.Volume), so Status() already shows the true state - from here
+	// on, a cleaning drive's "busy" appearance is applyCleaningOverlay's
+	// job (genuine committed cleaning_state, not this transient marker).
 	l.setArmBusy(false)
+	l.setElementsBusy(false, fromKey, driveKey)
 
 	// A cleaning cartridge runs its full cycle - and is automatically
 	// ejected back to where it came from - within this same Load call,
@@ -2672,23 +2838,35 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 			map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex)})
 		l.saveLocked()
 
-		// Unlike every other simulated delay in this codebase (held
-		// under l.mu for its whole duration - see CLAUDE.md's "single
-		// robotic arm" tradeoff), the cleaning-duration sleep
-		// specifically releases the lock: a real drive performs its own
-		// internal cleaning cycle once a cartridge is inserted, largely
-		// independent of the robotic arm, so the arm (modeled by l.mu)
-		// is free to service other drives/slots/status reads while this
-		// one cleans. This is also what makes "the drive must be
-		// considered busy while cleaning" genuinely observable by a
-		// concurrent Status() call - without releasing the lock, a
-		// concurrent caller would simply block for the cycle's entire
-		// duration and only ever see the *post*-cycle (already ejected)
-		// state once unblocked.
+		// Unlike every other simulated delay in this codebase (which
+		// releases mu but keeps opMu held, preserving arm exclusivity -
+		// see opMu's doc comment), the cleaning-duration sleep specifically
+		// also releases opMu: a real drive performs its own internal
+		// cleaning cycle once a cartridge is inserted, largely independent
+		// of the robotic arm, so a genuinely concurrent Move/Load/Unload/
+		// door call on something else must not wait for it. This is also
+		// what makes "the drive must be considered busy while cleaning"
+		// genuinely observable by a concurrent Status() call - releasing
+		// mu (which every other sleep already does too) is what actually
+		// unblocks Status() itself; releasing opMu on top of that is what
+		// additionally unblocks a second robotic operation, not just reads.
+		//
+		// Because opMu is released here, a concurrent Reconfigure CAN run
+		// during this window - the only place in this file where that's
+		// true - so unlike everywhere else, the drive and its origin are
+		// re-resolved by stable identity below rather than reusing
+		// pre-sleep pointers/locals. For the same reason, the duration
+		// itself is read into a local while l.mu is still held: a
+		// Reconfigure landing in this window re-derives l.cleaningDuration
+		// (resolveCleaningLocked), so reading the live field after
+		// unlocking would race against that write.
+		cleaningDuration := l.cleaningDuration
 		l.mu.Unlock()
-		if l.cleaningDuration > 0 {
-			time.Sleep(l.cleaningDuration)
+		l.opMu.Unlock()
+		if cleaningDuration > 0 {
+			time.Sleep(cleaningDuration)
 		}
+		l.opMu.Lock()
 		l.mu.Lock()
 
 		// Re-resolve the drive (rather than reuse the pre-sleep pointer,
@@ -2724,7 +2902,12 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 		// rather than snatched back by the robot mid-workflow.
 		if l.cleaningMode == config.CleaningModeRobot {
 			l.emit("cleaning-cycle", fmt.Sprintf("cleaning cycle done on drive %d with tape %q", driveIndex, vol.Barcode), detail)
-			l.ejectCleaningTapeAfterCycleLocked(d, driveIndex, origin)
+			// d.Origin, not the pre-sleep local `origin`: a Reconfigure
+			// racing in during the cleaning-duration sleep above correctly
+			// shifts the struct field (shiftOriginAcrossRebuild) but would
+			// leave a captured local stale, silently pointing the eject at
+			// the wrong address post-reconfigure.
+			l.ejectCleaningTapeAfterCycleLocked(d, driveIndex, d.Origin)
 		} else {
 			l.emit("cleaning-cycle", fmt.Sprintf("cleaning cycle done on drive %d with tape %q; still mounted, awaiting unload", driveIndex, vol.Barcode), detail)
 		}
@@ -2738,24 +2921,47 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 // cartridge to the slot/ioslot it was loaded from once its cleaning
 // cycle completes, for both an operator-initiated Load and an
 // AutoCleanSweep-initiated one alike - callers never issue a separate
-// Unload for a cleaning tape. Because Load releases l.mu for the
-// cleaning-duration sleep (see Load's doc comment), another operation
-// genuinely can move something else into the origin slot/ioslot - or
-// remove it entirely via Reconfigure - in that window, so this case is
-// handled for real, not just defensively: the cartridge is moved
-// "outside" instead of being dropped, and a warning event is logged.
-// Callers must hold l.mu and have already confirmed drive.Volume is
-// still the cleaning volume being ejected.
-func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int, origin ElementRef) {
+// Unload for a cleaning tape. origin is nilable and is always the live
+// drive.Origin field (re-resolved by the caller after the
+// cleaning-duration sleep), never a value captured before that sleep -
+// that sleep is the one place in this file that also releases opMu, so a
+// concurrent Reconfigure genuinely can shift addressing or remove the
+// origin slot/ioslot entirely in that window, or a concurrent
+// OffsiteRecall can fill it; either way this case is handled for real, not
+// just defensively: the cartridge is moved "outside" instead of being
+// dropped, and a warning event is logged. Callers must hold opMu and l.mu
+// and have already confirmed drive.Volume is still the cleaning volume
+// being ejected.
+func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int, origin *ElementRef) {
 	l.setArmBusy(true)
 	defer l.setArmBusy(false)
 
+	// The drive itself is already covered by the web UI's cleaning overlay
+	// (driven by genuine committed cleaning_state, not this marker) for
+	// most of this function, but marking it here too closes the brief gap
+	// once drive.Volume is cleared below and before this function returns.
+	// The origin slot/ioslot (this eject's destination) has no such
+	// separate coverage, exactly like an ordinary Unload's destination -
+	// see Unload's identical marking. Both keys (when origin is known) are
+	// marked/cleared in one setElementsBusy call each - see its doc
+	// comment for why batching matters here.
+	busyKeys := []string{elementKey(ElementRef{Kind: KindDrive, Address: driveIndex})}
+	if origin != nil {
+		busyKeys = append(busyKeys, elementKey(*origin))
+	}
+	l.setElementsBusy(true, busyKeys...)
+	defer l.setElementsBusy(false, busyKeys...)
+
 	vol := drive.Volume
-	// Resolved once, up front, and reused below for both the "unloading"
-	// pre-event's label and the post-sleep occupancy check - safe since
-	// l.mu is held for this whole function, so nothing else can act on
-	// origin in between.
-	getTo, setTo, toLabel, err := l.volumeSlot(origin)
+	var getTo func() *Volume
+	var setTo func(*Volume)
+	var toLabel string
+	var err error
+	if origin != nil {
+		getTo, setTo, toLabel, err = l.volumeSlot(*origin)
+	} else {
+		err = fmt.Errorf("no known origin for this cleaning tape: %w", ErrNotFound)
+	}
 	unloadingMsg := fmt.Sprintf("unloading volume %q from drive %d", vol.Barcode, driveIndex)
 	unloadingDetail := map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex)}
 	if err == nil {
@@ -2767,27 +2973,23 @@ func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int
 	// See driveActivityUnloadSettleDelay's doc comment: gives the drive's
 	// activity watcher a chance to report any already-in-flight, genuinely
 	// detected read/write before stopDriveWatcherLocked below tears it
-	// down and the drive's volume is cleared.
-	if driveActivityUnloadSettleDelay > 0 {
-		time.Sleep(driveActivityUnloadSettleDelay)
-	}
+	// down and the drive's volume is cleared. Only l.mu is released here,
+	// not opMu: this is genuine arm movement (see the narration below), so
+	// it must keep excluding a second Move/Load/Unload/door call.
+	l.sleepUnlocked(driveActivityUnloadSettleDelay)
 	l.stopDriveWatcherLocked(driveIndex)
 	_ = os.Remove(drive.DevicePath)
 
 	half := l.driveUnloadLatency / 2
 	l.recordArmStep(fmt.Sprintf("moving to drive %d", driveIndex))
-	if half > 0 {
-		time.Sleep(half)
-	}
+	l.sleepUnlocked(half)
 	l.recordArmStep(fmt.Sprintf("grabbed tape %s from drive %d", vol.Barcode, driveIndex))
 	moveTarget := toLabel
 	if err != nil {
 		moveTarget = "storage"
 	}
 	l.recordArmStep(fmt.Sprintf("moving to %s", moveTarget))
-	if rem := l.driveUnloadLatency - half; rem > 0 {
-		time.Sleep(rem)
-	}
+	l.sleepUnlocked(l.driveUnloadLatency - half)
 
 	drive.Volume = nil
 	drive.Origin = nil
@@ -2796,6 +2998,10 @@ func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int
 		vol.CleaningState = CleaningTapeAvailable
 	}
 
+	// opMu stays held for this whole function (see doc comment above), so
+	// Reconfigure can't have run since the caller re-resolved origin - the
+	// only thing this getTo() check still needs to defend against is a
+	// concurrent OffsiteRecall filling the slot during a sleep above.
 	if err != nil || getTo() != nil {
 		reason := "its original location no longer exists"
 		if err == nil {
@@ -2810,7 +3016,7 @@ func (l *Library) ejectCleaningTapeAfterCycleLocked(drive *Drive, driveIndex int
 	}
 	setTo(vol)
 	l.recordArmStep(fmt.Sprintf("placed tape %s into %s", vol.Barcode, toLabel))
-	l.setArmPosition(l.armPositionFor(origin))
+	l.setArmPosition(l.armPositionFor(*origin))
 	l.emit("unload", fmt.Sprintf("unloaded volume %q from drive %d into %s", vol.Barcode, driveIndex, toLabel),
 		map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex), "to": toLabel})
 }
@@ -2823,6 +3029,9 @@ func (l *Library) Unload(driveIndex int, to ElementRef, logicalLibrary string) e
 	if to.Kind == KindDrive {
 		return fmt.Errorf("%w: destination cannot be a drive", ErrInvalidTarget)
 	}
+	l.opMu.Lock()
+	defer l.opMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -2857,6 +3066,10 @@ func (l *Library) Unload(driveIndex int, to ElementRef, logicalLibrary string) e
 	l.setArmBusy(true)
 	defer l.setArmBusy(false)
 
+	driveKey, toKey := elementKey(ElementRef{Kind: KindDrive, Address: driveIndex}), elementKey(to)
+	l.setElementsBusy(true, driveKey, toKey)
+	defer l.setElementsBusy(false, driveKey, toKey)
+
 	l.emit("unloading", fmt.Sprintf("unloading volume %q from drive %d to %s", vol.Barcode, driveIndex, toLabel),
 		map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex), "to": toLabel})
 
@@ -2866,35 +3079,52 @@ func (l *Library) Unload(driveIndex int, to ElementRef, logicalLibrary string) e
 	// down and the drive's volume is cleared. This matters most for very
 	// fast operations (e.g. Bareos labeling a tape - a tiny, near-instant
 	// write) immediately followed by an unload.
-	if driveActivityUnloadSettleDelay > 0 {
-		time.Sleep(driveActivityUnloadSettleDelay)
-	}
+	l.sleepUnlocked(driveActivityUnloadSettleDelay)
 	l.stopDriveWatcherLocked(driveIndex)
 	_ = os.Remove(drive.DevicePath)
 
 	half := l.driveUnloadLatency / 2
 	l.recordArmStep(fmt.Sprintf("moving to drive %d", driveIndex))
-	if half > 0 {
-		time.Sleep(half)
-	}
+	l.sleepUnlocked(half)
 	l.recordArmStep(fmt.Sprintf("grabbed tape %s from drive %d", vol.Barcode, driveIndex))
 	l.recordArmStep(fmt.Sprintf("moving to %s", toLabel))
-	if rem := l.driveUnloadLatency - half; rem > 0 {
-		time.Sleep(rem)
-	}
+	l.sleepUnlocked(l.driveUnloadLatency - half)
 	l.recordArmStep(fmt.Sprintf("placed tape %s into %s", vol.Barcode, toLabel))
 
 	drive.Volume = nil
 	drive.Origin = nil
 	drive.Activity = ""
-	setTo(vol)
-	l.setArmPosition(l.armPositionFor(to))
 	if vol.Cleaning {
 		drive.MountsSinceCleaning = 0
 		if vol.CleaningState != CleaningTapeExpired {
 			vol.CleaningState = CleaningTapeAvailable
 		}
 	}
+
+	// opMu already rules out a concurrent Reconfigure, so getTo/setTo above
+	// still point at the live objects - but not a concurrent OffsiteRecall,
+	// which could have filled `to` during the sleeps just released above.
+	// By this point the mechanical unload has already committed (watcher
+	// torn down, symlink removed, narration already says "placed"), so
+	// there's no clean way to abort - fall back to placing the volume
+	// outside the library (mirroring ejectCleaningTapeAfterCycleLocked's
+	// own fallback) and return an error: unlike that internal auto-eject,
+	// this call has a synchronous caller (Bareos via gotochanger-changer,
+	// or the web UI) that explicitly asked for `to` and needs to know that
+	// request wasn't honored, or its own catalog goes out of sync with
+	// where the tape actually ended up.
+	if getTo() != nil {
+		l.outside = append(l.outside, vol)
+		l.recordArmStep(fmt.Sprintf("placed tape %s outside the library", vol.Barcode))
+		l.setArmPosition(ArmPosition{Kind: ArmPositionParked})
+		l.emit("unload-fallback", fmt.Sprintf("could not place volume %q into %s after unloading it from drive %d (occupied by a concurrent operation); moved it outside the library instead", vol.Barcode, toLabel, driveIndex),
+			map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex), "to": toLabel})
+		l.saveLocked()
+		return fmt.Errorf("%s: %w (occupied by a concurrent operation while this unload was in progress; volume placed outside the library instead)", toLabel, ErrFull)
+	}
+
+	setTo(vol)
+	l.setArmPosition(l.armPositionFor(to))
 	l.emit("unload", fmt.Sprintf("unloaded volume %q from drive %d into %s", vol.Barcode, driveIndex, toLabel),
 		map[string]string{"volume": vol.Barcode, "drive": fmt.Sprint(driveIndex), "to": toLabel})
 	l.saveLocked()

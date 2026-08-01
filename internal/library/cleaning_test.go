@@ -2,7 +2,9 @@ package library
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -279,10 +281,11 @@ func TestCleaningCommitsBeforeDurationSleep(t *testing.T) {
 
 // TestEjectCleaningTapeFallbackWhenOriginOccupied covers the defensive
 // fallback path: if a cleaning tape's origin slot is no longer free by
-// the time its cycle completes - unreachable in real operation under
-// this library's single-exclusive-lock model, but exercised directly
-// here - the tape is moved outside instead of being dropped, and a
-// warning event is logged.
+// the time its cycle completes - reachable in real operation via a
+// concurrent OffsiteRecall racing in during the cleaning-duration sleep
+// (the one window where opMu is released - see opMu's doc comment), and
+// exercised directly here without going through that race - the tape is
+// moved outside instead of being dropped, and a warning event is logged.
 func TestEjectCleaningTapeFallbackWhenOriginOccupied(t *testing.T) {
 	lib := newTestLibraryWithCleaning(t, config.CleaningSettings{Enabled: true, Mode: config.CleaningModeSoftware, MaxUses: 20, MountThreshold: 50, Duration: "0s"})
 	origin := ElementRef{Kind: KindSlot, Address: lib.slots[0].Address}
@@ -290,9 +293,11 @@ func TestEjectCleaningTapeFallbackWhenOriginOccupied(t *testing.T) {
 	lib.drives[0].Volume = vol
 	lib.slots[0].Volume = &Volume{Barcode: "OTHERVOL"} // origin slot now occupied by something else
 
+	lib.opMu.Lock()
 	lib.mu.Lock()
-	lib.ejectCleaningTapeAfterCycleLocked(lib.drives[0], 0, origin)
+	lib.ejectCleaningTapeAfterCycleLocked(lib.drives[0], 0, &origin)
 	lib.mu.Unlock()
+	lib.opMu.Unlock()
 
 	if lib.drives[0].Volume != nil {
 		t.Fatalf("expected the drive to be cleared regardless of the fallback")
@@ -313,9 +318,12 @@ func TestEjectCleaningTapeFallbackWhenOriginOccupied(t *testing.T) {
 
 // TestCleaningSleepDoesNotBlockOtherDrives confirms the lock-release
 // fix: a cleaning cycle on one drive must not stall Status() or an
-// unrelated Move/Load on another drive - unlike every other simulated
-// delay in this codebase, which does hold l.mu (and so does block
-// concurrent callers) for its whole duration by design.
+// unrelated Move/Load on another drive. Every simulated delay in this
+// codebase releases l.mu around its sleep (see sleepUnlocked), which is
+// enough on its own to keep Status()/Events()/etc. unblocked - what's
+// still unique to the cleaning-duration sleep is that it also releases
+// opMu, which is what additionally lets a genuinely concurrent
+// Move/Load/Unload/door call proceed rather than queue behind it.
 func TestCleaningSleepDoesNotBlockOtherDrives(t *testing.T) {
 	const delay = 300 * time.Millisecond
 	tmp := t.TempDir()
@@ -439,5 +447,127 @@ func TestEjectCleaningTapeWaitsForActivitySettleDelay(t *testing.T) {
 	}
 	if lib.drives[0].Volume != nil {
 		t.Fatalf("expected the drive to be idle again after the cleaning cycle auto-ejects, got %+v", lib.drives[0].Volume)
+	}
+}
+
+// TestReconfigureDuringCleaningSleepDoesNotMisdirectAutoEject is the
+// regression test for the bug fixed alongside the opMu/sleepUnlocked
+// rework: Load's cleaning branch used to pass its own pre-sleep local
+// `origin` to ejectCleaningTapeAfterCycleLocked instead of the freshly
+// re-resolved drive.Origin. Since the cleaning-duration sleep is the one
+// place that also releases opMu, a Reconfigure landing during that window
+// can shift addressing (shiftOriginAcrossRebuild correctly updates the
+// struct field, but a stale captured local wouldn't follow it) - this
+// fails with the tape misdirected to the wrong (or a fallen-back-outside)
+// location before the d.Origin fix, and passes after it.
+func TestReconfigureDuringCleaningSleepDoesNotMisdirectAutoEject(t *testing.T) {
+	const delay = 200 * time.Millisecond
+	tmp := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = tmp
+	cfg.Library.Magazines = []config.MagazineConfig{{ID: "Magazine1", Slots: 2}}
+	cfg.Library.DriveDevices = []config.DriveDeviceConfig{{DevicePath: filepath.Join(tmp, "drives", "drive0")}}
+	cfg.Library.DefaultCapacity = "1MiB"
+	cfg.Library.Cleaning = config.CleaningSettings{Enabled: true, Mode: config.CleaningModeRobot, MaxUses: 20, MountThreshold: 50, Duration: delay.String()}
+	lib, err := New(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("new library: %v", err)
+	}
+	placeCleaningTapeInFirstSlot(lib, "00001CLN")
+	fromAddr := lib.slots[0].Address // Magazine1's first slot, address 1
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, "")
+	}()
+	time.Sleep(delay / 4) // let the mechanical load finish and the cleaning-duration sleep begin (opMu released)
+
+	// Insert a new magazine before Magazine1, shifting its addresses -
+	// address 1 (fromAddr) now belongs to the new magazine's first slot,
+	// not Magazine1's. Only reachable here because Load's cleaning branch
+	// releases opMu for this window.
+	newCfg := lib.cfg
+	newCfg.Library.Magazines = []config.MagazineConfig{
+		{ID: "Magazine0", Slots: 3},
+		{ID: "Magazine1", Slots: 2},
+	}
+	if err := lib.Reconfigure(newCfg); err != nil {
+		t.Fatalf("reconfigure during cleaning sleep: %v", err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("load (cleaning): %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		lib.mu.RLock()
+		var mag0Slot0, mag1Slot0 *Slot
+		for _, s := range lib.slots {
+			switch {
+			case s.MagazineID == "Magazine0" && mag0Slot0 == nil:
+				mag0Slot0 = s
+			case s.MagazineID == "Magazine1" && mag1Slot0 == nil:
+				mag1Slot0 = s
+			}
+		}
+		driveVol := lib.drives[0].Volume
+		outsideHasIt := containsBarcode(lib.outside, "00001CLN")
+		lib.mu.RUnlock()
+
+		if driveVol == nil && mag1Slot0 != nil && mag1Slot0.Volume != nil && mag1Slot0.Volume.Barcode == "00001CLN" {
+			if mag0Slot0 != nil && mag0Slot0.Volume != nil {
+				t.Fatalf("cleaning tape misdirected: Magazine0's first slot unexpectedly holds %+v", mag0Slot0.Volume)
+			}
+			return
+		}
+		if outsideHasIt {
+			t.Fatalf("cleaning tape fell back to outside instead of returning to Magazine1's first slot - the fix should let it find its correct, shifted-address home via d.Origin")
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for the cleaning tape to return to Magazine1's first slot after the cleaning cycle (mag1Slot0=%+v mag0Slot0=%+v driveVol=%+v)", mag1Slot0, mag0Slot0, driveVol)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestBusyElementsClearedBeforeCleaningCycleBegins confirms the source
+// slot and drive stop reporting busy (see Library.setElementsBusy) once
+// the mechanical load itself commits, well before Load() actually
+// returns (which, for a robot-mode cleaning cartridge, doesn't happen
+// until the whole multi-minute cleaning+auto-eject sequence completes) -
+// from that point on, the drive's "busy" appearance is
+// applyCleaningOverlay's job (genuine committed cleaning_state), not this
+// transient marker.
+func TestBusyElementsClearedBeforeCleaningCycleBegins(t *testing.T) {
+	const cleaningDelay = 500 * time.Millisecond
+	lib := newTestLibraryWithCleaning(t, config.CleaningSettings{Enabled: true, Mode: config.CleaningModeSoftware, MaxUses: 20, MountThreshold: 50, Duration: cleaningDelay.String()})
+	placeCleaningTapeInFirstSlot(lib, "00001CLN")
+	fromAddr := lib.slots[0].Address
+	fromKey := fmt.Sprintf("slot:%d", fromAddr)
+	const driveKey = "drive:0"
+
+	done := make(chan error, 1)
+	go func() {
+		done <- lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, "")
+	}()
+
+	deadline := time.Now().Add(cleaningDelay / 2)
+	for {
+		busy := lib.BusyElements()
+		if !slices.Contains(busy, fromKey) && !slices.Contains(busy, driveKey) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected busy elements to clear well before the %s cleaning-duration sleep elapses, still busy: %v", cleaningDelay, busy)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("load (cleaning): %v", err)
+	}
+	if busy := lib.BusyElements(); len(busy) != 0 {
+		t.Fatalf("expected no busy elements once the cleaning cycle's own Load call fully returned, got %v", busy)
 	}
 }
