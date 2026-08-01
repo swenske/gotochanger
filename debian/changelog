@@ -1,3 +1,11 @@
+gotochanger (0.8.2) UNRELEASED; urgency=medium
+
+  * Update README and release workflow for improved Docker Hub integration
+  * Implement busy element tracking and notifications for in-progress operations
+  * fix robotic arm live messages (broken in v0.8.0)
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Sat, 01 Aug 2026 09:39:53 +0000
+
 gotochanger (0.8.1) UNRELEASED; urgency=medium
 
   * Update API/web UI address to 0.0.0.0
