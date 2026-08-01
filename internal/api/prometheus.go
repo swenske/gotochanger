@@ -292,6 +292,18 @@ func (rec *statusRecorder) WriteHeader(status int) {
 	rec.ResponseWriter.WriteHeader(status)
 }
 
+// Flush forwards to the underlying ResponseWriter's http.Flusher, if any.
+// Without this, statusRecorder (embedding http.ResponseWriter but not
+// re-exposing Flush) would silently break the handleStream SSE handler's
+// `w.(http.Flusher)` type assertion for every request that passes through
+// metricsMiddleware - which, since it wraps the whole mux, is all of them
+// - causing every SSE connection to fail with "streaming unsupported".
+func (rec *statusRecorder) Flush() {
+	if f, ok := rec.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // metricsMiddleware wraps the built mux (not just an http.Handler) so it
 // can look up the matched route pattern via mux.Handler(r) before
 // delegating - this is what lets gotochanger_operations_total/

@@ -490,9 +490,10 @@ main {
 }
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-strong); background: var(--card-hover); }
 
-/* A slot/I-O-slot/drive card is grayed out with a spinner while this tab
-   has a same-tab in-flight Move/Load/Unload for it (see
-   applyCardProcessingOverlay) - mirrors .magazine-locked/
+/* A slot/I-O-slot/drive card is grayed out with a spinner while it has an
+   in-flight Move/Load/Unload - either this tab's own request, or (surviving
+   a page refresh/another client) the server's own live-reported busy state
+   (see applyCardProcessingOverlay) - mirrors .magazine-locked/
    .magazine-lock-overlay below, scoped to one card instead of a whole
    magazine/mailbox group. */
 .card-processing > :not(.card-processing-overlay) {

@@ -8,12 +8,18 @@ import (
 
 // Structured event code taxonomy.
 const (
-	EventCodeRoboticsMoveSuccess             = "ROBOTICS.MOVE.SUCCESS"
-	EventCodeRoboticsMoveFailure             = "ROBOTICS.MOVE.FAILURE"
-	EventCodeRoboticsLoadSuccess             = "ROBOTICS.LOAD.SUCCESS"
-	EventCodeRoboticsLoadFailure             = "ROBOTICS.LOAD.FAILURE"
-	EventCodeRoboticsUnloadSuccess           = "ROBOTICS.UNLOAD.SUCCESS"
-	EventCodeRoboticsUnloadFailure           = "ROBOTICS.UNLOAD.FAILURE"
+	EventCodeRoboticsMoveSuccess   = "ROBOTICS.MOVE.SUCCESS"
+	EventCodeRoboticsMoveFailure   = "ROBOTICS.MOVE.FAILURE"
+	EventCodeRoboticsLoadSuccess   = "ROBOTICS.LOAD.SUCCESS"
+	EventCodeRoboticsLoadFailure   = "ROBOTICS.LOAD.FAILURE"
+	EventCodeRoboticsUnloadSuccess = "ROBOTICS.UNLOAD.SUCCESS"
+	EventCodeRoboticsUnloadFailure = "ROBOTICS.UNLOAD.FAILURE"
+	// EventCodeRoboticsUnloadFallback: the mechanical unload committed, but
+	// the requested destination was filled by a concurrent operation
+	// during the unload's own latency sleep, so the volume was placed
+	// outside the library instead - mirrors EventCodeCleaningTapeEjectFallback
+	// for the same class of race on the auto-eject path.
+	EventCodeRoboticsUnloadFallback          = "ROBOTICS.UNLOAD.FALLBACK.WARNING"
 	EventCodeRoboticsDoorIOOpenSuccess       = "ROBOTICS.DOOR.IO.OPEN.SUCCESS"
 	EventCodeRoboticsDoorIOOpenFailure       = "ROBOTICS.DOOR.IO.OPEN.FAILURE"
 	EventCodeRoboticsDoorIOCloseSuccess      = "ROBOTICS.DOOR.IO.CLOSE.SUCCESS"
@@ -254,6 +260,8 @@ func legacyTypeToCode(typ, message string) string {
 		return EventCodeCleaningTapeCreateSuccess
 	case "cleaning-eject-fallback":
 		return EventCodeCleaningTapeEjectFallback
+	case "unload-fallback":
+		return EventCodeRoboticsUnloadFallback
 	case "cleaning-start":
 		return EventCodeCleaningCycleStart
 	case "loading":

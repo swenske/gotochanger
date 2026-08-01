@@ -248,6 +248,14 @@ type Status struct {
 	RoboticFault   RoboticFault      `json:"robotic_fault"`
 	ArmState       ArmState          `json:"arm_state"`
 
+	// BusyElements lists every slot/ioslot/drive currently the target of
+	// an in-progress Move/Load/Unload (see Library.BusyElements), keyed
+	// the same way as ElementRef's Kind/Address pair joined as
+	// "<kind>:<address>" - e.g. "slot:3", "drive:0". Live-status only,
+	// like Doors.Phases and ArmState - never persisted, since an element
+	// is only ever in this list for the duration of one operation.
+	BusyElements []string `json:"busy_elements,omitempty"`
+
 	// CleaningEnabled/CleaningMountThreshold/CleaningMaxUses let any role
 	// (not just Admin, which is all GET /api/v1/settings/cleaning
 	// allows) compute a live "mounts until cleaning" countdown per drive
@@ -358,4 +366,20 @@ type PhaseNotifier interface {
 	// setArmDoorsOpenDelta/recordArmStep). Called synchronously under the
 	// same constraints as NotifyPhase.
 	NotifyArm(state ArmState, step ArmStep)
+
+	// NotifyElementBusy reports that every slot/ioslot/drive addressed by
+	// keys (see Library.elementKey, e.g. "slot:3"/"ioslot:1"/"drive:0") is
+	// now the target of an in-progress Move/Load/Unload, or no longer is
+	// (busy == false) - see Library.setElementsBusy/BusyElements. This is
+	// what lets a slot/drive stay visibly unavailable across a page
+	// refresh for as long as the operation is actually still running,
+	// not just for the initiating tab's own in-flight request (which the
+	// web UI already tracks client-side, but that state is lost on
+	// reload). keys is plural, delivered as one call: Move/Load/Unload
+	// each mark both ends of their operation busy/idle together, and
+	// batching into a single notification (rather than one call per key)
+	// keeps the burst of live SSE traffic at operation start/end from
+	// doubling - see setElementsBusy's doc comment for why that matters.
+	// Called synchronously under the same constraints as NotifyPhase.
+	NotifyElementBusy(keys []string, busy bool)
 }
