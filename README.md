@@ -1,9 +1,10 @@
 # gotochanger
 
 [![CI](https://img.shields.io/github/actions/workflow/status/swenske/gotochanger/ci.yml?branch=main&style=for-the-badge)](https://github.com/swenske/gotochanger/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/swenske/gotochanger?style=for-the-badge&color=blue)](https://github.com/swenske/gotochanger/releases)
-[![Documentation](https://img.shields.io/badge/Docs-Gotochanger%2Fdocs-blue?style=for-the-badge)](https://swenske.github.io/gotochanger/)
+[![Latest Release](https://img.shields.io/github/v/release/swenske/gotochanger?style=for-the-badge&color=lightgreen)](https://github.com/swenske/gotochanger/releases)
+[![Documentation](https://img.shields.io/badge/Docs-Gotochanger%2Fdocs-pink?style=for-the-badge)](https://swenske.github.io/gotochanger/)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/swenske/gotochanger)
+[![Docker](https://img.shields.io/badge/Docker-swenske%2Fgotochanger-2496ED?style=for-the-badge&logo=docker)](https://hub.docker.com/r/swenske/gotochanger)
 [![Stars](https://img.shields.io/github/stars/swenske/gotochanger?style=for-the-badge&color=yellow)](https://github.com/swenske/gotochanger/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-orange?style=for-the-badge)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.22-00ADD8?style=for-the-badge&logo=go)](go.mod)

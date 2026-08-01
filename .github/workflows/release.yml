@@ -209,7 +209,10 @@ jobs:
       # runner's docker CLI must already be logged in before that step
       # runs. DOCKERHUB_TOKEN should be a Docker Hub access token scoped
       # to this one repository (swenske/gotochanger), not an
-      # account-wide password/token.
+      # account-wide password/token - and needs Read/Write/Delete scope,
+      # not just Read/Write, since the "Sync README to Docker Hub" step
+      # below reuses the same token and peter-evans/dockerhub-description
+      # requires Delete scope to update the repository description.
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -229,6 +232,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOFLAGS: -mod=vendor
+
+      # Keeps swenske/gotochanger's Docker Hub "Overview" tab in sync with
+      # this repo's own README.md - same file real users already read on
+      # GitHub, including the "Install with Docker" section, so there's
+      # one source of truth rather than a second, hand-maintained Hub
+      # description that can drift.
+      - name: Sync README to Docker Hub
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: swenske/gotochanger
 
       # Pushes both .debs into the internal aptly mirror using the
       # restricted, forced-command SSH access set up on apt.int.sw-servers.net
