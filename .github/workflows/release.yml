@@ -234,16 +234,19 @@ jobs:
           GOFLAGS: -mod=vendor
 
       # Keeps swenske/gotochanger's Docker Hub "Overview" tab in sync with
-      # this repo's own README.md - same file real users already read on
-      # GitHub, including the "Install with Docker" section, so there's
-      # one source of truth rather than a second, hand-maintained Hub
-      # description that can drift.
+      # docker/gotochanger/README.md, a dedicated file rather than this
+      # repo's root README.md: Docker Hub caps descriptions at 25000 bytes
+      # and silently truncates anything longer (the full README already
+      # exceeds that), and content that only works in GitHub's rendering
+      # context - repo-relative image/file links - breaks on Docker Hub,
+      # which has no base path to resolve them against.
       - name: Sync README to Docker Hub
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: swenske/gotochanger
+          readme-filepath: docker/gotochanger/README.md
 
       # Pushes both .debs into the internal aptly mirror using the
       # restricted, forced-command SSH access set up on apt.int.sw-servers.net
