@@ -1,42 +1,69 @@
 # Reasonable-default lint config for a Go project. No prior golangci-lint
 # config existed in this repo, so this isn't overriding an established
 # convention - it's a standard, not-too-opinionated baseline.
+#
+# v2 schema (migrated from v1 via `golangci-lint migrate` after the go1.26
+# bump forced golangci-lint-action off v6/v1.64.8, whose binary was built
+# with go1.24 and refuses to analyze a go1.26 module). `run.timeout` had no
+# v2 config-file equivalent (it's now a `--timeout` CLI flag only, disabled
+# by default) so it was dropped rather than carried forward - this repo is
+# small enough that an unbounded lint run isn't a real risk.
+version: "2"
+
 run:
-  timeout: 5m
   # vendor/ is third-party code (go-sqlite3, yaml.v3) - never ours to fix.
   # golangci-lint already skips vendor/ by default, but this is explicit
   # so the intent survives if that default ever changes.
   modules-download-mode: vendor
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet       # correctness: suspicious constructs, printf checks, etc.
-    - staticcheck  # SA*/S*/ST* checks: bugs, simplifications, style
+    - staticcheck  # SA*/ST*/QF* checks: bugs, style, simplifications - v2
+                   # merged the former separate "gosimple"/"stylecheck"
+                   # linters into this one, so there's no separate entry
+                   # for them anymore (matches what this project always
+                   # intended: "bugs, simplifications, style" in one place)
     - errcheck    # unchecked error return values
     - ineffassign # assignments that are never used
     - unused      # unused identifiers
-    - gosimple    # code that could be simpler
     - misspell    # comment/string typos
-
-# NOTE: CI currently resolves golangci-lint "latest" to a 1.x release
-# (confirmed via a real run: golangci-lint-1.64.8), whose config schema
-# has "linters-settings" as its own top-level key - NOT nested under
-# "linters.settings" as in golangci-lint v2. Confirmed the hard way: the
-# v2-style nested form fails golangci-lint's own "config verify" step
-# with "additional properties 'settings' not allowed". If the pinned
-# "latest" version ever moves to v2, this whole block moves under
-# "linters:" as "settings:" instead.
-linters-settings:
-  errcheck:
-    exclude-functions:
-      # A deferred/bare Tx.Rollback() after a successful Commit() is the
-      # standard Go database idiom - its error (typically sql.ErrTxDone)
-      # is expected and inherent to the pattern, not something callers
-      # are meant to act on.
-      - (*database/sql.Tx).Rollback
+  settings:
+    errcheck:
+      exclude-functions:
+        # A deferred/bare Tx.Rollback() after a successful Commit() is the
+        # standard Go database idiom - its error (typically sql.ErrTxDone)
+        # is expected and inherent to the pattern, not something callers
+        # are meant to act on.
+        - (*database/sql.Tx).Rollback
+  exclusions:
+    # v1 relied on golangci-lint's implicit default excludes (this config
+    # never set exclude-use-default: false); these presets are v2's named,
+    # explicit form of that same default set - not new suppression. Verified
+    # by diffing lint output with/without: dropping these turns up ~50 pure
+    # noise findings (e.g. unchecked deferred rows.Close()/f.Close()) that
+    # were never flagged before this migration either.
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
   # Don't cap the number of issues reported per-linter/total - see them all.
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

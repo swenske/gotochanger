@@ -628,20 +628,20 @@ func ParseDuration(s string) (time.Duration, error) {
 	}
 	unit := strings.ToLower(m[2])
 	var mult time.Duration
-	switch {
-	case unit == "ns":
+	switch unit {
+	case "ns":
 		mult = time.Nanosecond
-	case unit == "us":
+	case "us":
 		mult = time.Microsecond
-	case unit == "ms":
+	case "ms":
 		mult = time.Millisecond
-	case unit == "s":
+	case "s":
 		mult = time.Second
-	case unit == "m":
+	case "m":
 		mult = time.Minute
-	case unit == "h":
+	case "h":
 		mult = time.Hour
-	case unit == "d":
+	case "d":
 		mult = time.Hour * 24
 	default:
 		return 0, fmt.Errorf("unknown duration unit in %q", s)

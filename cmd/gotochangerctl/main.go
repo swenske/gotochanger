@@ -334,7 +334,7 @@ func run(args []string) error {
 
 func runLogicalLibrary(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: logical-library <new|list|show|update|delete> ...")
+		return fmt.Errorf("usage: logical-library <new|list|show|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -382,7 +382,7 @@ func runLogicalLibrary(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: drive-type <new|list|update|delete> ...")
+		return fmt.Errorf("usage: drive-type <new|list|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -417,7 +417,7 @@ func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runTapeType(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: tape-type <new|list|update|delete> ...")
+		return fmt.Errorf("usage: tape-type <new|list|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -460,7 +460,7 @@ func runTapeType(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runTapeSet(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: tape-set <new|list|update|delete|add-tapes|add-tape> ...")
+		return fmt.Errorf("usage: tape-set <new|list|update|delete|add-tapes|add-tape>")
 	}
 	switch args[0] {
 	case "new":
@@ -536,7 +536,7 @@ func runTapeSet(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runMagazine(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: magazine <new|list|update|delete> ...")
+		return fmt.Errorf("usage: magazine <new|list|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -579,7 +579,7 @@ func runMagazine(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runMailbox(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: mailbox <new|list|update|delete> ...")
+		return fmt.Errorf("usage: mailbox <new|list|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -622,7 +622,7 @@ func runMailbox(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runDrive(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: drive <new|list|update|delete> ...")
+		return fmt.Errorf("usage: drive <new|list|update|delete>")
 	}
 	switch args[0] {
 	case "new":
@@ -675,7 +675,7 @@ func runDrive(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: offsite <list|send|recall> ...")
+		return fmt.Errorf("usage: offsite <list|send|recall>")
 	}
 	switch args[0] {
 	case "list":
@@ -718,7 +718,7 @@ func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runBackup(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: backup <download|list|download-stored|delete|schedule> ...")
+		return fmt.Errorf("usage: backup <download|list|download-stored|delete|schedule>")
 	}
 	switch args[0] {
 	case "download":
@@ -875,7 +875,7 @@ func runToken(c *apiclient.Client, args []string) error {
 
 func runUser(c *apiclient.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: user <new|list|delete|role|reset-password> ...")
+		return fmt.Errorf("usage: user <new|list|delete|role|reset-password>")
 	}
 	switch args[0] {
 	case "new":
@@ -1120,7 +1120,7 @@ func setCleaningField(cs *config.CleaningSettings, key, val string) error {
 // Library.Load's doc comment.
 func runCleaning(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cleaning <settings|tape> ...")
+		return fmt.Errorf("usage: cleaning <settings|tape>")
 	}
 	switch args[0] {
 	case "settings":
@@ -1128,7 +1128,7 @@ func runCleaning(c *apiclient.Client, args []string, jsonOut bool) error {
 	case "tape":
 		return runCleaningTape(c, args[1:])
 	default:
-		return fmt.Errorf("usage: cleaning <settings|tape> ...")
+		return fmt.Errorf("usage: cleaning <settings|tape>")
 	}
 }
 
