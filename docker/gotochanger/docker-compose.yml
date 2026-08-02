@@ -1,0 +1,19 @@
+# Example docker-compose.yml for swenske/gotochanger
+# (https://hub.docker.com/r/swenske/gotochanger).
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs gotochanger | grep 'bootstrap API token'   # one-time, save this token!
+
+services:
+  gotochanger:
+    image: swenske/gotochanger:latest
+    container_name: gotochanger
+    restart: unless-stopped
+    ports:
+      - "8480:8480"
+    volumes:
+      - gotochanger-data:/var/lib/gotochanger
+
+volumes:
+  gotochanger-data:
