@@ -1,0 +1,88 @@
+<svg viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22262E"/>
+      <stop offset="100%" stop-color="#171A20"/>
+    </linearGradient>
+    <radialGradient id="led-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E3A03E" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#E3A03E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="630" rx="32" fill="url(#bg)"/>
+
+  <!-- waiting pile -->
+  <g opacity="0.5">
+    <rect x="90" y="440" width="86" height="58" rx="10" fill="#6E7686"/>
+    <circle cx="116" cy="469" r="12" fill="#3A3F49"/>
+    <circle cx="150" cy="469" r="12" fill="#3A3F49"/>
+    <rect x="114" y="458" width="80" height="58" rx="10" fill="#8A93A6"/>
+    <circle cx="140" cy="487" r="13" fill="#3A3F49"/>
+    <circle cx="174" cy="487" r="13" fill="#3A3F49"/>
+  </g>
+
+  <!-- claw rig -->
+  <rect x="140" y="90" width="176" height="14" rx="7" fill="#3A3F49"/>
+  <rect x="210" y="96" width="36" height="16" rx="5" fill="#4A6FA5"/>
+  <line x1="228" y1="112" x2="228" y2="170" stroke="#4A6FA5" stroke-width="8" stroke-linecap="round"/>
+  <g stroke="#5B82BD" stroke-linecap="round" stroke-width="16" fill="none">
+    <path d="M 228 170 Q 182 180 172 222"/>
+    <path d="M 228 170 Q 274 180 284 222"/>
+  </g>
+  <circle cx="228" cy="170" r="14" fill="#4A6FA5"/>
+
+  <!-- tape cartridge, mid-grab -->
+  <g>
+    <rect x="158" y="200" width="140" height="98" rx="14" fill="#EDEFF2"/>
+    <rect x="158" y="200" width="140" height="98" rx="14" fill="none" stroke="#B9C0CC" stroke-width="2"/>
+    <path d="M 198 250 Q 228 270 258 250" fill="none" stroke="#E3A03E" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <circle cx="198" cy="250" r="23" fill="#23262D"/>
+    <circle cx="198" cy="250" r="8" fill="#E3A03E"/>
+    <circle cx="258" cy="250" r="23" fill="#23262D"/>
+    <circle cx="258" cy="250" r="8" fill="#E3A03E"/>
+    <circle cx="272" cy="282" r="14" fill="url(#led-glow)"/>
+    <circle cx="272" cy="282" r="6" fill="#E3A03E"/>
+  </g>
+
+  <!-- gopher, classic proportions: big round body, big semicircle ears, close-set eyes, prominent teeth, tiny arms -->
+  <g>
+    <!-- ears drawn first so the body overlaps their lower half -->
+    <circle cx="353" cy="352" r="32" fill="#0797B9"/>
+    <circle cx="457" cy="352" r="32" fill="#0797B9"/>
+    <!-- body -->
+    <ellipse cx="405" cy="445" rx="86" ry="96" fill="#00ADD8"/>
+    <!-- feet nubs -->
+    <ellipse cx="378" cy="536" rx="17" ry="9" fill="#0797B9"/>
+    <ellipse cx="432" cy="536" rx="17" ry="9" fill="#0797B9"/>
+    <!-- tiny raised arm, cheering -->
+    <path d="M 345 415 Q 315 385 305 348" stroke="#00ADD8" stroke-width="19" stroke-linecap="round" fill="none"/>
+    <circle cx="303" cy="341" r="16" fill="#00ADD8"/>
+    <!-- tiny arm to joystick -->
+    <path d="M 470 465 Q 495 475 501 498" stroke="#00ADD8" stroke-width="17" stroke-linecap="round" fill="none"/>
+    <!-- eyes, big and close-set -->
+    <ellipse cx="380" cy="418" rx="23" ry="28" fill="#F4F6F8"/>
+    <ellipse cx="430" cy="418" rx="23" ry="28" fill="#F4F6F8"/>
+    <circle cx="386" cy="411" r="10" fill="#171A20"/>
+    <circle cx="424" cy="411" r="10" fill="#171A20"/>
+    <!-- big front teeth -->
+    <rect x="386" y="457" width="21" height="27" rx="4" fill="#F4F6F8" stroke="#B9C0CC" stroke-width="1.5"/>
+    <rect x="408" y="457" width="21" height="27" rx="4" fill="#F4F6F8" stroke="#B9C0CC" stroke-width="1.5"/>
+  </g>
+
+  <!-- joystick console -->
+  <rect x="470" y="498" width="66" height="26" rx="8" fill="#3A3F49"/>
+  <line x1="503" y1="498" x2="503" y2="476" stroke="#8A93A6" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="503" cy="472" r="8" fill="#E3A03E"/>
+
+  <!-- triumphant sparkle -->
+  <path d="M 303 300 l 6 -16 l 6 16 l 16 6 l -16 6 l -6 16 l -6 -16 l -16 -6 z" fill="#E3A03E" opacity="0.9"/>
+
+  <!-- wordmark -->
+  <text x="600" y="300" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="76" font-weight="700" letter-spacing="-2">
+    <tspan fill="#E3A03E">go</tspan><tspan fill="#EDEFF2">to</tspan><tspan fill="#4A6FA5">changer</tspan>
+  </text>
+  <text x="602" y="340" font-family="ui-sans-serif,system-ui,sans-serif" font-size="22" fill="#8A93A6" letter-spacing="1">
+    a tape autochanger simulator
+  </text>
+</svg>
