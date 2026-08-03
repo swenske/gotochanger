@@ -357,9 +357,18 @@ function kernelModeAvailable(options) {
 
 function kernelModeHint(options) {
   const km = (options && options.kernel_mode) || {};
+  if (km.in_container) return "Kernel mode isn't available inside a Docker container - it needs real host kernel/TCMU access. Run gotochangerd outside Docker to use this mode.";
   if (km.missing_package) return "Install the gotochanger-kernel package to enable this mode.";
   if (km.missing_kernel_module) return "The target_core_user kernel module isn't loaded yet - it loads automatically at boot once gotochanger-kernel is installed, or run: sudo modprobe target_core_user";
   return "Kernel mode isn't available on this host yet.";
+}
+
+// Refreshing can't help while running in a container - availability there
+// is fixed by the deployment, not by anything an in-place recheck could
+// pick up - so the button is only offered for the two host-side cases.
+function kernelModeShowRefresh(options) {
+  const km = (options && options.kernel_mode) || {};
+  return !kernelModeAvailable(options) && !km.in_container;
 }
 
 function renderWizardStepContent(step, state, options) {
@@ -384,8 +393,8 @@ function renderWizardStepContent(step, state, options) {
             Kernel SCSI devices via TCMU/LIO
           </label>
           ${kernelModeAvailable(options) ? "" : `<p class="hint">${kernelModeHint(options)}</p>`}
+          ${kernelModeShowRefresh(options) ? `<button type="button" id="wizardKernelModeRefresh" class="btn">Refresh</button>` : ""}
         </div>
-        <hr>
         <h3>Restore from an existing backup</h3>
         <p>Already have a backup of a previously configured virtual tape library? Restore it instead of configuring one from scratch. This replaces the entire database and restarts the service.</p>
         <div class="form-group">
@@ -605,6 +614,16 @@ function attachWizardStepEditors(step, state, options, refresh) {
       if (!confirm("This replaces the entire database and restarts the service. Continue?")) return;
       await submitRestore(file, document.getElementById("wizardRestoreStatus"), errorEl);
     });
+    const kernelModeRefreshBtn = document.getElementById("wizardKernelModeRefresh");
+    if (kernelModeRefreshBtn) {
+      kernelModeRefreshBtn.addEventListener("click", () => {
+        // vtl_name only lands in `state` on form submit, so a re-render from
+        // `state` alone would silently drop an unsaved, already-typed name.
+        const vtlNameInput = document.querySelector('input[name="vtlName"]');
+        if (vtlNameInput) state.vtl_name = vtlNameInput.value;
+        renderWizardStep(state);
+      });
+    }
   }
   if (step === 2) {
     document.getElementById("addDrive").addEventListener("click", () => {
