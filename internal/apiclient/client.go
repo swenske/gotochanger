@@ -653,6 +653,7 @@ type KernelModeStatusInfo struct {
 	Available           bool `json:"available"`
 	MissingPackage      bool `json:"missing_package"`
 	MissingKernelModule bool `json:"missing_kernel_module"`
+	InContainer         bool `json:"in_container"`
 }
 
 // KernelModeStatus reports whether this host can run gotochanger-tcmud -
