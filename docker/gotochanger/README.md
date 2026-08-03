@@ -7,7 +7,7 @@
 [![Docker](https://img.shields.io/badge/Docker-swenske%2Fgotochanger-2496ED?style=for-the-badge&logo=docker)](https://hub.docker.com/r/swenske/gotochanger)
 [![Stars](https://img.shields.io/github/stars/swenske/gotochanger?style=for-the-badge&color=yellow)](https://github.com/swenske/gotochanger/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-orange?style=for-the-badge)](https://github.com/swenske/gotochanger/blob/main/LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22-00ADD8?style=for-the-badge&logo=go)](https://github.com/swenske/gotochanger/blob/main/go.mod)
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go)](https://github.com/swenske/gotochanger/blob/main/go.mod)
 
 A fake SCSI tape autochanger (virtual library) simulator for testing backup
 software against something that behaves like a real tape library — storage
