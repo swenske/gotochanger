@@ -6,8 +6,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/swenske/gotochanger/internal/library"
-	"github.com/swenske/gotochanger/internal/metrics"
 )
 
 // metricsPath is the fixed, unauthenticated scrape endpoint - surfaced back
@@ -15,68 +19,75 @@ import (
 const metricsPath = "/metrics"
 
 // prometheusMetrics holds every gotochanger_* metric handle, created once
-// per Server (never a package-level global - this codebase has hit
-// shared-state read/write races across Server instances before, see
-// CLAUDE.md's "Correctness invariants"). Gauges are overwritten wholesale
-// on every scrape from a fresh Status() snapshot (see refreshGaugeMetrics);
-// counters and the histogram accumulate for the life of the process, fed
-// by metricsMiddleware.
+// per Server against its own private *prometheus.Registry - never
+// prometheus.DefaultRegisterer, so tests building multiple *Server
+// instances (e.g. the bare &Server{} in handlers_test.go) never share
+// state or hit "duplicate metrics collector registration" panics (this
+// codebase has hit shared-state read/write races across Server instances
+// before, see CLAUDE.md's "Correctness invariants"). Gauges are
+// overwritten wholesale on every scrape from a fresh Status() snapshot
+// (see refreshGaugeMetrics); counters and the histogram accumulate for the
+// life of the process, fed by metricsMiddleware.
 type prometheusMetrics struct {
-	registry *metrics.Registry
+	registry *prometheus.Registry
 
-	slotsTotal    *metrics.Gauge
-	slotsFree     *metrics.Gauge
-	slotsOccupied *metrics.Gauge
+	slotsTotal    prometheus.Gauge
+	slotsFree     prometheus.Gauge
+	slotsOccupied prometheus.Gauge
 
-	readersTotal  *metrics.Gauge
-	readersIdle   *metrics.Gauge
-	readersActive *metrics.Gauge
-	readersFree   *metrics.Gauge
-	readersError  *metrics.Gauge
+	readersTotal  prometheus.Gauge
+	readersIdle   prometheus.Gauge
+	readersActive prometheus.Gauge
+	readersFree   prometheus.Gauge
+	readersError  prometheus.Gauge
 
-	volumesTotal    *metrics.Gauge
-	volumesByStatus *metrics.Gauge
+	volumesTotal    prometheus.Gauge
+	volumesByStatus *prometheus.GaugeVec
 
-	magazinesTotal *metrics.Gauge
+	magazinesTotal prometheus.Gauge
 
-	capacityUtilizationPercent *metrics.Gauge
-	queueDepth                 *metrics.Gauge
-	uptimeSeconds              *metrics.Gauge
-	lastBackupTimestamp        *metrics.Gauge
+	capacityUtilizationPercent prometheus.Gauge
+	queueDepth                 prometheus.Gauge
+	uptimeSeconds              prometheus.Gauge
+	lastBackupTimestamp        prometheus.Gauge
 
-	operationsTotal          *metrics.Counter
-	operationDurationSeconds *metrics.Histogram
-	errorsTotal              *metrics.Counter
+	operationsTotal          *prometheus.CounterVec
+	operationDurationSeconds *prometheus.HistogramVec
+	errorsTotal              *prometheus.CounterVec
 }
 
 func newPrometheusMetrics() *prometheusMetrics {
-	reg := metrics.NewRegistry()
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector())
+	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	f := promauto.With(reg)
 	return &prometheusMetrics{
 		registry: reg,
 
-		slotsTotal:    reg.NewGauge("gotochanger_slots_total", "Total storage slots"),
-		slotsFree:     reg.NewGauge("gotochanger_slots_free", "Free storage slots"),
-		slotsOccupied: reg.NewGauge("gotochanger_slots_occupied", "Occupied storage slots"),
+		slotsTotal:    f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_slots_total", Help: "Total storage slots"}),
+		slotsFree:     f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_slots_free", Help: "Free storage slots"}),
+		slotsOccupied: f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_slots_occupied", Help: "Occupied storage slots"}),
 
-		readersTotal:  reg.NewGauge("gotochanger_readers_total", "Total tape drives"),
-		readersIdle:   reg.NewGauge("gotochanger_readers_idle", "Drives with a volume loaded but not currently reading or writing"),
-		readersActive: reg.NewGauge("gotochanger_readers_active", "Drives currently reading or writing"),
-		readersFree:   reg.NewGauge("gotochanger_readers_free", "Drives with no volume loaded"),
-		readersError:  reg.NewGauge("gotochanger_readers_error", "Drives in a simulated fault state"),
+		readersTotal:  f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_readers_total", Help: "Total tape drives"}),
+		readersIdle:   f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_readers_idle", Help: "Drives with a volume loaded but not currently reading or writing"}),
+		readersActive: f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_readers_active", Help: "Drives currently reading or writing"}),
+		readersFree:   f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_readers_free", Help: "Drives with no volume loaded"}),
+		readersError:  f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_readers_error", Help: "Drives in a simulated fault state"}),
 
-		volumesTotal:    reg.NewGauge("gotochanger_volumes_total", "Total tape volumes known to the library"),
-		volumesByStatus: reg.NewGauge("gotochanger_volumes_by_status", "Tape volumes by location (status label: in_slot, in_ioslot, in_drive, outside, offsite)"),
+		volumesTotal:    f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_volumes_total", Help: "Total tape volumes known to the library"}),
+		volumesByStatus: f.NewGaugeVec(prometheus.GaugeOpts{Name: "gotochanger_volumes_by_status", Help: "Tape volumes by location (status label: in_slot, in_ioslot, in_drive, outside, offsite)"}, []string{"status"}),
 
-		magazinesTotal: reg.NewGauge("gotochanger_magazines_total", "Total storage magazines"),
+		magazinesTotal: f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_magazines_total", Help: "Total storage magazines"}),
 
-		capacityUtilizationPercent: reg.NewGauge("gotochanger_capacity_utilization_percent", "Occupied storage slots as a percentage of total storage slots"),
-		queueDepth:                 reg.NewGauge("gotochanger_queue_depth", "1 if the single robotic arm is currently busy, 0 if idle (this simulator has one arm and no operation queue)"),
-		uptimeSeconds:              reg.NewGauge("gotochanger_uptime_seconds", "Seconds since the daemon started"),
-		lastBackupTimestamp:        reg.NewGauge("gotochanger_last_backup_timestamp", "Unix timestamp of the last configuration backup (state.db snapshot); absent if none has ever been taken"),
+		capacityUtilizationPercent: f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_capacity_utilization_percent", Help: "Occupied storage slots as a percentage of total storage slots"}),
+		queueDepth:                 f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_queue_depth", Help: "1 if the single robotic arm is currently busy, 0 if idle (this simulator has one arm and no operation queue)"}),
+		uptimeSeconds:              f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_uptime_seconds", Help: "Seconds since the daemon started"}),
+		lastBackupTimestamp:        f.NewGauge(prometheus.GaugeOpts{Name: "gotochanger_last_backup_timestamp", Help: "Unix timestamp of the last configuration backup (state.db snapshot); 0 if none has ever been taken"}),
 
-		operationsTotal:          reg.NewCounter("gotochanger_operations_total", "Total library operations executed, labeled by operation_type"),
-		operationDurationSeconds: reg.NewHistogram("gotochanger_operation_duration_seconds", "Library operation latency in seconds, labeled by operation_type", []float64{.01, .05, .1, .5, 1, 2, 5, 10, 30}),
-		errorsTotal:              reg.NewCounter("gotochanger_errors_total", "Total request errors, labeled by error_type"),
+		operationsTotal:          f.NewCounterVec(prometheus.CounterOpts{Name: "gotochanger_operations_total", Help: "Total library operations executed, labeled by operation_type"}, []string{"operation_type"}),
+		operationDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{Name: "gotochanger_operation_duration_seconds", Help: "Library operation latency in seconds, labeled by operation_type", Buckets: []float64{.01, .05, .1, .5, 1, 2, 5, 10, 30}}, []string{"operation_type"}),
+		errorsTotal:              f.NewCounterVec(prometheus.CounterOpts{Name: "gotochanger_errors_total", Help: "Total request errors, labeled by error_type"}, []string{"error_type"}),
 	}
 }
 
@@ -98,14 +109,14 @@ func (s *Server) refreshGaugeMetrics() {
 			slotsOccupied++
 		}
 	}
-	pm.slotsTotal.Set(float64(slotsTotal), nil)
-	pm.slotsOccupied.Set(float64(slotsOccupied), nil)
-	pm.slotsFree.Set(float64(slotsTotal-slotsOccupied), nil)
+	pm.slotsTotal.Set(float64(slotsTotal))
+	pm.slotsOccupied.Set(float64(slotsOccupied))
+	pm.slotsFree.Set(float64(slotsTotal - slotsOccupied))
 	utilization := 0.0
 	if slotsTotal > 0 {
 		utilization = float64(slotsOccupied) / float64(slotsTotal) * 100
 	}
-	pm.capacityUtilizationPercent.Set(utilization, nil)
+	pm.capacityUtilizationPercent.Set(utilization)
 
 	var idle, active, free, errored int
 	for _, d := range st.Drives {
@@ -120,11 +131,11 @@ func (s *Server) refreshGaugeMetrics() {
 			free++
 		}
 	}
-	pm.readersTotal.Set(float64(len(st.Drives)), nil)
-	pm.readersIdle.Set(float64(idle), nil)
-	pm.readersActive.Set(float64(active), nil)
-	pm.readersFree.Set(float64(free), nil)
-	pm.readersError.Set(float64(errored), nil)
+	pm.readersTotal.Set(float64(len(st.Drives)))
+	pm.readersIdle.Set(float64(idle))
+	pm.readersActive.Set(float64(active))
+	pm.readersFree.Set(float64(free))
+	pm.readersError.Set(float64(errored))
 
 	volumesTotal := 0
 	byStatus := map[string]int{}
@@ -151,10 +162,10 @@ func (s *Server) refreshGaugeMetrics() {
 	volumesTotal += len(st.OffsiteVolumes)
 	byStatus["offsite"] += len(st.OffsiteVolumes)
 
-	pm.volumesTotal.Set(float64(volumesTotal), nil)
+	pm.volumesTotal.Set(float64(volumesTotal))
 	pm.volumesByStatus.Reset()
 	for status, n := range byStatus {
-		pm.volumesByStatus.Set(float64(n), map[string]string{"status": status})
+		pm.volumesByStatus.WithLabelValues(status).Set(float64(n))
 	}
 
 	magazinesTotal := 0
@@ -163,23 +174,25 @@ func (s *Server) refreshGaugeMetrics() {
 			magazinesTotal = len(mags)
 		}
 	}
-	pm.magazinesTotal.Set(float64(magazinesTotal), nil)
+	pm.magazinesTotal.Set(float64(magazinesTotal))
 
 	busy := 0.0
 	if st.ArmState.Busy {
 		busy = 1
 	}
-	pm.queueDepth.Set(busy, nil)
+	pm.queueDepth.Set(busy)
 
-	pm.uptimeSeconds.Set(time.Since(s.startedAt).Seconds(), nil)
+	pm.uptimeSeconds.Set(time.Since(s.startedAt).Seconds())
 
+	// Left at its zero value (0) until the first successful backup - there
+	// is no cheap way to make a single, label-less prometheus.Gauge absent
+	// again once registered (unlike the old hand-rolled Gauge.Delete),
+	// so "0" is this metric's documented "never happened yet" value.
 	if s.topology != nil {
 		if v, ok, err := s.topology.GetSetting("last_backup_at"); err == nil && ok {
 			if ts, convErr := strconv.ParseInt(v, 10, 64); convErr == nil {
-				pm.lastBackupTimestamp.Set(float64(ts), nil)
+				pm.lastBackupTimestamp.Set(float64(ts))
 			}
-		} else {
-			pm.lastBackupTimestamp.Delete(nil)
 		}
 	}
 }
@@ -194,9 +207,8 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshGaugeMetrics()
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	if s.pm != nil {
-		_ = s.pm.registry.WriteExposition(w)
+		promhttp.HandlerFor(s.pm.registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
 	}
 }
 
@@ -328,11 +340,11 @@ func (s *Server) observeRequest(pattern string, status int, elapsed time.Duratio
 		return
 	}
 	if opType, ok := operationTypeByPattern[pattern]; ok {
-		s.pm.operationsTotal.Inc(map[string]string{"operation_type": opType})
-		s.pm.operationDurationSeconds.Observe(elapsed.Seconds(), map[string]string{"operation_type": opType})
+		s.pm.operationsTotal.WithLabelValues(opType).Inc()
+		s.pm.operationDurationSeconds.WithLabelValues(opType).Observe(elapsed.Seconds())
 	}
 	if status >= 400 {
-		s.pm.errorsTotal.Inc(map[string]string{"error_type": errorTypeForStatus(status)})
+		s.pm.errorsTotal.WithLabelValues(errorTypeForStatus(status)).Inc()
 	}
 }
 

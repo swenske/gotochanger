@@ -86,24 +86,20 @@ func (s *Settings) refreshStoreBackedLocked() {
 }
 
 // restartRequiredFields lists the settings that can only take effect on the
-// next daemon restart, even though (as of this rewrite) every one of them
-// now lives in the database rather than config.yaml: data_dir and listen
-// are process-level resources (listeners, the database's own location) this
-// daemon does not attempt to hot-swap; tokens_file/users_file point at the
-// credential JSON stores, which are likewise only ever read once at
-// startup. Library topology (magazines, drive devices, I/O slot count,
-// logical libraries) and everything else in UpdateSettingsRequest below
+// next daemon restart: data_dir and listen are process-level resources
+// (listeners, the database's own location) this daemon does not attempt to
+// hot-swap. Library topology (magazines, drive devices, I/O slot count,
+// logical libraries) and everything in UpdateSettingsRequest below
 // hot-applies via Library.Reconfigure/UpdateLiveSettings, so it isn't
 // listed here.
 var restartRequiredFields = []string{
-	"data_dir", "listen", "tokens_file", "users_file",
+	"data_dir", "listen",
 }
 
 // UpdateSettingsRequest carries the subset of configuration that can be
 // changed, all fields optional (nil = leave unchanged). Every field here
-// persists to the database (internal/store/topology.go); only
-// TokensFile/UsersFile require a restart to actually take effect (see
-// restartRequiredFields).
+// persists to the database (internal/store/topology.go) and hot-applies
+// immediately.
 type UpdateSettingsRequest struct {
 	VTLName                 *string              `json:"vtl_name,omitempty"`
 	DefaultCapacity         *string              `json:"default_capacity,omitempty"`
@@ -116,8 +112,6 @@ type UpdateSettingsRequest struct {
 	OffsiteLocation         *bool                `json:"offsite_location,omitempty"`
 	OffsiteRotationInterval *string              `json:"offsite_rotation_interval,omitempty"`
 	OffsiteRotationCount    *int                 `json:"offsite_rotation_count,omitempty"`
-	TokensFile              *string              `json:"tokens_file,omitempty"`
-	UsersFile               *string              `json:"users_file,omitempty"`
 }
 
 // UpdateSettingsResult is returned after applying a settings update.
@@ -195,18 +189,6 @@ func (s *Settings) Update(req UpdateSettingsRequest) (UpdateSettingsResult, erro
 	if req.OffsiteRotationCount != nil {
 		next.Library.OffsiteRotationCount = *req.OffsiteRotationCount
 	}
-	if req.TokensFile != nil {
-		if *req.TokensFile == "" || (*req.TokensFile)[0] != '/' {
-			return UpdateSettingsResult{}, fmt.Errorf("tokens_file must be an absolute path")
-		}
-		next.TokensFile = *req.TokensFile
-	}
-	if req.UsersFile != nil {
-		if *req.UsersFile == "" || (*req.UsersFile)[0] != '/' {
-			return UpdateSettingsResult{}, fmt.Errorf("users_file must be an absolute path")
-		}
-		next.UsersFile = *req.UsersFile
-	}
 
 	if err := next.Validate(); err != nil {
 		return UpdateSettingsResult{}, err
@@ -252,12 +234,6 @@ func (s *Settings) Update(req UpdateSettingsRequest) (UpdateSettingsResult, erro
 			return UpdateSettingsResult{}, err
 		}
 		if err := s.topology.SetSNMPTargets(next.SNMP.Targets); err != nil {
-			return UpdateSettingsResult{}, err
-		}
-		if err := s.topology.SetSetting("tokens_file", next.TokensFile); err != nil {
-			return UpdateSettingsResult{}, err
-		}
-		if err := s.topology.SetSetting("users_file", next.UsersFile); err != nil {
 			return UpdateSettingsResult{}, err
 		}
 	}

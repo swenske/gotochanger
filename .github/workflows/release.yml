@@ -231,7 +231,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOFLAGS: -mod=vendor
 
       # Keeps swenske/gotochanger's Docker Hub "Overview" tab in sync with
       # docker/gotochanger/README.md, a dedicated file rather than this

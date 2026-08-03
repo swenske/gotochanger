@@ -73,9 +73,9 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 	cfg.Library = topologyCfg
 
 	// Everything else that used to be read from config.yaml (SNMP,
-	// poll_interval, log_level, tokens_file, users_file) now comes from the
-	// database too, editable afterwards through the Admin Settings API
-	// without ever touching config.yaml again.
+	// poll_interval, log_level) now comes from the database too, editable
+	// afterwards through the Admin Settings API without ever touching
+	// config.yaml again.
 	daemonSettings, err := st.LoadDaemonSettings()
 	if err != nil {
 		return fmt.Errorf("load daemon settings: %w", err)
@@ -84,8 +84,6 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 	cfg.Prometheus = daemonSettings.Prometheus
 	cfg.PollIntervalRaw = daemonSettings.PollIntervalRaw
 	cfg.LogLevel = daemonSettings.LogLevel
-	cfg.TokensFile = daemonSettings.TokensFile
-	cfg.UsersFile = daemonSettings.UsersFile
 	pollInterval, err := time.ParseDuration(cfg.PollIntervalRaw)
 	if err != nil {
 		return fmt.Errorf("invalid poll_interval %q: %w", cfg.PollIntervalRaw, err)
@@ -103,13 +101,13 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 		logLevel.Set(slog.LevelInfo)
 	}
 
-	// Users/tokens used to live in cfg.UsersFile/cfg.TokensFile as plain
-	// JSON files; they now live in the same SQLite database as everything
-	// else. This migrates any pre-existing JSON content forward, verbatim,
-	// the first time each table is empty - a no-op on every later restart,
-	// and on a fresh install with no legacy files at all. See
+	// Users/tokens used to live at config.DefaultUsersFile/DefaultTokensFile
+	// as plain JSON files; they now live in the same SQLite database as
+	// everything else. This migrates any pre-existing JSON content forward,
+	// verbatim, the first time each table is empty - a no-op on every later
+	// restart, and on a fresh install with no legacy files at all. See
 	// store.Store.MigrateUsersAndTokensFromJSON's doc comment.
-	if err := st.MigrateUsersAndTokensFromJSON(cfg.UsersFile, cfg.TokensFile); err != nil {
+	if err := st.MigrateUsersAndTokensFromJSON(config.DefaultUsersFile, config.DefaultTokensFile); err != nil {
 		return fmt.Errorf("migrate users/tokens from json: %w", err)
 	}
 

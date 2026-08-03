@@ -42,11 +42,6 @@ jobs:
           # supports v2, so "latest" here now actually tracks current
           # releases instead of being stuck resolving the newest v1.x.
           version: latest
-        env:
-          # This project vendors its two dependencies (go-sqlite3, yaml.v3)
-          # and builds offline via -mod=vendor everywhere else (see
-          # debian/rules) - keep linting consistent with that.
-          GOFLAGS: -mod=vendor
 
       # internal/api/static/guide/index.html (embedded via go:embed for
       # /guide) is generated from docs/guide/**.md by `make guide`, but
@@ -55,8 +50,6 @@ jobs:
       # regenerates it. Catch anyone who edited the Markdown source
       # without regenerating/committing the HTML.
       - name: Check generated guide is up to date
-        env:
-          GOFLAGS: -mod=vendor
         run: |
           make guide
           git diff --exit-code -- internal/api/static/guide
@@ -77,7 +70,6 @@ jobs:
       # so no extra toolchain setup is needed here.
       - name: go test
         env:
-          GOFLAGS: -mod=vendor
           CGO_ENABLED: "1"
         run: go test ./... -race -cover
 
@@ -94,6 +86,5 @@ jobs:
 
       - name: go build
         env:
-          GOFLAGS: -mod=vendor
           CGO_ENABLED: "1"
         run: go build ./...

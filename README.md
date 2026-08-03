@@ -192,8 +192,8 @@ From the **Admin** section (admin role required) you can:
   apply without a restart (default volume capacity, barcodes, poll
   interval, log level, SNMP, latency profile, cleaning thresholds, the
   magazine/mailbox door PIN, offsite rotation schedule, and the
-  userspace/kernel operational mode). Only `data_dir`, `tokens_file`, and
-  `listen` require editing `/etc/gotochanger/config.yaml` plus
+  userspace/kernel operational mode). Only `data_dir` and `listen` require
+  editing `/etc/gotochanger/config.yaml` plus
   `systemctl restart gotochanger`.
 
 Equivalent CLI commands (`gotochangerctl`, talking to the trusted socket by
@@ -542,7 +542,7 @@ scrape_configs:
 | `gotochanger_capacity_utilization_percent` | gauge | | Occupied storage slots as a percentage of total |
 | `gotochanger_queue_depth` | gauge | | 1 if the single robotic arm is currently busy, 0 if idle — this simulator has one arm and no operation queue |
 | `gotochanger_uptime_seconds` | gauge | | Seconds since the daemon started |
-| `gotochanger_last_backup_timestamp` | gauge | | Unix timestamp of the last configuration backup (Admin > Backup, a `state.db` snapshot) — absent if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs |
+| `gotochanger_last_backup_timestamp` | gauge | | Unix timestamp of the last configuration backup (Admin > Backup, a `state.db` snapshot) — 0 if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs |
 | `gotochanger_operations_total` | counter | `operation_type` (`load`, `unload`, `move`, `door_open`, `door_close`, `offsite_send`, `offsite_recall`) | Total library operations executed, whether they succeeded or failed |
 | `gotochanger_operation_duration_seconds` | histogram | `operation_type` | Library operation latency in seconds |
 | `gotochanger_errors_total` | counter | `error_type` (`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `internal`, `other`) | Total request errors, bucketed by HTTP status class |

@@ -35,8 +35,6 @@ jobs:
           go-version-file: go.mod
 
       - name: Build static site
-        env:
-          GOFLAGS: -mod=vendor
         run: make site
 
       - uses: actions/configure-pages@v5

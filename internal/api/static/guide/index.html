@@ -846,7 +846,7 @@ real Bareos-driven activity, not just direct API calls.</p>
 <td><code>gotochanger_last_backup_timestamp</code></td>
 <td>gauge</td>
 <td></td>
-<td>Unix timestamp of the last configuration backup (Admin &gt; Backup, a <code>state.db</code> snapshot) - absent if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs</td>
+<td>Unix timestamp of the last configuration backup (Admin &gt; Backup, a <code>state.db</code> snapshot) - 0 if none has ever been taken. Not a Bareos backup-job signal; this daemon only models the changer/library, not Bareos jobs</td>
 </tr>
 <tr>
 <td><code>gotochanger_operations_total</code></td>

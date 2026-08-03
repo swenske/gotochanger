@@ -2,8 +2,8 @@
 # Installed at /etc/gotochanger/config.yaml by the Debian package.
 #
 # This file is intentionally tiny: only data_dir and listen are actually
-# read from it. Everything else (topology, tokens_file/users_file, snmp,
-# poll_interval, log_level, and so on) lives in the SQLite database at
+# read from it. Everything else (topology, snmp, poll_interval, log_level,
+# users, API tokens, and so on) lives in the SQLite database at
 # <data_dir>/state.db and is managed through the setup wizard, the Admin web
 # UI, or `gotochangerctl settings`/`gotochangerctl backup` - never by
 # hand-editing a file. data_dir itself can't live in the database for the

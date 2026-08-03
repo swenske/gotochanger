@@ -1,7 +1,6 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE = 1
-export GOFLAGS = -mod=vendor
 export GOCACHE = $(CURDIR)/.gocache
 
 %:
@@ -11,8 +10,9 @@ override_dh_auto_build:
 	$(MAKE) build
 
 override_dh_auto_test:
-	# Network-free unit tests only (module is vendored); skip if the build
-	# environment forbids running arbitrary test binaries.
+	# Requires network access to resolve modules (this project doesn't
+	# vendor its dependencies); skip if the build environment forbids
+	# running arbitrary test binaries or has no network access.
 	-go test ./... || true
 
 override_dh_auto_install:

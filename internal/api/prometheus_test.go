@@ -330,6 +330,12 @@ func TestMetricsErrorsTotalCountsFailedOperations(t *testing.T) {
 // store.CreateBackupFile's doc comment) - last_backup_at must still be
 // recorded even though no file is left behind, and must survive being
 // re-read from a fresh topology load (simulating a restart).
+//
+// gotochanger_last_backup_timestamp reads 0 (not absent) before the first
+// backup: a label-less prometheus.Gauge, once registered, has no cheap way
+// to become absent again on a later scrape - "0" is this metric's
+// documented "never happened yet" value (see prometheus.go's
+// refreshGaugeMetrics comment).
 func TestLastBackupTimestampAfterManualDownload(t *testing.T) {
 	s := newPrometheusTestServer(t)
 	h := s.PublicHandler()
@@ -337,10 +343,8 @@ func TestLastBackupTimestampAfterManualDownload(t *testing.T) {
 	enablePrometheus(t, h, cookie)
 
 	before := scrapeMetrics(t, h)
-	for _, line := range strings.Split(before, "\n") {
-		if strings.HasPrefix(line, "gotochanger_last_backup_timestamp ") {
-			t.Fatalf("expected no last_backup_timestamp sample before any backup, got line %q", line)
-		}
+	if !strings.Contains(before, "gotochanger_last_backup_timestamp 0") {
+		t.Fatalf("expected last_backup_timestamp 0 before any backup, got:\n%s", before)
 	}
 
 	dlReq := httptest.NewRequest(http.MethodGet, "/api/v1/backup/download", nil)
@@ -352,14 +356,8 @@ func TestLastBackupTimestampAfterManualDownload(t *testing.T) {
 	}
 
 	after := scrapeMetrics(t, h)
-	found := false
-	for _, line := range strings.Split(after, "\n") {
-		if strings.HasPrefix(line, "gotochanger_last_backup_timestamp ") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected a last_backup_timestamp sample after manual download, got:\n%s", after)
+	if strings.Contains(after, "gotochanger_last_backup_timestamp 0") {
+		t.Fatalf("expected last_backup_timestamp to move off 0 after a manual download, got:\n%s", after)
 	}
 
 	v, ok, err := s.topology.GetSetting("last_backup_at")
