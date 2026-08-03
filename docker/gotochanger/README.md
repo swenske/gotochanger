@@ -1,5 +1,7 @@
 # gotochanger
 
+![gotochanger](https://raw.githubusercontent.com/swenske/gotochanger/main/docs/gotochanger-banner.svg)
+
 [![CI](https://img.shields.io/github/actions/workflow/status/swenske/gotochanger/ci.yml?branch=main&style=for-the-badge)](https://github.com/swenske/gotochanger/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/swenske/gotochanger?style=for-the-badge&color=lightgreen)](https://github.com/swenske/gotochanger/releases)
 [![Documentation](https://img.shields.io/badge/Docs-Gotochanger%2Fdocs-pink?style=for-the-badge)](https://swenske.github.io/gotochanger/)
