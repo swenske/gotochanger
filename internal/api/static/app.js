@@ -96,6 +96,39 @@ function setVersionDisplay(version) {
   }
 }
 
+// Client-side because gotochangerd itself often has no outbound internet
+// (it commonly runs on a firewalled backup host); the admin's browser
+// checking GitHub directly needs no new daemon code, endpoint, or cache.
+// GitHub's releases API allows unauthenticated CORS requests.
+function isNewerVersion(latest, current) {
+  const a = latest.split(".").map(Number);
+  const b = current.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+async function checkForUpdate(currentVersion) {
+  const badge = document.getElementById("updateBadge");
+  if (!badge || !currentVersion || currentVersion === "dev") return;
+  try {
+    const res = await fetch("https://api.github.com/repos/swenske/gotochanger/releases/latest", {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const latest = (data.tag_name || "").replace(/^v/, "");
+    if (latest && isNewerVersion(latest, currentVersion)) {
+      badge.title = `v${latest} available`;
+      badge.hidden = false;
+    }
+  } catch (e) {
+    // Offline, GitHub unreachable, or rate-limited — not critical, skip silently.
+  }
+}
+
 async function boot() {
   disconnectStream();
   stopFallbackPolling();
@@ -106,6 +139,7 @@ async function boot() {
     s = { bootstrap_required: false, authenticated: false };
   }
   setVersionDisplay(s.version);
+  checkForUpdate(s.version);
   if (s.bootstrap_required) {
     showAuthScreen("bootstrap");
   } else if (!s.authenticated) {
