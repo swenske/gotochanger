@@ -8,6 +8,7 @@ import (
 
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/library"
+	"github.com/swenske/gotochanger/internal/telemetry"
 )
 
 // WizardState represents the current state of the setup wizard.
@@ -23,6 +24,7 @@ type WizardState struct {
 	TapeSets         []WizardTapeSetRequest        `json:"tape_sets,omitempty"`
 	LogicalLibraries []config.LogicalLibraryConfig `json:"logical_libraries,omitempty"`
 	LatencyEnabled   bool                          `json:"latency_enabled,omitempty"`
+	TelemetryEnabled bool                          `json:"telemetry_enabled,omitempty"`
 }
 
 // WizardTapeSetRequest is one step-6 tape set entry: the persisted
@@ -49,6 +51,7 @@ type WizardRequest struct {
 	TapeSets         []WizardTapeSetRequest        `json:"tape_sets,omitempty"`
 	LogicalLibraries []config.LogicalLibraryConfig `json:"logical_libraries,omitempty"`
 	LatencyEnabled   bool                          `json:"latency_enabled,omitempty"`
+	TelemetryEnabled bool                          `json:"telemetry_enabled,omitempty"`
 }
 
 // WizardResponse represents the response from the wizard API: the current
@@ -65,6 +68,14 @@ type WizardResponse struct {
 	// UI always wants this field present, even when both underlying
 	// checks are false (the zero value).
 	KernelMode KernelModeStatus `json:"kernel_mode"`
+	// TelemetryPreview backs step 9's "here's exactly what would be sent"
+	// display - built by the same buildTelemetryPayload (telemetry.go)
+	// the actual sender uses, so the preview can never drift from
+	// reality. By step 9 almost all topology is already configured
+	// (steps 2-7 run first), so this is a real, accurate snapshot, not a
+	// mock.
+	TelemetryPreview  telemetry.Payload `json:"telemetry_preview"`
+	TelemetryEndpoint string            `json:"telemetry_endpoint"`
 }
 
 // loadWizardState reads wizard progress from the topology store. Every
@@ -130,6 +141,7 @@ func (s *Server) fillWizardStateFromTopology(ws WizardState) WizardState {
 	ws.TapeSets = wizardTapeSetsWithCounts(s.topology)
 	ws.LogicalLibraries, _ = s.topology.ListLogicalLibraries()
 	ws.LatencyEnabled, _ = latencyEnabledSetting(s.topology)
+	ws.TelemetryEnabled = s.telemetryEnabled()
 	return ws
 }
 
@@ -275,7 +287,7 @@ func (s *Server) UpdateWizardState(req WizardRequest) (WizardState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if req.Step < 1 || req.Step > 8 {
+	if req.Step < 1 || req.Step > 9 {
 		return s.wizardState, fmt.Errorf("invalid step: %d", req.Step)
 	}
 	if s.topology == nil {
@@ -413,6 +425,23 @@ func (s *Server) UpdateWizardState(req WizardRequest) (WizardState, error) {
 		if err := s.topology.SetSetting("latency_enabled", v); err != nil {
 			return s.wizardState, err
 		}
+	case 9:
+		// Only the enable/disable choice is set here, mirroring step 8
+		// (latency) above - see internal/api/telemetry.go for the exact
+		// payload/endpoint this opt-in controls.
+		v := "false"
+		if req.TelemetryEnabled {
+			v = "true"
+		}
+		if err := s.topology.SetSetting("telemetry_enabled", v); err != nil {
+			return s.wizardState, err
+		}
+		if req.TelemetryEnabled {
+			// Opt-in takes effect immediately rather than silently
+			// waiting for the next daemon restart - see
+			// sendTelemetryAsync's doc comment.
+			s.sendTelemetryAsync()
+		}
 		s.wizardState.Completed = true
 	}
 
@@ -421,7 +450,7 @@ func (s *Server) UpdateWizardState(req WizardRequest) (WizardState, error) {
 	// Backward navigation (Previous) resends a lower step's already-valid
 	// data so it re-validates cleanly here, but must land exactly on that
 	// step rather than being advanced past it again.
-	if req.Step >= prevStep && req.Step < 8 {
+	if req.Step >= prevStep && req.Step < 9 {
 		s.wizardState.CurrentStep = req.Step + 1
 	} else {
 		s.wizardState.CurrentStep = req.Step
@@ -469,7 +498,7 @@ func (s *Server) ResetWizard() {
 // a step.
 func (s *Server) GetWizardOptions() WizardResponse {
 	ws := s.GetWizardState()
-	resp := WizardResponse{WizardState: ws, KernelMode: currentKernelModeStatus()}
+	resp := WizardResponse{WizardState: ws, KernelMode: currentKernelModeStatus(), TelemetryPreview: s.buildTelemetryPayload(), TelemetryEndpoint: telemetryEndpoint}
 	if s.topology != nil {
 		resp.DriveTypes, _ = s.topology.ListDriveTypes()
 		resp.TapeTypes, _ = s.topology.ListTapeTypes()

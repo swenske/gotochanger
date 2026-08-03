@@ -1,7 +1,10 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/library"
@@ -108,5 +111,70 @@ func TestWizardMailboxStepRefusesShrinkingOccupiedMailbox(t *testing.T) {
 	}
 	if got := ioslotsInMailboxForTest(s.lib.Status().IOSlots, "Mailbox1"); len(got) != 4 {
 		t.Fatalf("expected the refused resubmission to leave Mailbox1 at 4 slots, got %d", len(got))
+	}
+}
+
+// TestWizardCompletesOnlyAfterStep9NotStep8 is the regression test for
+// moving the terminal step from 8 (latency) to 9 (telemetry opt-in):
+// wizard_completed must flip true only once step 9 is submitted, never
+// after step 8 alone.
+func TestWizardCompletesOnlyAfterStep9NotStep8(t *testing.T) {
+	s := newTopologyTestServer(t, 1)
+
+	afterStep8, err := s.UpdateWizardState(WizardRequest{Step: 8, LatencyEnabled: true})
+	if err != nil {
+		t.Fatalf("step 8: %v", err)
+	}
+	if afterStep8.Completed {
+		t.Fatal("expected Completed=false after step 8 alone, got true")
+	}
+	if afterStep8.CurrentStep != 9 {
+		t.Fatalf("expected CurrentStep=9 after submitting step 8, got %d", afterStep8.CurrentStep)
+	}
+
+	// Telemetry opted out here specifically so this test never dispatches
+	// a real (or even fake) outbound send - see
+	// TestWizardStep9TelemetryOptInSendsImmediately below for the
+	// opted-in path.
+	afterStep9, err := s.UpdateWizardState(WizardRequest{Step: 9, TelemetryEnabled: false})
+	if err != nil {
+		t.Fatalf("step 9: %v", err)
+	}
+	if !afterStep9.Completed {
+		t.Fatal("expected Completed=true after step 9, got false")
+	}
+
+	v, ok, err := s.topology.GetSetting("telemetry_enabled")
+	if err != nil {
+		t.Fatalf("GetSetting: %v", err)
+	}
+	if !ok || v != "false" {
+		t.Fatalf("telemetry_enabled = %q (ok=%v), want \"false\"", v, ok)
+	}
+}
+
+// TestWizardStep9TelemetryOptInSendsImmediately proves opting in to
+// telemetry on the wizard's last step fires an immediate send (not just
+// a persisted setting) - the same "takes effect right away" behavior
+// handleUpdateTelemetrySettings gives Admin > Settings.
+func TestWizardStep9TelemetryOptInSendsImmediately(t *testing.T) {
+	received := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- struct{}{}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	withFakeTelemetryEndpoint(t, srv)
+
+	s := newTopologyTestServer(t, 1)
+
+	if _, err := s.UpdateWizardState(WizardRequest{Step: 9, TelemetryEnabled: true}); err != nil {
+		t.Fatalf("step 9: %v", err)
+	}
+
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the immediate send triggered by opting in on step 9")
 	}
 }

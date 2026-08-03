@@ -45,6 +45,9 @@ func newPrometheusTestServer(t *testing.T) *Server {
 	if err := st.SaveMagazines(cfg.Library.Magazines); err != nil {
 		t.Fatalf("save magazines: %v", err)
 	}
+	if err := st.SaveMailboxes(cfg.Library.Mailboxes); err != nil {
+		t.Fatalf("save mailboxes: %v", err)
+	}
 
 	lib, err := library.New(cfg, nil, nil, nil)
 	if err != nil {
