@@ -68,6 +68,7 @@ type TopologyStore interface {
 	SetLatencySettings(ls config.LatencySettings) error
 	GetCleaningSettings() (config.CleaningSettings, error)
 	SetCleaningSettings(cs config.CleaningSettings) error
+	InstanceID() (string, error)
 }
 
 // BackupStore is everything the API layer needs from *store.Store to serve
@@ -300,6 +301,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("PUT /api/v1/settings/cleaning", requireRole(RoleAdmin, s.handleUpdateCleaningSettings))
 	mux.HandleFunc("GET /api/v1/settings/prometheus", requireRole(RoleAdmin, s.handleGetPrometheusSettings))
 	mux.HandleFunc("PUT /api/v1/settings/prometheus", requireRole(RoleAdmin, s.handleUpdatePrometheusSettings))
+	mux.HandleFunc("GET /api/v1/settings/telemetry", requireRole(RoleAdmin, s.handleGetTelemetrySettings))
+	mux.HandleFunc("PUT /api/v1/settings/telemetry", requireRole(RoleAdmin, s.handleUpdateTelemetrySettings))
 	mux.HandleFunc("GET /api/v1/prometheus/dashboard", requireRole(RoleAdmin, s.handleDownloadGrafanaDashboard))
 	mux.HandleFunc("GET /api/v1/settings/pin", requireRole(RoleAdmin, s.handleGetPINSettings))
 	mux.HandleFunc("PUT /api/v1/settings/pin", requireRole(RoleAdmin, s.handleUpdatePINSettings))

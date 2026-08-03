@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/swenske/gotochanger/internal/config"
+	"github.com/swenske/gotochanger/internal/instanceid"
 )
 
 // topologySchema is applied in addition to initSchema's state/config tables.
@@ -385,6 +386,24 @@ func (s *Store) SeedDefaults() error {
 		}
 	}
 
+	// A stable, anonymous instance ID for a future telemetry feature (not
+	// built yet). Seeded here, not lazily in InstanceID alone, so it's
+	// generated at most once per SeedDefaults call - including right
+	// after a factory reset's process restart, at which point it
+	// re-derives the same value from hardware on bare-metal/VM installs
+	// (see internal/instanceid's doc comment).
+	if _, ok, err := s.GetSetting(instanceIDSettingKey); err != nil {
+		return err
+	} else if !ok {
+		id, err := instanceid.Generate()
+		if err != nil {
+			return fmt.Errorf("generate instance id: %w", err)
+		}
+		if err := s.SetSetting(instanceIDSettingKey, id); err != nil {
+			return err
+		}
+	}
+
 	// Daemon-level settings that used to live in config.yaml (snmp,
 	// poll_interval, log_level) - see LoadDaemonSettings. Seeded here the
 	// same way as the three above so a fresh install has sane values from
@@ -398,6 +417,7 @@ func (s *Store) SeedDefaults() error {
 		"snmp_agent_address":  "127.0.0.1",
 		"snmp_targets":        "[]",
 		"prometheus_enabled":  "false",
+		"telemetry_enabled":   "false",
 	}
 	for key, def := range daemonDefaults {
 		if _, ok, err := s.GetSetting(key); err != nil {

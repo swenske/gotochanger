@@ -212,6 +212,14 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 	// installed.
 	srv.ReconcileKernelModeInstancesAsyncOnStartup()
 
+	// One best-effort, non-blocking anonymous usage-statistics report per
+	// daemon startup, only if an operator has opted in (wizard step 9 or
+	// Admin > Settings > Telemetry - see internal/api/telemetry.go). A
+	// disabled/undecided install never touches the network here.
+	if v, ok, err := st.GetSetting("telemetry_enabled"); err == nil && ok && v == "true" {
+		srv.SendTelemetryAsync()
+	}
+
 	// A short fixed base tick lets a live poll_interval change made through
 	// the Settings API take effect without restarting the daemon: each tick
 	// we just check whether enough time has elapsed since the last poll.

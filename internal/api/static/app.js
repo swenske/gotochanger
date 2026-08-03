@@ -250,6 +250,7 @@ const wizardSteps = [
   { id: "tape-sets", title: "Tape Sets" },
   { id: "logical-libs", title: "Logical Libraries" },
   { id: "latency", title: "Latency Simulation" },
+  { id: "telemetry", title: "Anonymous Statistics" },
 ];
 
 // Generates the next unused "<prefix>N" name given a list of existing
@@ -625,6 +626,20 @@ function renderWizardStepContent(step, state, options) {
           <p class="hint">You can fine-tune the exact delays afterwards from Admin &gt; Latency.</p>
         </div>
       `;
+    case 9:
+      return `
+        <h2>Anonymous Statistics</h2>
+        <p>Help gotochanger development by sending a small, anonymous report once when the daemon starts. This is entirely optional and can be changed at any time from Admin &gt; Settings.</p>
+        <div class="form-group">
+          <label><input type="checkbox" name="telemetryEnabled" ${state.telemetry_enabled ? "checked" : ""}> Send anonymous usage statistics</label>
+          <p class="hint">Sent to <code>${options.telemetry_endpoint || ""}</code>, once per daemon startup (plus once now, immediately, if you enable it here).</p>
+        </div>
+        <div class="form-group raw-config">
+          <p><strong>Exactly what would be sent</strong> (this is a live preview, generated from your actual configuration):</p>
+          <pre>${JSON.stringify(options.telemetry_preview || {}, null, 2)}</pre>
+          <p class="hint">Never sent: the VTL name, magazine/mailbox/drive/tape-type names, volume barcodes or file paths, usernames, or any IP address/hostname. Only anonymous counts, feature toggles, and a one-way, non-reversible instance ID.</p>
+        </div>
+      `;
     default:
       return "";
   }
@@ -866,6 +881,9 @@ async function handleWizardStepSubmit(step, state, options) {
     case 8:
       data.latency_enabled = formData.has("latencyEnabled");
       break;
+    case 9:
+      data.telemetry_enabled = formData.has("telemetryEnabled");
+      break;
   }
 
   const newState = await api("/api/v1/wizard", { method: "POST", body: JSON.stringify(data) });
@@ -922,7 +940,7 @@ function switchView(view) {
 
 function selectAdminSection(section) {
   for (const b of document.querySelectorAll(".subnav-btn")) b.classList.toggle("active", b.dataset.admin === section);
-  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-prometheus", "admin-security", "admin-backup", "admin-reset"]) {
+  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-prometheus", "admin-telemetry", "admin-security", "admin-backup", "admin-reset"]) {
     document.getElementById(id).hidden = id !== "admin-" + section;
   }
   loadAdmin(section);
@@ -940,6 +958,7 @@ function loadAdmin(section) {
   else if (section === "settings") loadSettings();
   else if (section === "latency") loadLatencySettings();
   else if (section === "prometheus") loadPrometheusSettings();
+  else if (section === "telemetry") loadTelemetrySettings();
   else if (section === "cleaning-tapes") loadCleaningAdmin();
   else if (section === "security") loadSecuritySettings();
   else if (section === "backup") loadBackup();
@@ -3218,6 +3237,28 @@ document.getElementById("prometheusSettingsForm").addEventListener("submit", asy
 
 document.getElementById("downloadGrafanaDashboardBtn").addEventListener("click", () => {
   window.location.href = "/api/v1/prometheus/dashboard";
+});
+
+// ==================== Admin: Telemetry ====================
+
+async function loadTelemetrySettings() {
+  const result = await api("/api/v1/settings/telemetry");
+  document.getElementById("tel_enabled").checked = !!result.enabled;
+  document.getElementById("tel_endpoint").textContent = result.endpoint;
+  document.getElementById("tel_status").textContent = result.enabled ? "enabled" : "disabled";
+  document.getElementById("tel_preview").textContent = JSON.stringify(result.payload, null, 2);
+}
+
+document.getElementById("telemetrySettingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const req = { enabled: document.getElementById("tel_enabled").checked };
+  try {
+    await api("/api/v1/settings/telemetry", { method: "PUT", body: JSON.stringify(req) });
+    document.getElementById("telemetrySettingsError").textContent = "";
+    loadTelemetrySettings();
+  } catch (err) {
+    document.getElementById("telemetrySettingsError").textContent = err.message;
+  }
 });
 
 // ==================== Admin: Security (PIN codes) ====================
