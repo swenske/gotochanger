@@ -1,3 +1,11 @@
+gotochanger (0.8.4) UNRELEASED; urgency=medium
+
+  * Update Go version badge in README
+  * Enhance kernel mode availability check
+  * Add update availability check and badge to UI
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Mon, 03 Aug 2026 06:39:26 +0000
+
 gotochanger (0.8.3) UNRELEASED; urgency=medium
 
   * update Go version from 1.22 to 1.26 in go.mod
