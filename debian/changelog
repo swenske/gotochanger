@@ -1,3 +1,17 @@
+gotochanger (0.8.5) UNRELEASED; urgency=medium
+
+  * Drop vendoring; resolve deps via go.sum everywhere (build/CI/release/debian) & Migrate metrics exporter to prometheus/client_golang
+  * Refactor configuration handling: migrate tokens and users management to SQLite database, update related documentation and UI elements
+  * Add Dependabot configuration for gomod and GitHub Actions updates
+  * ci: bump actions/deploy-pages from 4 to 5
+  * ci: bump actions/configure-pages from 5 to 6
+  * deps: bump github.com/mattn/go-sqlite3 from 1.14.16 to 1.14.49
+  * ci: bump actions/setup-go from 5 to 7
+  * ci: bump actions/checkout from 4 to 7
+  * ci: bump goreleaser/goreleaser-action from 6 to 7
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Mon, 03 Aug 2026 09:16:19 +0000
+
 gotochanger (0.8.4) UNRELEASED; urgency=medium
 
   * Update Go version badge in README
