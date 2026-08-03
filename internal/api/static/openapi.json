@@ -497,9 +497,7 @@
           "snmp_enabled": { "type": "boolean" },
           "snmp_enterprise_oid": { "type": "string" },
           "snmp_agent_address": { "type": "string" },
-          "snmp_targets": { "type": "array", "items": { "type": "object", "properties": { "host": { "type": "string" }, "port": { "type": "integer" }, "community": { "type": "string" }, "version": { "type": "string" } } } },
-          "tokens_file": { "type": "string", "description": "Restart required to take effect" },
-          "users_file": { "type": "string", "description": "Restart required to take effect" }
+          "snmp_targets": { "type": "array", "items": { "type": "object", "properties": { "host": { "type": "string" }, "port": { "type": "integer" }, "community": { "type": "string" }, "version": { "type": "string" } } } }
         } } } } },
         "responses": { "200": { "description": "Updated" }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }

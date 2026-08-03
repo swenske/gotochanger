@@ -192,8 +192,8 @@ From the **Admin** section (admin role required) you can:
   apply without a restart (default volume capacity, barcodes, poll
   interval, log level, SNMP, latency profile, cleaning thresholds, the
   magazine/mailbox door PIN, offsite rotation schedule, and the
-  userspace/kernel operational mode). Only `data_dir`, `tokens_file`, and
-  `listen` require editing `/etc/gotochanger/config.yaml` plus
+  userspace/kernel operational mode). Only `data_dir` and `listen` require
+  editing `/etc/gotochanger/config.yaml` plus
   `systemctl restart gotochanger`.
 
 Equivalent CLI commands (`gotochangerctl`, talking to the trusted socket by

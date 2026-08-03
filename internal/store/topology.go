@@ -386,11 +386,10 @@ func (s *Store) SeedDefaults() error {
 	}
 
 	// Daemon-level settings that used to live in config.yaml (snmp,
-	// poll_interval, log_level, tokens_file, users_file) - see
-	// LoadDaemonSettings. Seeded here the same way as the three above so a
-	// fresh install has sane values from the first run, editable afterwards
-	// through the Admin Settings API without ever touching config.yaml
-	// again.
+	// poll_interval, log_level) - see LoadDaemonSettings. Seeded here the
+	// same way as the three above so a fresh install has sane values from
+	// the first run, editable afterwards through the Admin Settings API
+	// without ever touching config.yaml again.
 	daemonDefaults := map[string]string{
 		"poll_interval":       "5s",
 		"log_level":           "info",
@@ -399,8 +398,6 @@ func (s *Store) SeedDefaults() error {
 		"snmp_agent_address":  "127.0.0.1",
 		"snmp_targets":        "[]",
 		"prometheus_enabled":  "false",
-		"tokens_file":         config.DefaultTokensFile,
-		"users_file":          config.DefaultUsersFile,
 	}
 	for key, def := range daemonDefaults {
 		if _, ok, err := s.GetSetting(key); err != nil {
@@ -1302,16 +1299,11 @@ type DaemonSettings struct {
 	Prometheus      config.PrometheusConfig
 	PollIntervalRaw string
 	LogLevel        string
-	TokensFile      string
-	UsersFile       string
 }
 
 // LoadDaemonSettings reads DaemonSettings from the database. Called once at
-// startup (main.go); SNMP/PollIntervalRaw/LogLevel changes made afterwards
-// through Settings.Update hot-apply without needing to be re-read, while
-// TokensFile/UsersFile changes only take effect on the next restart (the
-// token/user JSON stores are only ever opened once - see Config's doc
-// comment).
+// startup (main.go); every field here hot-applies afterwards through
+// Settings.Update without needing to be re-read.
 func (s *Store) LoadDaemonSettings() (DaemonSettings, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1344,12 +1336,6 @@ func (s *Store) LoadDaemonSettings() (DaemonSettings, error) {
 		return ds, err
 	}
 	if ds.LogLevel, err = s.getStringSetting("log_level", "info"); err != nil {
-		return ds, err
-	}
-	if ds.TokensFile, err = s.getStringSetting("tokens_file", config.DefaultTokensFile); err != nil {
-		return ds, err
-	}
-	if ds.UsersFile, err = s.getStringSetting("users_file", config.DefaultUsersFile); err != nil {
 		return ds, err
 	}
 	return ds, nil

@@ -298,16 +298,9 @@ type LibraryConfig struct {
 // (internal/store/topology.go's LoadTopology/LoadDaemonSettings) and kept in
 // sync there by Settings.Update. DataDir is the one unavoidable exception to
 // "everything lives in the database": it's the path used to *locate* the
-// database itself, so it cannot itself come from the database. TokensFile
-// and UsersFile remain plain struct fields (not "listen") for the same
-// reason SNMP/PollInterval/LogLevel do - they're read once at startup, after
-// the database is open - but unlike SNMP/PollInterval/LogLevel they still
-// require a daemon restart to take effect if changed, since the token/user
-// JSON stores are only ever loaded once.
+// database itself, so it cannot itself come from the database.
 type Config struct {
 	DataDir         string           `yaml:"data_dir" json:"data_dir"`
-	TokensFile      string           `yaml:"-" json:"tokens_file"`
-	UsersFile       string           `yaml:"-" json:"users_file"`
 	Listen          ListenConfig     `yaml:"listen" json:"listen"`
 	Library         LibraryConfig    `yaml:"-" json:"library"`
 	SNMP            SNMPConfig       `yaml:"-" json:"snmp"`
@@ -317,10 +310,13 @@ type Config struct {
 	LogLevel        string           `yaml:"-" json:"log_level"`
 }
 
-// DefaultTokensFile and DefaultUsersFile are the fallback paths used when
-// the database has no tokens_file/users_file setting yet (a brand-new
-// install, before SeedDefaults has run, or a database restored from a much
-// older backup taken before these settings existed).
+// DefaultTokensFile and DefaultUsersFile are not a runtime setting - they're
+// the fixed paths a pre-SQLite install used to keep users.json/tokens.json
+// at. gotochangerd checks these once at startup (main.go, via
+// store.Store.MigrateUsersAndTokensFromJSON) to auto-import their content
+// into the database verbatim the first time the users/tokens tables are
+// empty; a no-op on every later restart and on a fresh install with no
+// legacy files.
 const (
 	DefaultTokensFile = "/etc/gotochanger/tokens.json"
 	DefaultUsersFile  = "/etc/gotochanger/users.json"
@@ -334,9 +330,7 @@ const (
 // setup wizard start from a genuinely empty library.
 func Default() Config {
 	return Config{
-		DataDir:    "/var/lib/gotochanger",
-		TokensFile: DefaultTokensFile,
-		UsersFile:  DefaultUsersFile,
+		DataDir: "/var/lib/gotochanger",
 		Listen: ListenConfig{
 			HTTP:        "0.0.0.0:8480",
 			UnixSocket:  "/run/gotochanger/gotochanger.sock",

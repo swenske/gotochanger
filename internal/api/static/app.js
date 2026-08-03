@@ -3106,8 +3106,6 @@ async function loadSettings() {
   document.getElementById("s_offsite_location").checked = !!cfg.library.offsite_location;
   document.getElementById("s_offsite_rotation_interval").value = cfg.library.offsite_rotation_interval || "";
   document.getElementById("s_offsite_rotation_count").value = cfg.library.offsite_rotation_count || "";
-  document.getElementById("s_tokens_file").value = cfg.tokens_file || "";
-  document.getElementById("s_users_file").value = cfg.users_file || "";
   document.getElementById("restartHint").textContent = "Fields requiring a service restart to take effect: " + (result.restart_required_fields || []).join(", ");
   document.getElementById("rawConfig").textContent = JSON.stringify(cfg, null, 2);
 }
@@ -3131,8 +3129,6 @@ document.getElementById("settingsForm").addEventListener("submit", async (e) => 
     offsite_location: document.getElementById("s_offsite_location").checked,
     offsite_rotation_interval: document.getElementById("s_offsite_rotation_interval").value,
     offsite_rotation_count: Number(document.getElementById("s_offsite_rotation_count").value || 0),
-    tokens_file: document.getElementById("s_tokens_file").value,
-    users_file: document.getElementById("s_users_file").value,
   };
   try {
     await api("/api/v1/settings", { method: "PUT", body: JSON.stringify(req) });
