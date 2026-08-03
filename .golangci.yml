@@ -10,12 +10,6 @@
 # small enough that an unbounded lint run isn't a real risk.
 version: "2"
 
-run:
-  # vendor/ is third-party code (go-sqlite3, yaml.v3) - never ours to fix.
-  # golangci-lint already skips vendor/ by default, but this is explicit
-  # so the intent survives if that default ever changes.
-  modules-download-mode: vendor
-
 linters:
   default: none
   enable:

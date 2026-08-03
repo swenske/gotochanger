@@ -2,7 +2,7 @@ Source: gotochanger
 Section: admin
 Priority: optional
 Maintainer: Sebastien WENSKE <sebastien@wenske.fr>
-Build-Depends: debhelper-compat (= 13), golang-go (>= 2:1.22~)
+Build-Depends: debhelper-compat (= 13), golang-go (>= 2:1.26~)
 Standards-Version: 4.6.2
 Homepage: https://github.com/swenske/gotochanger
 Rules-Requires-Root: no

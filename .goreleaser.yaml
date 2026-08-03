@@ -17,9 +17,6 @@ project_name: gotochanger
 # - linux/amd64 only: matches every real deployment host and the runner
 #   itself - there is no cross-compiling need here.
 # - CGO_ENABLED=1: github.com/mattn/go-sqlite3 is cgo-based.
-# - GOFLAGS=-mod=vendor: this module vendors its two dependencies
-#   (go-sqlite3, yaml.v3) and is built offline everywhere else (see
-#   debian/rules) - stay consistent with that.
 # - -trimpath / buildmode: pie / -s -w ldflags: mirrors the Makefile's own
 #   build exactly (GOFLAGS/BUILDMODE/LDFLAGS in ./Makefile), just
 #   goreleaser-driven instead of `make build`.
@@ -34,7 +31,6 @@ builds:
       goarch: [amd64]
       env:
         - CGO_ENABLED=1
-        - GOFLAGS=-mod=vendor
       flags:
         - -trimpath
       buildmode: pie
