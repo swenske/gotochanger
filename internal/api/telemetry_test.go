@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -12,10 +13,29 @@ import (
 	"github.com/swenske/gotochanger/internal/telemetry"
 )
 
+// TestMain overrides the package-level telemetryEndpoint for the whole
+// internal/api test binary, before any test runs. This is a structural
+// safety net, not just a convenience: TestTelemetrySettingsRBACAndToggle
+// below went to production for a while POSTing a real, bogus ping to the
+// live collector on every CI run and every local `go test` - it
+// exercises the enabled:true toggle (which fires sendTelemetryAsync) but
+// hadn't called withFakeTelemetryEndpoint, and gotochanger.sw-servers.net
+// started actually resolving once the collector was deployed. Relying on
+// every test author to remember the per-test mock is exactly how that
+// happened; pointing the default itself at a guaranteed-closed local
+// port means any *future* test that also forgets fails fast (a harmless,
+// swallowed connection-refused error, per sendTelemetryAsync's own
+// best-effort design) instead of silently reaching production.
+func TestMain(m *testing.M) {
+	telemetryEndpoint = "http://127.0.0.1:1/unreachable-in-tests"
+	os.Exit(m.Run())
+}
+
 // withFakeTelemetryEndpoint points telemetryEndpoint at srv for the
-// duration of the test, restoring the real default endpoint afterward -
-// so no test ever makes a real outbound call to the actual collector
-// hostname.
+// duration of a test that needs to assert on what was actually sent -
+// TestMain above already keeps every other test from reaching the real
+// endpoint, but a test verifying send behavior still needs a real,
+// working fake to receive against.
 func withFakeTelemetryEndpoint(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 	orig := telemetryEndpoint
@@ -64,6 +84,19 @@ func TestBuildTelemetryPayloadCounts(t *testing.T) {
 // the same Admin-only + toggle-persists shape, for the telemetry
 // settings pair instead of the Prometheus one.
 func TestTelemetrySettingsRBACAndToggle(t *testing.T) {
+	// The enabled:true PUT below transitions false->true, which fires a
+	// real sendTelemetryAsync - without this, that goroutine hits the
+	// real telemetry.DefaultEndpoint. This was missed here (the two
+	// dedicated send-behavior tests below mock it, this toggle/RBAC test
+	// didn't), and every test run was silently POSTing a real, bogus
+	// ping to the live collector once gotochanger.sw-servers.net started
+	// resolving - see the regression test right after this one.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	withFakeTelemetryEndpoint(t, srv)
+
 	s := newPrometheusTestServer(t)
 	h := s.PublicHandler()
 
