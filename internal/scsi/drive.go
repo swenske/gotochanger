@@ -825,8 +825,11 @@ func (d *Drive) locate(cdb []byte) tcmu.Response {
 	if err != nil {
 		return d.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable, senseFlags{})
 	}
+	if vol == nil {
+		return d.fail(SenseNotReady, AscMediumNotPresent, AscqMediumNotPresent, senseFlags{})
+	}
 	if cp {
-		if vol == nil || vol.NumberOfPartitions <= 1 {
+		if vol.NumberOfPartitions <= 1 {
 			return d.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB, senseFlags{})
 		}
 		if partition >= vol.NumberOfPartitions {
@@ -884,8 +887,11 @@ func (d *Drive) locate16(cdb []byte) tcmu.Response {
 	if err != nil {
 		return d.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable, senseFlags{})
 	}
+	if vol == nil {
+		return d.fail(SenseNotReady, AscMediumNotPresent, AscqMediumNotPresent, senseFlags{})
+	}
 	if cp {
-		if vol == nil || vol.NumberOfPartitions <= 1 {
+		if vol.NumberOfPartitions <= 1 {
 			return d.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB, senseFlags{})
 		}
 		if partition >= vol.NumberOfPartitions {

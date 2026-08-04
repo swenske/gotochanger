@@ -1273,6 +1273,28 @@ func TestDriveLocate16SwitchesPartition(t *testing.T) {
 	}
 }
 
+// TestDriveLocateEmptyDrive and TestDriveLocate16EmptyDrive guard against a
+// regression found in review: the CP-only nil check Milestone 8 added must
+// not be the sole guard against a nil volume - LOCATE with CP=0 (the common
+// case) skipped the "if cp {}" block entirely and fell straight through to
+// setting d.position even with no volume mounted, unlike every other
+// command in this file (see the vol == nil checks throughout).
+func TestDriveLocateEmptyDrive(t *testing.T) {
+	d := &Drive{Client: &fakeClient{st: library.Status{Drives: []*library.Drive{{Index: 0}}}}}
+	resp := d.Handle(entryWithCDB(locate10CDB(false, 5, 0)))
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscMediumNotPresent {
+		t.Fatalf("resp = %+v, want CHECK CONDITION/Medium Not Present", resp)
+	}
+}
+
+func TestDriveLocate16EmptyDrive(t *testing.T) {
+	d := &Drive{Client: &fakeClient{st: library.Status{Drives: []*library.Drive{{Index: 0}}}}}
+	resp := d.Handle(entryWithCDB(locate16CDB(false, 0, 0, 5)))
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscMediumNotPresent {
+		t.Fatalf("resp = %+v, want CHECK CONDITION/Medium Not Present", resp)
+	}
+}
+
 func TestDriveModeSelectStagesPartitionCountThenFormatMediumApplies(t *testing.T) {
 	st, _ := driveStatusWithFile(t, []byte("0123456789"), 0)
 	fc := &fakeClient{st: st}

@@ -143,6 +143,7 @@ func run(socketPath, configfsRoot, hba, logicalLibrary string, log *slog.Logger)
 		for _, lib := range libs {
 			if lib.Name == logicalLibrary && lib.ChangerModel == config.ChangerModelRealistic {
 				changerIdentity = scsi.RealisticChangerIdentity
+				break
 			}
 		}
 	}
