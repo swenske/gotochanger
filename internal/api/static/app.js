@@ -458,6 +458,8 @@ function renderWizardStepContent(step, state, options) {
                       )
                       .join("")}
                   </select>
+                  <span class="hint">SCSI Identity: ${d.scsi_identity === "realistic" ? "Realistic" : "Default"}</span>
+                  <button type="button" class="btn" data-edit-drive-type="${i}">SCSI Identity…</button>
                   <button type="button" class="btn" data-remove-drive="${i}">Remove</button>
                 </div>
               `
@@ -688,6 +690,36 @@ function attachWizardStepEditors(step, state, options, refresh) {
       sel.addEventListener("change", (e) => {
         const dt = options.drive_types.find((d) => d.name === e.target.value);
         if (dt) state.drives[parseInt(e.target.dataset.index, 10)] = Object.assign({}, dt);
+      });
+    });
+    // SCSI Identity is a property of the shared drive-type catalog entry
+    // (config.DriveType.SCSIIdentity), not of this wizard's per-slot
+    // drive assignment - unlike driveType above, this doesn't just edit
+    // `state`, it PUTs straight to the catalog (the same endpoint Admin >
+    // Drive Types' own Edit dialog uses), then patches every in-flight
+    // reference to that type (options.drive_types plus any other wizard
+    // row already using it, since each row holds its own copy - see
+    // Object.assign above) so the change is visible immediately without a
+    // full options re-fetch.
+    document.querySelectorAll("[data-edit-drive-type]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const i = parseInt(btn.dataset.editDriveType, 10);
+        const d = state.drives[i];
+        const v = await openDialog(`SCSI Identity for ${d.name}`, [
+          { name: "scsi_identity", label: "SCSI Identity", type: "select", options: scsiIdentityOptions, value: d.scsi_identity || "" },
+        ]);
+        if (!v) return;
+        const dt = options.drive_types.find((t) => t.name === d.name);
+        const updated = Object.assign({}, dt, { scsi_identity: v.scsi_identity });
+        try {
+          await api(`/api/v1/drive-types/${encodeURIComponent(d.name)}`, { method: "PUT", body: JSON.stringify(updated) });
+        } catch (e) {
+          alert(e.message);
+          return;
+        }
+        Object.assign(dt, updated);
+        for (const row of state.drives) if (row.name === d.name) row.scsi_identity = v.scsi_identity;
+        refresh();
       });
     });
     document.querySelectorAll("[data-remove-drive]").forEach((btn) => {
