@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/swenske/gotochanger/internal/apiclient"
+	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/scsi"
 	"github.com/swenske/gotochanger/internal/tcmu"
 )
@@ -120,8 +121,30 @@ func run(socketPath, configfsRoot, hba, logicalLibrary string, log *slog.Logger)
 		return fmt.Errorf("list drive types: %w", err)
 	}
 	generationByName := make(map[string]string, len(driveTypes))
+	realisticByName := make(map[string]bool, len(driveTypes))
 	for _, dt := range driveTypes {
 		generationByName[dt.Name] = dt.Generation
+		realisticByName[dt.Name] = dt.SCSIIdentity == config.SCSIIdentityRealistic
+	}
+
+	// changerIdentity (Milestone 5): resolved from this instance's own
+	// logical library's ChangerModel, when scoped to one at all - an
+	// unscoped instance (logicalLibrary == "") has no LogicalLibraryConfig
+	// row to read this from (see config.LogicalLibraryConfig.ChangerModel's
+	// own doc comment on why that's an accepted, documented scope limit
+	// rather than an oversight), so it always reports
+	// scsi.DefaultChangerIdentity.
+	changerIdentity := scsi.Identity{}
+	if logicalLibrary != "" {
+		libs, err := client.ListLogicalLibraries()
+		if err != nil {
+			return fmt.Errorf("list logical libraries: %w", err)
+		}
+		for _, lib := range libs {
+			if lib.Name == logicalLibrary && lib.ChangerModel == config.ChangerModelRealistic {
+				changerIdentity = scsi.RealisticChangerIdentity
+			}
+		}
 	}
 
 	listener, err := tcmu.Listen()
@@ -174,7 +197,7 @@ func run(socketPath, configfsRoot, hba, logicalLibrary string, log *slog.Logger)
 	instance := kernelModeInstanceName(logicalLibrary)
 
 	changerName := instance + "-changer0"
-	changerHandler := (&scsi.Changer{Client: client, NAA: vpdIdentifier(changerName)}).Handle
+	changerHandler := (&scsi.Changer{Client: client, NAA: vpdIdentifier(changerName), Identity: changerIdentity}).Handle
 	changerDev, err := setupDevice(configfsRoot, hba, changerName, listener, changerHandler, &wg, log)
 	if err != nil {
 		return fmt.Errorf("set up changer device: %w", err)
@@ -198,7 +221,11 @@ func run(socketPath, configfsRoot, hba, logicalLibrary string, log *slog.Logger)
 		// happen to hold a drive at the same loop position.
 		physicalIndex := d.Index
 		driveName := fmt.Sprintf("%s-drive%d", instance, physicalIndex)
-		drv := &scsi.Drive{Client: client, Index: physicalIndex, Family: scsi.FamilyFor(generationByName[d.DriveType]), NAA: vpdIdentifier(driveName)}
+		fam := scsi.FamilyFor(generationByName[d.DriveType])
+		if realisticByName[d.DriveType] && fam.RealisticIdentity != (scsi.Identity{}) {
+			fam.Identity = fam.RealisticIdentity
+		}
+		drv := &scsi.Drive{Client: client, Index: physicalIndex, Family: fam, NAA: vpdIdentifier(driveName)}
 		driveDev, err := setupDevice(configfsRoot, hba, driveName, listener, drv.Handle, &wg, log)
 		if err != nil {
 			teardown()

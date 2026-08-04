@@ -22,6 +22,28 @@ type LibraryClient interface {
 	Load(fromKind string, fromAddr, drive int) error
 	Unload(drive int, toKind string, toAddr int) error
 	Move(fromKind string, fromAddr int, toKind string, toAddr int) error
+
+	// OpenIODoor/CloseIODoor (Milestone 7) back
+	// Changer.openCloseImportExportElement - *apiclient.Client already
+	// implements both with this exact signature (they exist for the web
+	// UI's own mailbox door dialog), so no apiclient/API/Library change
+	// was needed to add this pair here, unlike Load/Unload/Move above.
+	OpenIODoor(mailboxID, pin string) error
+	CloseIODoor(mailboxID string, actions []library.DoorAction) error
+
+	// SetDriveVolumeNumberOfPartitions (Milestone 8) backs
+	// Drive.formatMedium - see Library.SetDriveVolumeNumberOfPartitions's
+	// own doc comment for why this is addressed by drive index.
+	SetDriveVolumeNumberOfPartitions(index, n int) error
+
+	// SetDriveVolumeMAMAttributes (Milestone 9) backs
+	// Drive.writeAttribute - see Library.SetDriveVolumeMAMAttributes's own
+	// doc comment.
+	SetDriveVolumeMAMAttributes(index int, attrs library.MAMAttributes) error
+
+	// SetDriveVolumeEncrypted (Milestone 10) backs Drive.write6 - see
+	// Library.SetDriveVolumeEncrypted's own doc comment.
+	SetDriveVolumeEncrypted(index int, encrypted bool) error
 }
 
 // elementKind is an SMC-3 element type code (byte1 bits 3-0 of a READ
@@ -74,17 +96,55 @@ type Changer struct {
 	// for its own, unrelated internal fabric identity).
 	NAA [8]byte
 
+	// Identity (Milestone 5) is the vendor/product/revision INQUIRY
+	// reports for this changer - see inquiry's own doc comment. The zero
+	// value (Identity{}) means "use DefaultChangerIdentity"
+	// (families.go): every existing caller/test that doesn't set this
+	// field explicitly keeps reporting exactly what Changer.inquiry
+	// always hardcoded before this field existed, unchanged.
+	// cmd/gotochanger-tcmud is the only caller that ever sets this to
+	// something else (RealisticChangerIdentity, opted into per logical
+	// library via config.LogicalLibraryConfig.ChangerModel).
+	Identity Identity
+
 	lastSense []byte // set by any command that fails; reported (and cleared) by the next REQUEST SENSE
 
 	// reserved/preventRemoval are RESERVE/RELEASE ELEMENT and PREVENT/
-	// ALLOW MEDIUM REMOVAL's session-scoped state (see the plan's
-	// decision on why this isn't persisted domain state) - a SCSI
-	// initiator's own reservation is a per-I_T-nexus concept this project
-	// doesn't track at the TCMU layer, so RESERVE/RELEASE are
-	// deliberately simplified to always grant/always succeed rather than
-	// detecting a real conflict between distinct initiators. PREVENT is
-	// tracked but not yet enforced anywhere (e.g. against CloseStorageDoor)
-	// - a reasonable Milestone 3 addition once this is exercised for real.
+	// ALLOW MEDIUM REMOVAL's session-scoped state - a SCSI initiator's own
+	// reservation is a per-I_T-nexus concept this project doesn't track at
+	// the TCMU layer, so RESERVE/RELEASE are deliberately simplified to
+	// always grant/always succeed rather than detecting a real conflict
+	// between distinct initiators.
+	//
+	// Milestone 6 confirmed - empirically, against a real kernel, not just
+	// from documentation - that this simplification is very likely never
+	// actually exercised in kernel mode at all: Linux's LIO target core
+	// answers PERSISTENT RESERVE IN/OUT (0x5E/0x5F) generically, before
+	// the CDB ever reaches a TCMU backstore's userspace handler. Confirmed
+	// directly with `sg_persist` against a real gotochanger-tcmud device
+	// (register/reserve/read-reservation/release/unregister all completed
+	// with correct, stateful PR semantics - key tracking, PR generation
+	// incrementing, reservation type reported correctly - while this
+	// package's own Handle, which has no case at all for 0x5E/0x5F,
+	// logged zero activity for any of it; a CDB actually reaching Handle's
+	// default case would have surfaced as CHECK CONDITION/ILLEGAL
+	// REQUEST/INVALID COMMAND OPERATION CODE instead). The legacy
+	// RESERVE(6)/RELEASE(6) case below wasn't independently distinguished
+	// by that same test (Changer.reserve()/release() already return GOOD
+	// unconditionally too, so a clean `sg_raw` GOOD status is consistent
+	// with either code path actually running) - but the kernel's own
+	// generic device attribute controlling this (target_core_base.h's
+	// DA_EMULATE_PR, default on) is documented as covering "SCSI2
+	// RESERVE/RELEASE and Persistent Reservations" together as the same
+	// mechanism, so the same conclusion almost certainly holds here too.
+	// Kept as-is (not deleted, not built out into full multi-initiator
+	// PERSISTENT RESERVE IN/OUT) rather than either extreme: still useful
+	// as a defensive fallback if this ever runs under a TCMU backstore
+	// with emulate_pr disabled, and full userspace PR support would just
+	// be redundant with correct behavior the kernel already provides for
+	// free. PREVENT is tracked but not yet enforced anywhere (e.g. against
+	// CloseStorageDoor) - a reasonable Milestone 7 addition once this is
+	// exercised for real.
 	reserved       bool
 	preventRemoval bool
 
@@ -134,6 +194,20 @@ func (c *Changer) Handle(entry tcmu.Entry) tcmu.Response {
 		return c.requestVolumeElementAddress(entry.CDB, entry.Buffers)
 	case OpModeSense6:
 		return c.modeSense6(entry.CDB, entry.Buffers)
+	case OpInitializeElementStatus:
+		return c.initializeElementStatus()
+	case OpInitializeElementStatusWithRange:
+		return c.initializeElementStatus()
+	case OpRezeroUnit:
+		return c.rezeroUnit()
+	case OpLogSense:
+		return c.logSense(entry.CDB, entry.Buffers)
+	case OpLogSelect:
+		return c.logSelect(entry.CDB)
+	case OpExchangeMedium:
+		return c.exchangeMedium(entry.CDB)
+	case OpOpenCloseImportExportElement:
+		return c.openCloseImportExportElement(entry.CDB)
 	default:
 		return c.fail(SenseIllegalRequest, AscInvalidCommandOperationCode, AscqInvalidCommandOperationCode)
 	}
@@ -204,6 +278,32 @@ func (c *Changer) positionToElement(cdb []byte) tcmu.Response {
 	return c.ok()
 }
 
+// initializeElementStatus implements both SMC's INITIALIZE ELEMENT STATUS
+// (0x07) and INITIALIZE ELEMENT STATUS WITH RANGE (0x37) - verified
+// against the Oracle StorageTek SL150 SCSI Reference Guide's own command
+// list (checked specifically for this Milestone 3 addition), which
+// documents both as bare, no-data-phase commands. A real changer uses
+// these to trigger a physical barcode/occupancy re-scan; this project has
+// no such cache to invalidate - Changer.readElementStatus and every other
+// status-reporting command already call c.Client.Status() fresh on every
+// invocation (see buildUnifiedElements), so there is nothing stale for
+// this command to refresh. Accept-and-succeed, matching
+// Drive.modeSelect6's existing "nothing to actually do" posture.
+func (c *Changer) initializeElementStatus() tcmu.Response { return c.ok() }
+
+// rezeroUnit implements SMC-2's legacy REZERO UNIT (0x01, not documented
+// by the SL150 guide - an older, optional command real modern changers
+// often no-op or reject): repositions the robotic arm to its home
+// position, address 1 (the medium transport element - see
+// buildUnifiedElements' own doc comment on why address 1 is reserved for
+// it). Same bookkeeping-only posture as positionToElement: bumps
+// Changer.armPosition without any Client call, since this project has no
+// concept of "just move the arm" beyond that local field.
+func (c *Changer) rezeroUnit() tcmu.Response {
+	c.armPosition = 1
+	return c.ok()
+}
+
 func (c *Changer) testUnitReady() tcmu.Response {
 	if _, err := c.Client.Status(); err != nil {
 		return c.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable)
@@ -237,7 +337,11 @@ func (c *Changer) inquiry(cdb []byte, buffers [][]byte) tcmu.Response {
 			return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
 		}
 	}
-	resp := StandardInquiry(PeripheralDeviceTypeMediumChanger, Identity{Vendor: "GOTOCHNG", Product: "Virtual Changer", Revision: "0100"})
+	identity := c.Identity
+	if identity == (Identity{}) {
+		identity = DefaultChangerIdentity
+	}
+	resp := StandardInquiry(PeripheralDeviceTypeMediumChanger, identity)
 	n := writeToBuffers(buffers, resp)
 	return tcmu.Response{Status: StatusGood, ReadLen: uint32(n)}
 }
@@ -365,6 +469,7 @@ type unifiedElement struct {
 	full          bool
 	except        bool
 	barcode       string // this element's occupying Volume.Barcode, empty if not full
+	mailboxID     string // library.IOSlot.MailboxID - meaningful for elemImportExport only, used by Changer.openCloseImportExportElement (Milestone 7)
 }
 
 // buildUnifiedElements assigns one dense address space across storage
@@ -392,7 +497,7 @@ func buildUnifiedElements(st library.Status) []unifiedElement {
 		addr++
 	}
 	for _, io := range ioslots {
-		e := unifiedElement{kind: elemImportExport, address: addr, physicalAddr: io.Address, full: io.Volume != nil}
+		e := unifiedElement{kind: elemImportExport, address: addr, physicalAddr: io.Address, full: io.Volume != nil, mailboxID: io.MailboxID}
 		if io.Volume != nil {
 			e.barcode = io.Volume.Barcode
 		}
@@ -715,17 +820,235 @@ func (c *Changer) moveMedium(cdb []byte) tcmu.Response {
 		return c.fail(SenseIllegalRequest, AscMediumDestinationElementFull, AscqMediumDestinationElementFull)
 	}
 
-	var moveErr error
-	switch {
-	case srcElem.kind == elemDataTransfer:
-		moveErr = c.Client.Unload(srcElem.physicalDrive, kindString(dstElem.kind), dstElem.physicalAddr)
-	case dstElem.kind == elemDataTransfer:
-		moveErr = c.Client.Load(kindString(srcElem.kind), srcElem.physicalAddr, dstElem.physicalDrive)
-	default:
-		moveErr = c.Client.Move(kindString(srcElem.kind), srcElem.physicalAddr, kindString(dstElem.kind), dstElem.physicalAddr)
+	if err := c.moveOne(srcElem, dstElem); err != nil {
+		return c.failMoveErr(err)
 	}
-	if moveErr != nil {
-		key, asc, ascq := senseForLibraryError(moveErr)
+	return c.ok()
+}
+
+// logSense implements SMC's LOG SENSE (0x4D), the changer-side twin of
+// Drive.logSense - same CDB shape, same two supported pages (0x00/0x2E),
+// but built from Changer's own robotic-fault/door state (see
+// changerTapeAlertParams in logsense.go) rather than a Drive's.
+func (c *Changer) logSense(cdb []byte, buffers [][]byte) tcmu.Response {
+	if len(cdb) < 9 {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	pageCode := cdb[2] & 0x3F
+	allocLen := int(binary.BigEndian.Uint16(cdb[7:9]))
+
+	var full []byte
+	switch pageCode {
+	case logPageSupportedPages:
+		full = buildSupportedLogPages(logPageTapeAlert)
+	case logPageTapeAlert:
+		st, err := c.Client.Status()
+		if err != nil {
+			return c.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable)
+		}
+		full = buildLogSensePage(logPageTapeAlert, changerTapeAlertParams(st))
+	default:
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	if len(full) > allocLen {
+		full = full[:allocLen]
+	}
+	n := writeToBuffers(buffers, full)
+	return tcmu.Response{Status: StatusGood, ReadLen: uint32(n)}
+}
+
+// logSelect implements LOG SELECT(6) as an accept-but-ignore stub, same
+// posture as Drive.logSelect/modeSelect6.
+func (c *Changer) logSelect(cdb []byte) tcmu.Response {
+	if len(cdb) < 9 {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	return c.ok()
+}
+
+// moveOne dispatches one element-to-element transfer through the right
+// LibraryClient call (Load/Unload/Move), exactly like moveMedium's own
+// dispatch always has - factored out (Milestone 7) so exchangeMedium can
+// sequence several without duplicating this logic.
+func (c *Changer) moveOne(src, dst unifiedElement) error {
+	switch {
+	case src.kind == elemDataTransfer:
+		return c.Client.Unload(src.physicalDrive, kindString(dst.kind), dst.physicalAddr)
+	case dst.kind == elemDataTransfer:
+		return c.Client.Load(kindString(src.kind), src.physicalAddr, dst.physicalDrive)
+	default:
+		return c.Client.Move(kindString(src.kind), src.physicalAddr, kindString(dst.kind), dst.physicalAddr)
+	}
+}
+
+// failMoveErr classifies a LibraryClient error from moveOne into a sense
+// triple via senseForLibraryError, matching moveMedium's own existing
+// failure handling.
+func (c *Changer) failMoveErr(err error) tcmu.Response {
+	key, asc, ascq := senseForLibraryError(err)
+	return c.fail(key, asc, ascq)
+}
+
+// exchangeMedium implements SMC-3's EXCHANGE MEDIUM (0xA6): CDB bytes2-3=
+// Medium Transport Address (source), bytes4-5=First Exchange Destination
+// Address, bytes6-7=Second Exchange Destination Address (0 = "use the
+// source element", the classic two-location swap case, per SMC-3
+// convention). Opcode/CDB field layout is from established SMC knowledge
+// at moderate, not high, confidence - the SL150 guide (this package's
+// usual changer-side source) doesn't document this opcode at all, and a
+// real SL150 doesn't implement it either - consistent with EXCHANGE
+// MEDIUM being genuinely rarely-used/optional in real SMC-3 hardware, not
+// evidence this package is missing something commonly needed.
+//
+// This project's Library API only exposes element-to-element Load/Unload/
+// Move, each requiring an empty destination - there's no "hold in the
+// robotic arm's own gripper" primitive a real device's single mechanical
+// EXCHANGE MEDIUM operation uses to swap two already-occupied elements
+// directly. The classic swap case (second destination 0, or equal to the
+// source) is simulated instead by borrowing any currently-free storage
+// slot as temporary scratch space - invisible to the initiator, since the
+// net result at completion is exactly a swap - via three sequential
+// moveOne calls; MediumDestinationElementFull is reported if no free slot
+// exists anywhere to borrow (a genuine, if narrow, simulation gap on an
+// entirely full library that real hardware wouldn't have, since a real
+// arm's gripper is always available as its own temporary slot). The
+// second-destination-is-a-distinct-third-location variant needs only two
+// moveOne calls and no borrowed scratch space at all. Neither variant's
+// multi-step sequence is atomic across a mid-sequence failure the way a
+// real single mechanical operation would be - same no-rollback posture
+// moveMedium's own MOVE MEDIUM handling already has, not a new limitation
+// introduced here.
+func (c *Changer) exchangeMedium(cdb []byte) tcmu.Response {
+	if len(cdb) < 11 {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	src := binary.BigEndian.Uint16(cdb[2:4])
+	dst1 := binary.BigEndian.Uint16(cdb[4:6])
+	dst2 := binary.BigEndian.Uint16(cdb[6:8])
+	if dst2 == 0 {
+		dst2 = src
+	}
+
+	st, err := c.Client.Status()
+	if err != nil {
+		return c.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable)
+	}
+	elements := buildUnifiedElements(st)
+	byAddr := make(map[uint16]unifiedElement, len(elements))
+	for _, e := range elements {
+		byAddr[e.address] = e
+	}
+	srcElem, ok := byAddr[src]
+	if !ok {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	dst1Elem, ok := byAddr[dst1]
+	if !ok {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	if !srcElem.full {
+		return c.fail(SenseIllegalRequest, AscMediumSourceElementEmpty, AscqMediumSourceElementEmpty)
+	}
+	if !dst1Elem.full {
+		return c.fail(SenseIllegalRequest, AscMediumSourceElementEmpty, AscqMediumSourceElementEmpty)
+	}
+
+	if dst2 == src {
+		var scratch *unifiedElement
+		for i := range elements {
+			if elements[i].kind == elemStorage && !elements[i].full {
+				scratch = &elements[i]
+				break
+			}
+		}
+		if scratch == nil {
+			return c.fail(SenseIllegalRequest, AscMediumDestinationElementFull, AscqMediumDestinationElementFull)
+		}
+		if err := c.moveOne(srcElem, *scratch); err != nil {
+			return c.failMoveErr(err)
+		}
+		if err := c.moveOne(dst1Elem, srcElem); err != nil {
+			return c.failMoveErr(err)
+		}
+		if err := c.moveOne(*scratch, dst1Elem); err != nil {
+			return c.failMoveErr(err)
+		}
+		return c.ok()
+	}
+
+	dst2Elem, ok := byAddr[dst2]
+	if !ok {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	if dst2Elem.full {
+		return c.fail(SenseIllegalRequest, AscMediumDestinationElementFull, AscqMediumDestinationElementFull)
+	}
+	if err := c.moveOne(dst1Elem, dst2Elem); err != nil {
+		return c.failMoveErr(err)
+	}
+	if err := c.moveOne(srcElem, dst1Elem); err != nil {
+		return c.failMoveErr(err)
+	}
+	return c.ok()
+}
+
+// openCloseImportExportElement implements SMC's OPEN/CLOSE IMPORT/EXPORT
+// ELEMENT (0x1B) - opcode/CDB field layout from established SMC knowledge
+// at moderate, not high, confidence (same posture as exchangeMedium
+// above): byte1 bit0=IMMED (ignored, every operation here already
+// completes synchronously), bytes2-3=Element Address (a unified
+// import/export element address), byte4 bits1-0=Action Code (0=close,
+// 1=open; any other value rejected rather than guessed at).
+//
+// Maps directly onto this project's existing mailbox-door concept
+// (Library.OpenIODoor/CloseIODoor) via the addressed I/O element's own
+// MailboxID (see unifiedElement.mailboxID/buildUnifiedElements) - a real
+// device opens/closes one physical door per command, the same
+// granularity. CLOSE always passes an empty action list: a raw SCSI
+// command carries no per-cartridge routing information the way the web
+// UI's own close-door dialog does, so there is nothing to stage here - an
+// initiator that wants specific placement uses MOVE MEDIUM/READ ELEMENT
+// STATUS itself once the door is physically closed, same as real hardware
+// expects. OPEN always passes an empty PIN: a raw SCSI command has no CDB
+// field to carry one, so a PIN-protected mailbox's door genuinely cannot
+// be opened via this command - it fails with whatever sense
+// senseForLibraryError's generic fallback reports for ErrPINRequired, a
+// real and documented limitation, not an oversight.
+func (c *Changer) openCloseImportExportElement(cdb []byte) tcmu.Response {
+	if len(cdb) < 5 {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	addr := binary.BigEndian.Uint16(cdb[2:4])
+	action := cdb[4] & 0x03
+
+	st, err := c.Client.Status()
+	if err != nil {
+		return c.fail(SenseNotReady, AscLogicalUnitNotReady, AscqCauseNotReportable)
+	}
+	var mailboxID string
+	found := false
+	for _, e := range buildUnifiedElements(st) {
+		if e.address == addr && e.kind == elemImportExport {
+			mailboxID = e.mailboxID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+
+	var doErr error
+	switch action {
+	case 0:
+		doErr = c.Client.CloseIODoor(mailboxID, nil)
+	case 1:
+		doErr = c.Client.OpenIODoor(mailboxID, "")
+	default:
+		return c.fail(SenseIllegalRequest, AscInvalidFieldInCDB, AscqInvalidFieldInCDB)
+	}
+	if doErr != nil {
+		key, asc, ascq := senseForLibraryError(doErr)
 		return c.fail(key, asc, ascq)
 	}
 	return c.ok()

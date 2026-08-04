@@ -279,6 +279,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/unload", requireRole(RoleOperator, s.handleUnload))
 	mux.HandleFunc("POST /api/v1/move", requireRole(RoleOperator, s.handleMove))
 	mux.HandleFunc("POST /api/v1/drives/{index}/fault", requireRole(RoleOperator, s.handleDriveFault))
+	mux.HandleFunc("POST /api/v1/drives/{index}/format-medium", requireRole(RoleOperator, s.handleFormatMedium))
+	mux.HandleFunc("POST /api/v1/drives/{index}/mam-attributes", requireRole(RoleOperator, s.handleSetDriveMAMAttributes))
+	mux.HandleFunc("POST /api/v1/drives/{index}/encrypted", requireRole(RoleOperator, s.handleSetDriveEncrypted))
 	mux.HandleFunc("POST /api/v1/robotics/fault", requireRole(RoleOperator, s.handleRoboticFault))
 	mux.HandleFunc("POST /api/v1/volumes/{barcode}/write-protect", requireRole(RoleOperator, s.handleSetVolumeWriteProtect))
 

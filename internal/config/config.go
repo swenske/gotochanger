@@ -52,7 +52,25 @@ type DriveType struct {
 	Description string `yaml:"description" json:"description"`
 	Model       string `yaml:"model" json:"model,omitempty"`           // e.g., "IBM TS1160"
 	Generation  string `yaml:"generation" json:"generation,omitempty"` // e.g., "LTO-9"
+
+	// SCSIIdentity selects which SCSI INQUIRY vendor/product identity a
+	// kernel-mode drive of this type reports: "" (default) keeps this
+	// project's own GOTOCHNG/Virtual identity; SCSIIdentityRealistic opts
+	// into a real vendor/product string (e.g. IBM ULT3580-TD9 for
+	// Generation "LTO-9") where scsi.DriveFamilies defines one for this
+	// type's Generation - see scsi.FamilyFor and cmd/gotochanger-tcmud's
+	// own drive-construction loop, which is the only place this is
+	// consulted. Free-text like Model/Generation above (not validated
+	// against SCSIIdentityRealistic here) - an unrecognized value is
+	// simply treated as "" by the one place that reads it, matching how
+	// an unrecognized Generation already falls back to
+	// scsi.DefaultDriveFamily rather than erroring.
+	SCSIIdentity string `yaml:"scsi_identity" json:"scsi_identity,omitempty"`
 }
+
+// SCSIIdentityRealistic is the one non-default DriveType.SCSIIdentity value
+// this project currently defines - see that field's own doc comment.
+const SCSIIdentityRealistic = "realistic"
 
 // DriveDeviceConfig describes one physical drive device: its backing device
 // path plus, optionally, which DriveType catalog entry it's linked to (by
@@ -112,7 +130,25 @@ type LogicalLibraryConfig struct {
 	Magazines []string `yaml:"magazines" json:"magazines"` // IDs of assigned magazines
 	Mailboxes []string `yaml:"mailboxes" json:"mailboxes"` // IDs of assigned mailboxes
 	Color     string   `yaml:"color" json:"color"`         // Color for UI identification
+
+	// ChangerModel is this logical library's kernel-mode changer's own
+	// counterpart to DriveType.SCSIIdentity above: "" (default) keeps
+	// scsi.DefaultChangerIdentity (GOTOCHNG/Virtual Changer);
+	// ChangerModelRealistic opts into scsi.RealisticChangerIdentity.
+	// Consulted only by cmd/gotochanger-tcmud's own instance-startup code
+	// (one gotochanger-tcmud instance maps 1:1 to a logical library, or
+	// "default" when unscoped - see that binary's own doc comment) - an
+	// unscoped instance has no LogicalLibraryConfig row to read this from
+	// at all, so it always reports the default identity; there is
+	// currently no separate global setting for that case (kept out of
+	// scope until a real deployment needs one).
+	ChangerModel string `yaml:"changer_model" json:"changer_model,omitempty"`
 }
+
+// ChangerModelRealistic is the one non-default LogicalLibraryConfig.
+// ChangerModel value this project currently defines - see that field's own
+// doc comment.
+const ChangerModelRealistic = "realistic"
 
 // TapeSetConfig groups cartridges of one tape type under a dedicated
 // storage folder.

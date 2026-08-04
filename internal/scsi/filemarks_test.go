@@ -183,3 +183,19 @@ func TestInvalidateFilemarksFromNoOpWhenNothingChanges(t *testing.T) {
 		t.Errorf("sidecar file was rewritten despite nothing changing")
 	}
 }
+
+func TestPartitionPath(t *testing.T) {
+	vol := "/data/volumes/VOL001"
+	if got := partitionPath(vol, 0); got != vol {
+		t.Errorf("partition 0 = %q, want %q unchanged", got, vol)
+	}
+	if got := partitionPath(vol, -1); got != vol {
+		t.Errorf("negative partition = %q, want %q unchanged (treated as 0)", got, vol)
+	}
+	if got, want := partitionPath(vol, 1), vol+".p1"; got != want {
+		t.Errorf("partition 1 = %q, want %q", got, want)
+	}
+	if got, want := partitionPath(vol, 2), vol+".p2"; got != want {
+		t.Errorf("partition 2 = %q, want %q", got, want)
+	}
+}

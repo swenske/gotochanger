@@ -2,10 +2,27 @@ package scsi
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
+
+// partitionPath returns volPath unchanged for partition 0 (this
+// project's original, single-partition backing-file convention - zero
+// behavior change for any volume that never uses a partition other than
+// 0) or a sibling file (<volPath>.p<N>) for partition N>0 (Milestone 8's
+// multi-partition support). Each partition is a fully independent
+// backing file with its own end-of-data and filemark sidecar (see
+// filemarksPath below) - matching how real tape partitions are
+// physically separate regions of the medium with independent structure,
+// not one shared address space split by a boundary.
+func partitionPath(volPath string, partition int) string {
+	if partition <= 0 {
+		return volPath
+	}
+	return fmt.Sprintf("%s.p%d", volPath, partition)
+}
 
 // filemarksPath returns the sidecar file this project records a volume's
 // filemark positions in, alongside its own backing file - deliberately

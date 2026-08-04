@@ -191,6 +191,32 @@ func (c *Client) DriveFault(index int, fault bool) error {
 	return c.do(http.MethodPost, fmt.Sprintf("/api/v1/drives/%d/fault", index), map[string]any{"fault": fault}, nil)
 }
 
+// SetDriveVolumeNumberOfPartitions backs internal/scsi.Drive.formatMedium
+// (Milestone 8) - see Library.SetDriveVolumeNumberOfPartitions's own doc
+// comment for why this is addressed by drive index rather than barcode.
+func (c *Client) SetDriveVolumeNumberOfPartitions(index, n int) error {
+	return c.do(http.MethodPost, fmt.Sprintf("/api/v1/drives/%d/format-medium", index), map[string]any{"number_of_partitions": n}, nil)
+}
+
+// SetDriveVolumeMAMAttributes backs internal/scsi.Drive.writeAttribute
+// (Milestone 9) - see Library.SetDriveVolumeMAMAttributes's own doc
+// comment for the by-drive-index addressing and nil-means-unchanged
+// field semantics.
+func (c *Client) SetDriveVolumeMAMAttributes(index int, attrs library.MAMAttributes) error {
+	return c.do(http.MethodPost, fmt.Sprintf("/api/v1/drives/%d/mam-attributes", index), map[string]any{
+		"application_vendor":     attrs.ApplicationVendor,
+		"application_name":       attrs.ApplicationName,
+		"application_version":    attrs.ApplicationVersion,
+		"user_medium_text_label": attrs.UserMediumTextLabel,
+	}, nil)
+}
+
+// SetDriveVolumeEncrypted backs internal/scsi.Drive.write6 (Milestone 10)
+// - see Library.SetDriveVolumeEncrypted's own doc comment.
+func (c *Client) SetDriveVolumeEncrypted(index int, encrypted bool) error {
+	return c.do(http.MethodPost, fmt.Sprintf("/api/v1/drives/%d/encrypted", index), map[string]any{"encrypted": encrypted}, nil)
+}
+
 func (c *Client) SetVolumeWriteProtect(barcode string, protected bool) error {
 	return c.do(http.MethodPost, fmt.Sprintf("/api/v1/volumes/%s/write-protect", barcode), map[string]any{"write_protected": protected}, nil)
 }

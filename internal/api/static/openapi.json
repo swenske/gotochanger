@@ -67,7 +67,14 @@
           "written_bytes": { "type": "integer", "format": "int64" },
           "full": { "type": "boolean" },
           "write_protected": { "type": "boolean", "description": "Simulates a physical write-protect tab; toggled via POST /api/v1/volumes/{barcode}/write-protect. Does not affect Move/Load/Unload - only enforced on an actual write attempt." },
-          "created_at": { "type": "string", "format": "date-time" }
+          "created_at": { "type": "string", "format": "date-time" },
+          "number_of_partitions": { "type": "integer", "description": "SSC partition count (kernel mode only); omitted/0 means the default single partition. Set only via a real SCSI FORMAT MEDIUM command, never from the Admin UI/gotochangerctl." },
+          "load_count": { "type": "integer", "description": "MAM Load Count attribute: number of times this volume has been mounted in a drive, read-only." },
+          "application_vendor": { "type": "string", "description": "MAM Application Vendor attribute (kernel mode only). Settable via a real SCSI WRITE ATTRIBUTE command." },
+          "application_name": { "type": "string", "description": "MAM Application Name attribute (kernel mode only). Settable via a real SCSI WRITE ATTRIBUTE command." },
+          "application_version": { "type": "string", "description": "MAM Application Version attribute (kernel mode only). Settable via a real SCSI WRITE ATTRIBUTE command." },
+          "user_medium_text_label": { "type": "string", "description": "MAM User Medium Text Label attribute (kernel mode only). Settable via a real SCSI WRITE ATTRIBUTE command." },
+          "encrypted": { "type": "boolean", "description": "Whether this volume's recorded data was written under SCSI tape encryption (kernel mode only). Set only by a real SCSI WRITE(6) with encryption enabled; never from the Admin UI/gotochangerctl." }
         }
       },
       "TapeType": {
@@ -419,6 +426,35 @@
         "parameters": [ { "name": "index", "in": "path", "required": true, "schema": { "type": "integer" } } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "fault": { "type": "boolean" } }, "required": ["fault"] } } } },
         "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/drives/{index}/format-medium": {
+      "post": {
+        "summary": "Set the mounted volume's SSC partition count (kernel mode only, operator+); reachable only from a real SCSI FORMAT MEDIUM command, not the Admin UI/gotochangerctl",
+        "parameters": [ { "name": "index", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "number_of_partitions": { "type": "integer" } }, "required": ["number_of_partitions"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Drive has no volume mounted" } }
+      }
+    },
+    "/api/v1/drives/{index}/mam-attributes": {
+      "post": {
+        "summary": "Set the mounted volume's mutable MAM attributes (kernel mode only, operator+); reachable only from a real SCSI WRITE ATTRIBUTE command, not the Admin UI/gotochangerctl. An absent/null field leaves that attribute unchanged.",
+        "parameters": [ { "name": "index", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {
+          "application_vendor": { "type": "string", "nullable": true },
+          "application_name": { "type": "string", "nullable": true },
+          "application_version": { "type": "string", "nullable": true },
+          "user_medium_text_label": { "type": "string", "nullable": true }
+        } } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Drive has no volume mounted" } }
+      }
+    },
+    "/api/v1/drives/{index}/encrypted": {
+      "post": {
+        "summary": "Set or clear the mounted volume's encrypted flag (kernel mode only, operator+); reachable only from a real SCSI WRITE(6) with tape encryption enabled, not the Admin UI/gotochangerctl",
+        "parameters": [ { "name": "index", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "encrypted": { "type": "boolean" } }, "required": ["encrypted"] } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Drive has no volume mounted" } }
       }
     },
     "/api/v1/volumes/{barcode}/write-protect": {

@@ -606,3 +606,172 @@ func TestChangerUnsupportedOpcode(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 }
+
+func TestChangerInquiryIdentityDefaultAndOptIn(t *testing.T) {
+	// Zero-value Identity (every existing caller/test that doesn't set it)
+	// falls back to DefaultChangerIdentity, unchanged from before this
+	// field existed.
+	c := &Changer{Client: &fakeClient{st: testStatus()}}
+	buf := make([]byte, StandardInquiryLength)
+	c.Handle(entryWithCDB([]byte{OpInquiry, 0, 0, 0, byte(StandardInquiryLength), 0}, buf))
+	if vendor := string(buf[8:16]); vendor[:8] != "GOTOCHNG" {
+		t.Errorf("default vendor = %q, want GOTOCHNG", vendor)
+	}
+
+	// An explicitly set Identity (Milestone 5's opt-in realistic profile)
+	// is reported verbatim.
+	c2 := &Changer{Client: &fakeClient{st: testStatus()}, Identity: RealisticChangerIdentity}
+	buf2 := make([]byte, StandardInquiryLength)
+	c2.Handle(entryWithCDB([]byte{OpInquiry, 0, 0, 0, byte(StandardInquiryLength), 0}, buf2))
+	if vendor := string(buf2[8:16]); vendor[:3] != "STK" {
+		t.Errorf("opted-in vendor = %q, want STK", vendor)
+	}
+	if product := string(buf2[16:32]); product[:5] != "SL150" {
+		t.Errorf("opted-in product = %q, want SL150", product)
+	}
+}
+
+func TestChangerInitializeElementStatus(t *testing.T) {
+	c := &Changer{Client: &fakeClient{st: testStatus()}}
+	if resp := c.Handle(entryWithCDB([]byte{OpInitializeElementStatus, 0, 0, 0, 0, 0})); resp.Status != StatusGood {
+		t.Fatalf("INITIALIZE ELEMENT STATUS resp = %+v", resp)
+	}
+	if resp := c.Handle(entryWithCDB([]byte{OpInitializeElementStatusWithRange, 0, 0, 0, 0, 0, 0, 0, 0, 0})); resp.Status != StatusGood {
+		t.Fatalf("INITIALIZE ELEMENT STATUS WITH RANGE resp = %+v", resp)
+	}
+}
+
+func TestChangerRezeroUnit(t *testing.T) {
+	c := &Changer{Client: &fakeClient{st: testStatus()}}
+	c.armPosition = 99
+	resp := c.Handle(entryWithCDB([]byte{OpRezeroUnit, 0, 0, 0, 0, 0}))
+	if resp.Status != StatusGood {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if c.armPosition != 1 {
+		t.Errorf("armPosition = %d, want 1 (home)", c.armPosition)
+	}
+}
+
+// exchangeTestStatus: 3 storage slots (unified addresses 2, 3, 4) - two
+// occupied (VOLA/VOLB), one free, used as EXCHANGE MEDIUM's own scratch
+// space for the classic-swap case.
+func exchangeTestStatus() library.Status {
+	return library.Status{
+		Slots: []*library.Slot{
+			{Address: 1, Volume: vol("VOLA")},
+			{Address: 2, Volume: vol("VOLB")},
+			{Address: 3},
+		},
+	}
+}
+
+func exchangeMediumCDB(src, dst1, dst2 uint16) []byte {
+	cdb := make([]byte, 11)
+	cdb[0] = OpExchangeMedium
+	binary.BigEndian.PutUint16(cdb[2:4], src)
+	binary.BigEndian.PutUint16(cdb[4:6], dst1)
+	binary.BigEndian.PutUint16(cdb[6:8], dst2)
+	return cdb
+}
+
+func TestChangerExchangeMediumClassicSwapViaBorrowedScratch(t *testing.T) {
+	fc := &fakeClient{st: exchangeTestStatus()}
+	c := &Changer{Client: fc}
+	// src=2 (VOLA), dst1=3 (VOLB), dst2=0 -> classic swap.
+	resp := c.Handle(entryWithCDB(exchangeMediumCDB(2, 3, 0)))
+	if resp.Status != StatusGood {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if got := fc.st.Slots[0].Volume; got == nil || got.Barcode != "VOLB" {
+		t.Errorf("slot 1 (was VOLA) = %+v, want VOLB", got)
+	}
+	if got := fc.st.Slots[1].Volume; got == nil || got.Barcode != "VOLA" {
+		t.Errorf("slot 2 (was VOLB) = %+v, want VOLA", got)
+	}
+	if fc.st.Slots[2].Volume != nil {
+		t.Errorf("scratch slot 3 = %+v, want empty again after the swap completes", fc.st.Slots[2].Volume)
+	}
+}
+
+func TestChangerExchangeMediumClassicSwapNoFreeSlot(t *testing.T) {
+	st := exchangeTestStatus()
+	st.Slots[2].Volume = vol("VOLC") // no free slot anywhere to borrow
+	c := &Changer{Client: &fakeClient{st: st}}
+	resp := c.Handle(entryWithCDB(exchangeMediumCDB(2, 3, 0)))
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscMediumDestinationElementFull {
+		t.Fatalf("resp = %+v, want MediumDestinationElementFull", resp)
+	}
+}
+
+func TestChangerExchangeMediumChainVariant(t *testing.T) {
+	fc := &fakeClient{st: exchangeTestStatus()}
+	c := &Changer{Client: fc}
+	// src=2 (VOLA), dst1=3 (VOLB), dst2=4 (distinct, empty third location).
+	resp := c.Handle(entryWithCDB(exchangeMediumCDB(2, 3, 4)))
+	if resp.Status != StatusGood {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if fc.st.Slots[0].Volume != nil {
+		t.Errorf("slot 1 (source) = %+v, want empty", fc.st.Slots[0].Volume)
+	}
+	if got := fc.st.Slots[1].Volume; got == nil || got.Barcode != "VOLA" {
+		t.Errorf("slot 2 (dest1) = %+v, want VOLA", got)
+	}
+	if got := fc.st.Slots[2].Volume; got == nil || got.Barcode != "VOLB" {
+		t.Errorf("slot 3 (dest2) = %+v, want VOLB (dest1's previous occupant)", got)
+	}
+}
+
+func TestChangerExchangeMediumSourceEmpty(t *testing.T) {
+	c := &Changer{Client: &fakeClient{st: exchangeTestStatus()}}
+	resp := c.Handle(entryWithCDB(exchangeMediumCDB(4, 3, 0))) // addr 4 (slot 3) is empty
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscMediumSourceElementEmpty {
+		t.Fatalf("resp = %+v, want MediumSourceElementEmpty", resp)
+	}
+}
+
+func openCloseImportExportCDB(addr uint16, action uint8) []byte {
+	cdb := make([]byte, 5)
+	cdb[0] = OpOpenCloseImportExportElement
+	binary.BigEndian.PutUint16(cdb[2:4], addr)
+	cdb[4] = action
+	return cdb
+}
+
+func TestChangerOpenCloseImportExportElement(t *testing.T) {
+	st := library.Status{IOSlots: []*library.IOSlot{{Address: 21, MailboxID: "mb1"}}}
+	fc := &fakeClient{st: st}
+	c := &Changer{Client: fc}
+	// The one ioslot is unified address 2 (no storage slots ahead of it
+	// in this topology).
+	if resp := c.Handle(entryWithCDB(openCloseImportExportCDB(2, 1))); resp.Status != StatusGood {
+		t.Fatalf("open resp = %+v", resp)
+	}
+	if !fc.ioDoorOpen["mb1"] {
+		t.Fatal("expected mailbox mb1's door to be open")
+	}
+	if resp := c.Handle(entryWithCDB(openCloseImportExportCDB(2, 0))); resp.Status != StatusGood {
+		t.Fatalf("close resp = %+v", resp)
+	}
+	if fc.ioDoorOpen["mb1"] {
+		t.Error("expected mailbox mb1's door to be closed")
+	}
+}
+
+func TestChangerOpenCloseImportExportElementUnknownAddress(t *testing.T) {
+	c := &Changer{Client: &fakeClient{st: testStatus()}}
+	resp := c.Handle(entryWithCDB(openCloseImportExportCDB(999, 1)))
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscInvalidFieldInCDB {
+		t.Fatalf("resp = %+v, want ILLEGAL REQUEST/INVALID FIELD IN CDB", resp)
+	}
+}
+
+func TestChangerOpenCloseImportExportElementInvalidAction(t *testing.T) {
+	st := library.Status{IOSlots: []*library.IOSlot{{Address: 21, MailboxID: "mb1"}}}
+	c := &Changer{Client: &fakeClient{st: st}}
+	resp := c.Handle(entryWithCDB(openCloseImportExportCDB(2, 2)))
+	if resp.Status != StatusCheckCondition || resp.Sense[12] != AscInvalidFieldInCDB {
+		t.Fatalf("resp = %+v, want ILLEGAL REQUEST/INVALID FIELD IN CDB", resp)
+	}
+}

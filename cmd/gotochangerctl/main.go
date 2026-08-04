@@ -338,10 +338,15 @@ func runLogicalLibrary(c *apiclient.Client, args []string, jsonOut bool) error {
 	}
 	switch args[0] {
 	case "new":
-		if len(args) != 5 {
-			return fmt.Errorf("usage: logical-library new <name> <drive-indices csv> <magazine-ids csv> <mailbox-ids csv>")
+		if len(args) < 5 {
+			return fmt.Errorf("usage: logical-library new <name> <drive-indices csv> <magazine-ids csv> <mailbox-ids csv> [--changer-model realistic]")
 		}
 		lib := config.LogicalLibraryConfig{Name: args[1], Drives: parseIntList(args[2]), Magazines: parseStringList(args[3]), Mailboxes: parseStringList(args[4])}
+		fs := flag.NewFlagSet("logical-library new", flag.ExitOnError)
+		fs.StringVar(&lib.ChangerModel, "changer-model", "", `SCSI INQUIRY identity this library's kernel-mode changer reports: "" (default) or "realistic" (see config.ChangerModelRealistic)`)
+		if err := fs.Parse(args[5:]); err != nil {
+			return err
+		}
 		_, err := c.CreateLogicalLibrary(lib)
 		return err
 	case "list":
@@ -351,7 +356,7 @@ func runLogicalLibrary(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(libs, jsonOut, func() {
 			for _, l := range libs {
-				fmt.Printf("%-20s drives=%d slots=%d ioslots=%d color=%s\n", l.Name, len(l.Drives), len(l.Slots), len(l.IOSlots), l.Color)
+				fmt.Printf("%-20s drives=%d slots=%d ioslots=%d color=%s changer_model=%s\n", l.Name, len(l.Drives), len(l.Slots), len(l.IOSlots), l.Color, l.ChangerModel)
 			}
 		})
 	case "show":
@@ -364,10 +369,15 @@ func runLogicalLibrary(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(lib, jsonOut, func() { fmt.Printf("%+v\n", lib) })
 	case "update":
-		if len(args) != 6 {
-			return fmt.Errorf("usage: logical-library update <name> <color> <drive-indices csv> <magazine-ids csv> <mailbox-ids csv>")
+		if len(args) < 6 {
+			return fmt.Errorf("usage: logical-library update <name> <color> <drive-indices csv> <magazine-ids csv> <mailbox-ids csv> [--changer-model realistic]")
 		}
 		lib := config.LogicalLibraryConfig{Name: args[1], Color: args[2], Drives: parseIntList(args[3]), Magazines: parseStringList(args[4]), Mailboxes: parseStringList(args[5])}
+		fs := flag.NewFlagSet("logical-library update", flag.ExitOnError)
+		fs.StringVar(&lib.ChangerModel, "changer-model", "", `SCSI INQUIRY identity this library's kernel-mode changer reports: "" (default) or "realistic" (see config.ChangerModelRealistic)`)
+		if err := fs.Parse(args[6:]); err != nil {
+			return err
+		}
 		_, err := c.UpdateLogicalLibrary(args[1], lib)
 		return err
 	case "delete":
@@ -386,10 +396,16 @@ func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 	}
 	switch args[0] {
 	case "new":
-		if len(args) != 5 {
-			return fmt.Errorf("usage: drive-type new <name> <speed> <capacity> <description>")
+		if len(args) < 5 {
+			return fmt.Errorf("usage: drive-type new <name> <speed> <capacity> <description> [--scsi-identity realistic]")
 		}
-		return c.CreateDriveType(config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]})
+		dt := config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]}
+		fs := flag.NewFlagSet("drive-type new", flag.ExitOnError)
+		fs.StringVar(&dt.SCSIIdentity, "scsi-identity", "", `SCSI INQUIRY identity this drive type reports in kernel mode: "" (default) or "realistic" (see config.SCSIIdentityRealistic)`)
+		if err := fs.Parse(args[5:]); err != nil {
+			return err
+		}
+		return c.CreateDriveType(dt)
 	case "list":
 		dts, err := c.ListDriveTypes()
 		if err != nil {
@@ -397,14 +413,20 @@ func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(dts, jsonOut, func() {
 			for _, dt := range dts {
-				fmt.Printf("%-12s %-10s %-10s %s\n", dt.Name, dt.Speed, dt.Capacity, dt.Description)
+				fmt.Printf("%-12s %-10s %-10s %-10s %s\n", dt.Name, dt.Speed, dt.Capacity, dt.SCSIIdentity, dt.Description)
 			}
 		})
 	case "update":
-		if len(args) != 5 {
-			return fmt.Errorf("usage: drive-type update <name> <speed> <capacity> <description>")
+		if len(args) < 5 {
+			return fmt.Errorf("usage: drive-type update <name> <speed> <capacity> <description> [--scsi-identity realistic]")
 		}
-		return c.UpdateDriveType(args[1], config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]})
+		dt := config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]}
+		fs := flag.NewFlagSet("drive-type update", flag.ExitOnError)
+		fs.StringVar(&dt.SCSIIdentity, "scsi-identity", "", `SCSI INQUIRY identity this drive type reports in kernel mode: "" (default) or "realistic" (see config.SCSIIdentityRealistic)`)
+		if err := fs.Parse(args[5:]); err != nil {
+			return err
+		}
+		return c.UpdateDriveType(args[1], dt)
 	case "delete":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: drive-type delete <name>")

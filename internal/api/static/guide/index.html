@@ -78,6 +78,18 @@
       <div class="guide-toc-group-label">Enabling it</div>
     </div>
     <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Reporting a real vendor/product SCSI identity</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Multi-partition tapes (kernel mode only)</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Cartridge memory (MAM) attributes (kernel mode only)</div>
+    </div>
+    <div class="guide-toc-group">
+      <div class="guide-toc-group-label">Real tape encryption (kernel mode only)</div>
+    </div>
+    <div class="guide-toc-group">
       <div class="guide-toc-group-label">Scope and limitations</div>
     </div>
     <div class="guide-toc-group">
@@ -553,6 +565,62 @@ ones - for Bareos specifically, no other config-file syntax change is needed eit
 <p>Device paths are tracked in memory on the gotochangerd side (a running <code>gotochanger-tcmud</code> self-reports them
 at startup via <code>POST /api/v1/kernel-mode/devices/{instance}</code>) and are lost on a gotochangerd restart until the
 <code>gotochanger-tcmud</code> instance itself restarts.</p>
+<h2 id="reporting-a-real-vendorproduct-scsi-identity">Reporting a real vendor/product SCSI identity</h2>
+<p>By default every kernel-mode device reports gotochanger's own identity (<code>GOTOCHNG</code>/<code>Virtual LTO-9</code>/
+<code>Virtual Changer</code>, etc.) in its SCSI INQUIRY response - fine for Bareos and most third-party tools, which
+don't care. A tool that whitelists specific real vendor/product strings needs the real thing instead, so
+this is opt-in per catalog entry:</p>
+<ul>
+<li><strong>Drives</strong>: set a Drive Type's <strong>SCSI Identity</strong> to <em>Realistic</em> - Admin &gt; Drive Types' New/Edit dialog,
+<code>gotochangerctl drive-type new|update ... --scsi-identity realistic</code>, or <code>scsi_identity: realistic</code> via
+the API. Only defined for <code>LTO-8</code>/<code>LTO-9</code> generations today (reports as a real <code>IBM ULT3580-TD8</code>/<code>-TD9</code>)
+<ul>
+<li>any other generation stays on the default identity even with this set.</li>
+</ul>
+</li>
+<li><strong>Changer</strong>: set a logical library's <strong>Changer Model</strong> to <em>Realistic</em> - Admin &gt; Logical Libraries'
+New/Edit dialog, <code>gotochangerctl logical-library new|update ... --changer-model realistic</code>, or
+<code>changer_model: realistic</code> via the API. Reports as an <code>STK SL150</code> - the same real device this project's
+own SMC-3 command layout was verified against (see the Oracle StorageTek SL150 SCSI Reference Guide,
+cited throughout <code>internal/scsi</code>). Only takes effect for a <code>gotochanger-tcmud</code> instance scoped to that
+logical library (<code>--logical-library</code>); an unscoped instance has no logical library to read this setting
+from and always reports the default identity.</li>
+</ul>
+<p>Changing either setting takes effect the next time the affected <code>gotochanger-tcmud</code> instance (re)starts, not
+live against an already-running device.</p>
+<h2 id="multi-partition-tapes-kernel-mode-only">Multi-partition tapes (kernel mode only)</h2>
+<p>A drive in kernel mode can format a mounted volume with two SSC partitions instead of one - the layout
+LTFS itself needs (a small index partition plus a large data partition). Nothing in userspace/file mode or
+the Admin UI creates a second partition; it's set purely via real SCSI commands (<code>MODE SELECT</code> staging a
+partition count via the Medium Partition mode page, <code>FORMAT MEDIUM</code> applying it, <code>LOCATE(16)</code> or
+<code>LOCATE(10)</code>'s CP bit switching between partitions). Each partition beyond the first is a fully independent
+backing file next to the volume's own (<code>&lt;path&gt;.p1</code>), so data written to one partition never leaks into the
+other. Only two partitions total are supported - enough for LTFS's own convention, not arbitrary
+partitioning. The resulting partition count is visible read-only wherever the Admin UI/dashboard shows that
+cartridge, as a &quot;2P&quot; badge on its card (hover the card for the full detail line).</p>
+<h2 id="cartridge-memory-mam-attributes-kernel-mode-only">Cartridge memory (MAM) attributes (kernel mode only)</h2>
+<p>A drive in kernel mode answers real SCSI READ ATTRIBUTE/WRITE ATTRIBUTE commands against the mounted
+volume's MAM (Medium Auxiliary Memory) - the small chip embedded in a real cartridge that stores its own
+identity, capacity, and application-set metadata. Only a focused subset of the full T10 attribute table is
+implemented: remaining/maximum capacity, TapeAlert flags, load count, and volume identifier (all read-only,
+derived from state gotochanger already tracks), plus application vendor/name/version and a user medium text
+label (read/write - genuinely persisted on the volume, surviving unmount/remount, settable only via a real
+WRITE ATTRIBUTE command). Verify with <code>sg_read_attr</code>/<code>sg_write_attr</code> (sg3-utils) against the drive's
+<code>/dev/sg*</code> device. Load count and the mutable attributes above are visible read-only in the Admin UI/
+dashboard, in the hover tooltip on that cartridge's card.</p>
+<h2 id="real-tape-encryption-kernel-mode-only">Real tape encryption (kernel mode only)</h2>
+<p>A drive in kernel mode implements real SCSI Security Protocol In/Out (SPIN/SPOUT) tape encryption - the same
+&quot;Tape Data Encryption&quot; protocol real LTO encrypting drives and key-manager software (e.g. <code>stenc</code>) use.
+Setting an AES-256 key and turning encryption on (via <code>stenc -e on -k &lt;keyfile&gt;</code>, or any T10-compliant key
+manager) makes every subsequent <code>WRITE(6)</code> genuinely AES-256-GCM-encrypt its data before it touches the
+backing file, and every <code>READ(6)</code> genuinely decrypt it back - not a protocol-only stub. The key is
+<strong>session-scoped</strong>: it must be re-supplied after every drive load/unload or <code>gotochanger-tcmud</code> restart,
+exactly like real hardware - there is nothing to configure in advance, and no key is ever persisted by
+gotochanger itself. Reading previously-encrypted data with the wrong key (or no key at all) correctly fails
+with a <code>Data Protect</code>/<code>Logical Unit Access Not Authorized</code> SCSI error rather than returning garbage.
+Encryption is decided once, at the start of a fresh recording pass (BOT) - this project has no concept of
+part-encrypted, part-plain data on one volume. Once set, the volume's encrypted flag is visible read-only
+wherever the Admin UI/dashboard shows that cartridge, as an &quot;Encrypted&quot; badge on its card.</p>
 <h2 id="scope-and-limitations">Scope and limitations</h2>
 <ul>
 <li><strong>Drive bandwidth throttling only applies in kernel mode.</strong> In the default userspace/file mode, a loaded

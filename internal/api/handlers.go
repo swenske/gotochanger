@@ -377,6 +377,108 @@ func (s *Server) handleDriveFault(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.lib.Status())
 }
 
+type driveFormatMediumRequest struct {
+	NumberOfPartitions int `json:"number_of_partitions"`
+}
+
+// handleFormatMedium is the kernel-mode-only counterpart of
+// handleDriveFault above (same by-drive-index addressing, same shape) -
+// see Library.SetDriveVolumeNumberOfPartitions's own doc comment for why
+// this is addressed by drive rather than by volume barcode. Reachable
+// only from internal/scsi.Drive.formatMedium in practice (a real SCSI
+// FORMAT MEDIUM command over the trusted kernel-mode socket); nothing in
+// the Admin UI/gotochangerctl calls this today.
+func (s *Server) handleFormatMedium(w http.ResponseWriter, r *http.Request) {
+	idx, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		s.emitFailure(r, library.EventCodeDriveFormatMediumSetFailure, "failed to format medium", err, nil)
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req driveFormatMediumRequest
+	if err := decodeJSON(r, &req); err != nil {
+		s.emitFailure(r, library.EventCodeDriveFormatMediumSetFailure, "failed to format medium", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.lib.SetDriveVolumeNumberOfPartitions(idx, req.NumberOfPartitions); err != nil {
+		s.emitFailure(r, library.EventCodeDriveFormatMediumSetFailure, "failed to format medium", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.lib.Status())
+}
+
+// driveMAMAttributesRequest mirrors library.MAMAttributes' own
+// pointer-per-field shape: an absent/null JSON field means "leave this
+// attribute unchanged" (Go's JSON decoder leaves a nil *string pointer
+// untouched), distinct from an explicit empty string.
+type driveMAMAttributesRequest struct {
+	ApplicationVendor   *string `json:"application_vendor"`
+	ApplicationName     *string `json:"application_name"`
+	ApplicationVersion  *string `json:"application_version"`
+	UserMediumTextLabel *string `json:"user_medium_text_label"`
+}
+
+// handleSetDriveMAMAttributes is Milestone 9's counterpart of
+// handleFormatMedium above (same by-drive-index addressing/posture -
+// reachable only from internal/scsi.Drive.writeAttribute in practice).
+func (s *Server) handleSetDriveMAMAttributes(w http.ResponseWriter, r *http.Request) {
+	idx, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		s.emitFailure(r, library.EventCodeDriveMAMAttributesSetFailure, "failed to set MAM attributes", err, nil)
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req driveMAMAttributesRequest
+	if err := decodeJSON(r, &req); err != nil {
+		s.emitFailure(r, library.EventCodeDriveMAMAttributesSetFailure, "failed to set MAM attributes", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	attrs := library.MAMAttributes{
+		ApplicationVendor:   req.ApplicationVendor,
+		ApplicationName:     req.ApplicationName,
+		ApplicationVersion:  req.ApplicationVersion,
+		UserMediumTextLabel: req.UserMediumTextLabel,
+	}
+	if err := s.lib.SetDriveVolumeMAMAttributes(idx, attrs); err != nil {
+		s.emitFailure(r, library.EventCodeDriveMAMAttributesSetFailure, "failed to set MAM attributes", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.lib.Status())
+}
+
+type driveEncryptedRequest struct {
+	Encrypted bool `json:"encrypted"`
+}
+
+// handleSetDriveEncrypted is Milestone 10's counterpart of
+// handleFormatMedium/handleSetDriveMAMAttributes above (same
+// by-drive-index addressing/posture - reachable only from
+// internal/scsi.Drive.write6 in practice).
+func (s *Server) handleSetDriveEncrypted(w http.ResponseWriter, r *http.Request) {
+	idx, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		s.emitFailure(r, library.EventCodeDriveEncryptedSetFailure, "failed to set encrypted flag", err, nil)
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var req driveEncryptedRequest
+	if err := decodeJSON(r, &req); err != nil {
+		s.emitFailure(r, library.EventCodeDriveEncryptedSetFailure, "failed to set encrypted flag", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.lib.SetDriveVolumeEncrypted(idx, req.Encrypted); err != nil {
+		s.emitFailure(r, library.EventCodeDriveEncryptedSetFailure, "failed to set encrypted flag", err, map[string]string{"drive": strconv.Itoa(idx)})
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.lib.Status())
+}
+
 type volumeWriteProtectRequest struct {
 	WriteProtected bool `json:"write_protected"`
 }
