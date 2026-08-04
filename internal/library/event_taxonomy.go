@@ -61,6 +61,15 @@ const (
 	EventCodeDriveFaultSetSuccess = "DRIVE.FAULT.SET.SUCCESS"
 	EventCodeDriveFaultSetFailure = "DRIVE.FAULT.SET.FAILURE"
 
+	EventCodeDriveFormatMediumSetSuccess = "DRIVE.FORMAT_MEDIUM.SET.SUCCESS"
+	EventCodeDriveFormatMediumSetFailure = "DRIVE.FORMAT_MEDIUM.SET.FAILURE"
+
+	EventCodeDriveMAMAttributesSetSuccess = "DRIVE.MAM_ATTRIBUTES.SET.SUCCESS"
+	EventCodeDriveMAMAttributesSetFailure = "DRIVE.MAM_ATTRIBUTES.SET.FAILURE"
+
+	EventCodeDriveEncryptedSetSuccess = "DRIVE.ENCRYPTED.SET.SUCCESS"
+	EventCodeDriveEncryptedSetFailure = "DRIVE.ENCRYPTED.SET.FAILURE"
+
 	// Drive read/write/idle activity, detected by a per-drive filesystem
 	// watcher on the loaded volume's real backing file (see
 	// startDriveActivityWatcher) - edge-triggered (one event per
@@ -248,6 +257,12 @@ func legacyTypeToCode(typ, message string) string {
 		return EventCodeMediaOutsideDeleteSuccess
 	case "drive-fault":
 		return EventCodeDriveFaultSetSuccess
+	case "format-medium":
+		return EventCodeDriveFormatMediumSetSuccess
+	case "mam-attributes":
+		return EventCodeDriveMAMAttributesSetSuccess
+	case "encrypted":
+		return EventCodeDriveEncryptedSetSuccess
 	case "write-protect":
 		return EventCodeMediaVolumeWriteProtectSetSuccess
 	case "cleaning-cycle":

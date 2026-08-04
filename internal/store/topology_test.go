@@ -192,7 +192,7 @@ func TestMigrateTapeTypesSchemaRepairsKnownLegacyNames(t *testing.T) {
 
 func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	s := newTestStore(t)
-	dt := config.DriveType{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "test", Model: "LTO Ultrium 9", Generation: "LTO-9"}
+	dt := config.DriveType{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "test", Model: "LTO Ultrium 9", Generation: "LTO-9", SCSIIdentity: config.SCSIIdentityRealistic}
 	if err := s.CreateDriveType(dt); err != nil {
 		t.Fatalf("create drive type: %v", err)
 	}
@@ -200,11 +200,12 @@ func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list drive types: %v", err)
 	}
-	if len(got) != 1 || got[0].Model != "LTO Ultrium 9" || got[0].Generation != "LTO-9" {
+	if len(got) != 1 || got[0].Model != "LTO Ultrium 9" || got[0].Generation != "LTO-9" || got[0].SCSIIdentity != config.SCSIIdentityRealistic {
 		t.Fatalf("unexpected drive types: %+v", got)
 	}
 
 	dt.Model = "LTO Ultrium 9 (updated)"
+	dt.SCSIIdentity = ""
 	if err := s.UpdateDriveType("LTO-9", dt); err != nil {
 		t.Fatalf("update drive type: %v", err)
 	}
@@ -214,6 +215,9 @@ func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	}
 	if got[0].Model != "LTO Ultrium 9 (updated)" {
 		t.Fatalf("expected updated model, got %q", got[0].Model)
+	}
+	if got[0].SCSIIdentity != "" {
+		t.Fatalf("expected SCSIIdentity cleared back to default, got %q", got[0].SCSIIdentity)
 	}
 }
 
@@ -255,6 +259,112 @@ func TestMigrateDriveTypesSchemaBackfillsExistingRows(t *testing.T) {
 
 	// Re-running must be a no-op (idempotent ALTER TABLE guard).
 	if err := s.migrateDriveTypesSchema(); err != nil {
+		t.Fatalf("re-running migration should be a no-op, got: %v", err)
+	}
+}
+
+// TestMigrateDriveTypesSchemaBackfillsScsiIdentity is
+// TestMigrateDriveTypesSchemaBackfillsExistingRows' own scenario, run
+// against a database that already has model/generation (a post-that-
+// migration, pre-Milestone-5 database) to confirm scsi_identity backfills
+// independently of the other two columns, not just alongside a
+// from-scratch legacy row.
+func TestMigrateDriveTypesSchemaBackfillsScsiIdentity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE drive_types (name TEXT PRIMARY KEY, speed TEXT NOT NULL, capacity TEXT NOT NULL, description TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', generation TEXT NOT NULL DEFAULT '')`); err != nil {
+		t.Fatalf("create pre-Milestone-5 schema: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO drive_types (name, speed, capacity, description, model, generation) VALUES ('LTO-9', '400MB/s', '18TB', 'pre-existing row', 'LTO Ultrium 9', 'LTO-9')`); err != nil {
+		t.Fatalf("seed pre-existing row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s := New(path)
+	if err := s.Open(); err != nil {
+		t.Fatalf("open store over pre-Milestone-5 schema: %v", err)
+	}
+	defer s.Close()
+
+	dts, err := s.ListDriveTypes()
+	if err != nil {
+		t.Fatalf("list drive types: %v", err)
+	}
+	if len(dts) != 1 || dts[0].Generation != "LTO-9" || dts[0].SCSIIdentity != "" {
+		t.Fatalf("expected pre-existing row to survive with Generation intact and blank SCSIIdentity, got %+v", dts)
+	}
+}
+
+func TestLogicalLibraryChangerModelCRUDRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	lib := config.LogicalLibraryConfig{Name: "Library1", Color: "#ff0000", Drives: []int{0}, Magazines: []string{"mag1"}, ChangerModel: config.ChangerModelRealistic}
+	if err := s.CreateLogicalLibrary(lib); err != nil {
+		t.Fatalf("create logical library: %v", err)
+	}
+	got, err := s.ListLogicalLibraries()
+	if err != nil {
+		t.Fatalf("list logical libraries: %v", err)
+	}
+	if len(got) != 1 || got[0].ChangerModel != config.ChangerModelRealistic {
+		t.Fatalf("unexpected logical libraries: %+v", got)
+	}
+
+	lib.ChangerModel = ""
+	if err := s.UpdateLogicalLibrary("Library1", lib); err != nil {
+		t.Fatalf("update logical library: %v", err)
+	}
+	got, err = s.ListLogicalLibraries()
+	if err != nil {
+		t.Fatalf("list logical libraries after update: %v", err)
+	}
+	if got[0].ChangerModel != "" {
+		t.Fatalf("expected ChangerModel cleared back to default, got %q", got[0].ChangerModel)
+	}
+}
+
+// TestMigrateLogicalLibrariesSchemaBackfillsChangerModel mirrors
+// TestMigrateDriveTypesSchemaBackfillsExistingRows: a bare (name, color)
+// row from before Milestone 5 must survive Open() with a blank
+// changer_model, not an error.
+func TestMigrateLogicalLibrariesSchemaBackfillsChangerModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE logical_libraries (name TEXT PRIMARY KEY, color TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO logical_libraries (name, color) VALUES ('Library1', '#ff0000')`); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s := New(path)
+	if err := s.Open(); err != nil {
+		t.Fatalf("open store over legacy schema: %v", err)
+	}
+	defer s.Close()
+
+	libs, err := s.ListLogicalLibraries()
+	if err != nil {
+		t.Fatalf("list logical libraries: %v", err)
+	}
+	if len(libs) != 1 || libs[0].Name != "Library1" || libs[0].ChangerModel != "" {
+		t.Fatalf("expected legacy row to survive migration with blank changer_model, got %+v", libs)
+	}
+
+	// Re-running must be a no-op (idempotent ALTER TABLE guard).
+	if err := s.migrateLogicalLibrariesSchema(); err != nil {
 		t.Fatalf("re-running migration should be a no-op, got: %v", err)
 	}
 }

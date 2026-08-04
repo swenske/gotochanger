@@ -1500,6 +1500,26 @@ function wireWriteProtectSwitch(card, barcode, writeProtected) {
   });
 }
 
+// Builds a hover title="..." string summarizing a volume's kernel-mode-only
+// fields (Milestones 8-10: multi-partition, MAM attributes, encryption) -
+// secondary, verbose detail that doesn't warrant its own always-visible
+// badge/panel, following the same "hover for detail" posture
+// applyCleaningTooltip already uses elsewhere on these same cards. Returns
+// "" when a volume carries none of this metadata (the common case for
+// userspace/file-mode volumes), so callers can omit the attribute entirely.
+function cartridgeDetailTitle(vol) {
+  if (!vol) return "";
+  const lines = [];
+  if (vol.number_of_partitions > 1) lines.push(`Partitions: ${vol.number_of_partitions}`);
+  if (vol.encrypted) lines.push("Encrypted: yes");
+  if (vol.load_count) lines.push(`Load count: ${vol.load_count}`);
+  if (vol.application_vendor) lines.push(`Application vendor: ${vol.application_vendor}`);
+  if (vol.application_name) lines.push(`Application name: ${vol.application_name}`);
+  if (vol.application_version) lines.push(`Application version: ${vol.application_version}`);
+  if (vol.user_medium_text_label) lines.push(`Medium text label: ${vol.user_medium_text_label}`);
+  return lines.join("\n");
+}
+
 // Returns an HTML string (not a DOM node) wrapping a barcode SVG (bars +
 // baked-in text, see above) plus an optional tape-type/family badge and
 // write-protect switch - a plain string so it drops straight into the
@@ -1507,12 +1527,22 @@ function wireWriteProtectSwitch(card, barcode, writeProtected) {
 // below, with no need to restructure any render function to
 // appendChild-style. writeProtected is `undefined` for cleaning cartridges
 // (no write-protect concept for those - see writeProtectSwitchHTML), which
-// omits the switch entirely rather than rendering it disabled.
-function cartridgeLabelHTML(barcode, tapeSetName, writeProtected, editable) {
+// omits the switch entirely rather than rendering it disabled. vol is the
+// optional full Volume object (only NumberOfPartitions/Encrypted/LoadCount/
+// MAM fields are read off it, via cartridgeDetailTitle above plus the
+// partitions/encrypted badges below) - omitted by callers that don't have
+// one handy (e.g. the cleaning-tapes pool, whose cartridges never carry
+// this metadata).
+function cartridgeLabelHTML(barcode, tapeSetName, writeProtected, editable, vol) {
   const family = tapeSetName ? state.tapeSetFamily[tapeSetName] : null;
-  const badge = family ? `<div class="cart-meta"><span class="cart-badge">${family}</span></div>` : "";
+  const badges = [];
+  if (family) badges.push(`<span class="cart-badge">${family}</span>`);
+  if (vol && vol.number_of_partitions > 1) badges.push(`<span class="cart-badge">${vol.number_of_partitions}P</span>`);
+  if (vol && vol.encrypted) badges.push(`<span class="cart-badge">Encrypted</span>`);
+  const badge = badges.length ? `<div class="cart-meta">${badges.join("")}</div>` : "";
   const wp = writeProtected !== undefined ? writeProtectSwitchHTML(writeProtected, editable) : "";
-  return `<div class="cart-shell"><div class="cart-barcode-row"><div class="cart-barcode">${renderBarcodeSVG(barcode)}</div>${wp}</div>${badge}</div>`;
+  const title = cartridgeDetailTitle(vol);
+  return `<div class="cart-shell"${title ? ` title="${title}"` : ""}><div class="cart-barcode-row"><div class="cart-barcode">${renderBarcodeSVG(barcode)}</div>${wp}</div>${badge}</div>`;
 }
 
 // applyCleaningTooltip sets a live "cleaning cycles left: N" tooltip
@@ -1870,7 +1900,7 @@ function renderOutside(vols) {
     const card = document.createElement("div");
     card.className = "card";
     const cleaningNote = v.cleaning ? ` <span class="cart-badge">cleaning: ${v.cleaning_state || "available"}</span>` : "";
-    card.innerHTML = `${cartridgeLabelHTML(v.barcode, v.tape_set, v.cleaning ? undefined : v.write_protected, canOperate)}<div>${fmtBytes(v.written_bytes)} / ${fmtBytes(v.capacity_bytes)}${v.full ? ' <span class="full">FULL</span>' : ""}${cleaningNote}</div>`;
+    card.innerHTML = `${cartridgeLabelHTML(v.barcode, v.tape_set, v.cleaning ? undefined : v.write_protected, canOperate, v)}<div>${fmtBytes(v.written_bytes)} / ${fmtBytes(v.capacity_bytes)}${v.full ? ' <span class="full">FULL</span>' : ""}${cleaningNote}</div>`;
     wireWriteProtectSwitch(card, v.barcode, v.write_protected);
     if (canOperate) {
       // Bulk-unload path: an open magazine's occupied-slot cards
@@ -2264,7 +2294,7 @@ function renderDrives(drives, maps, status) {
       // editable=false unconditionally: a mounted tape's write-protect tab
       // is never reachable (it's sealed inside the drive) - see
       // Library.findAccessibleVolumeForWriteProtectLocked.
-      html += cartridgeLabelHTML(d.volume.barcode, d.volume.tape_set, d.volume.cleaning ? undefined : d.volume.write_protected, false);
+      html += cartridgeLabelHTML(d.volume.barcode, d.volume.tape_set, d.volume.cleaning ? undefined : d.volume.write_protected, false, d.volume);
       html += `<div>${fmtBytes(d.volume.written_bytes)} / ${fmtBytes(d.volume.capacity_bytes)}${d.volume.full ? ' <span class="full">FULL</span>' : ""}</div>`;
     } else {
       html += `<div>empty</div>`;
@@ -2481,7 +2511,7 @@ function renderIOSlots(ioslots, status, maps) {
       // Only reachable to toggle while the mailbox door is open, matching
       // Library.findAccessibleVolumeForWriteProtectLocked's rule - a real
       // tab can't be flipped while sealed behind a closed door.
-      html += io.volume ? cartridgeLabelHTML(io.volume.barcode, io.volume.tape_set, io.volume.cleaning ? undefined : io.volume.write_protected, canOperate && ioOpen) : `<div>empty</div>`;
+      html += io.volume ? cartridgeLabelHTML(io.volume.barcode, io.volume.tape_set, io.volume.cleaning ? undefined : io.volume.write_protected, canOperate && ioOpen, io.volume) : `<div>empty</div>`;
       card.innerHTML = html;
       if (io.volume) wireWriteProtectSwitch(card, io.volume.barcode, io.volume.write_protected);
       if (canOperate) {
@@ -2693,7 +2723,7 @@ function renderSlots(slots, status, maps) {
       // Only reachable to toggle while the magazine door is open, matching
       // Library.findAccessibleVolumeForWriteProtectLocked's rule - a real
       // tab can't be flipped while sealed behind a closed door.
-      html += s.volume ? cartridgeLabelHTML(s.volume.barcode, s.volume.tape_set, s.volume.cleaning ? undefined : s.volume.write_protected, canOperate && stOpen) : `<div>empty</div>`;
+      html += s.volume ? cartridgeLabelHTML(s.volume.barcode, s.volume.tape_set, s.volume.cleaning ? undefined : s.volume.write_protected, canOperate && stOpen, s.volume) : `<div>empty</div>`;
       card.innerHTML = html;
       if (s.volume) wireWriteProtectSwitch(card, s.volume.barcode, s.volume.write_protected);
       // Bulk load/unload drag paths, additive alongside the Move/Load/
@@ -3547,13 +3577,24 @@ document.getElementById("resetForm").addEventListener("submit", async (e) => {
 
 // ==================== Admin: Drive Types ====================
 
+// SCSIIdentity is opt-in per config.DriveType.SCSIIdentity - only
+// "realistic" (config.SCSIIdentityRealistic) has an effect, and only for
+// generations scsi.DriveFamilies defines a realistic profile for (LTO-8/
+// LTO-9 today); any other generation silently keeps the default identity,
+// same as an unrecognized Generation string does. See docs/guide/
+// 04-kernel-mode.md's "Reporting a real vendor/product SCSI identity".
+const scsiIdentityOptions = [
+  { value: "", label: "Default (GOTOCHNG)" },
+  { value: "realistic", label: "Realistic (LTO-8/LTO-9 only)" },
+];
+
 async function loadDriveTypes() {
   const dts = await api("/api/v1/drive-types");
   const tbody = document.getElementById("driveTypesTable");
   tbody.innerHTML = "";
   for (const dt of dts || []) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${dt.name}</td><td>${dt.model || ""}</td><td>${dt.generation || ""}</td><td>${dt.speed}</td><td>${dt.capacity}</td><td>${dt.description}</td>`;
+    tr.innerHTML = `<td>${dt.name}</td><td>${dt.model || ""}</td><td>${dt.generation || ""}</td><td>${dt.speed}</td><td>${dt.capacity}</td><td>${dt.description}</td><td>${dt.scsi_identity === "realistic" ? "Realistic" : "Default"}</td>`;
     const td = document.createElement("td");
     td.appendChild(mkBtn("Edit", async () => {
       const v = await openDialog("Edit drive type " + dt.name, [
@@ -3562,6 +3603,7 @@ async function loadDriveTypes() {
         { name: "speed", label: "Speed", value: dt.speed },
         { name: "capacity", label: "Capacity", value: dt.capacity },
         { name: "description", label: "Description", value: dt.description },
+        { name: "scsi_identity", label: "SCSI Identity", type: "select", options: scsiIdentityOptions, value: dt.scsi_identity || "" },
       ]);
       if (!v) return;
       await api(`/api/v1/drive-types/${encodeURIComponent(dt.name)}`, { method: "PUT", body: JSON.stringify({ name: dt.name, ...v }) });
@@ -3585,6 +3627,7 @@ document.getElementById("newDriveTypeBtn").addEventListener("click", async () =>
     { name: "speed", label: "Speed", placeholder: "300MB/s" },
     { name: "capacity", label: "Capacity", placeholder: "12TB" },
     { name: "description", label: "Description" },
+    { name: "scsi_identity", label: "SCSI Identity", type: "select", options: scsiIdentityOptions },
   ]);
   if (!v || !v.name) return;
   try {
@@ -4230,6 +4273,16 @@ function logicalLibraryAssignmentKinds(picker, owners, current) {
   ];
 }
 
+// ChangerModel is config.LogicalLibraryConfig's own per-library counterpart
+// to scsiIdentityOptions above: "realistic" (config.ChangerModelRealistic)
+// reports scsi.RealisticChangerIdentity (STK SL150), only consulted by a
+// gotochanger-tcmud instance scoped to this specific logical library (see
+// docs/guide/04-kernel-mode.md).
+const changerModelOptions = [
+  { value: "", label: "Default (GOTOCHNG)" },
+  { value: "realistic", label: "Realistic (STK SL150)" },
+];
+
 async function loadLogicalLibraries() {
   // wizard state is the only place operational_mode is exposed today
   // (see api.WizardResponse) - fetched here purely to pick the right
@@ -4246,7 +4299,7 @@ async function loadLogicalLibraries() {
     // gotochanger-tcmud@<lib.name> isn't currently running.
     const report = (kernelModeDevices || {})[lib.name];
     const scsiPath = report ? report.changer_stable || report.changer || "-" : "-";
-    tr.innerHTML = `<td><span style="display:inline-block;width:0.7em;height:0.7em;border-radius:50%;background:${lib.color || "#4285F4"};margin-right:0.4em;"></span>${lib.name}</td><td>${(lib.drives || []).length}</td><td>${(lib.slots || []).length}</td><td>${mailboxCount}</td><td>${scsiPath}</td>`;
+    tr.innerHTML = `<td><span style="display:inline-block;width:0.7em;height:0.7em;border-radius:50%;background:${lib.color || "#4285F4"};margin-right:0.4em;"></span>${lib.name}</td><td>${(lib.drives || []).length}</td><td>${(lib.slots || []).length}</td><td>${mailboxCount}</td><td>${scsiPath}</td><td>${lib.changer_model === "realistic" ? "Realistic" : "Default"}</td>`;
     const td = document.createElement("td");
     td.appendChild(mkBtn("Bareos Config", () => {
       showBareosConfig(lib, status.name, operationalMode, report);
@@ -4264,12 +4317,13 @@ async function loadLogicalLibraries() {
       const kinds = logicalLibraryAssignmentKinds(picker, owners, logicalLibraryMembership(lib));
       const v = await openDialog("Edit logical library " + lib.name, [
         { name: "color", label: "Color", type: "color", value: lib.color || "#4285F4" },
+        { name: "changer_model", label: "Changer Model", type: "select", options: changerModelOptions, value: lib.changer_model || "" },
         { name: "membership", type: "assignmentboard", rightLabel: lib.name, kinds },
       ]);
       if (!v) return;
       await api(`/api/v1/logical-libraries/${encodeURIComponent(lib.name)}`, {
         method: "PUT",
-        body: JSON.stringify({ name: lib.name, color: v.color, ...v.membership }),
+        body: JSON.stringify({ name: lib.name, color: v.color, changer_model: v.changer_model, ...v.membership }),
       });
       loadLogicalLibraries();
     }));
@@ -4290,13 +4344,14 @@ document.getElementById("newLogicalLibBtn").addEventListener("click", async () =
   const v = await openDialog("New logical library", [
     { name: "name", label: "Name" },
     { name: "color", label: "Color", type: "color", value: nextLogicalLibraryColor(picker.logicalLibraries.length) },
+    { name: "changer_model", label: "Changer Model", type: "select", options: changerModelOptions },
     { name: "membership", type: "assignmentboard", rightLabel: "New library", kinds },
   ]);
   if (!v || !v.name) return;
   try {
     await api("/api/v1/logical-libraries", {
       method: "POST",
-      body: JSON.stringify({ name: v.name, color: v.color, ...v.membership }),
+      body: JSON.stringify({ name: v.name, color: v.color, changer_model: v.changer_model, ...v.membership }),
     });
     loadLogicalLibraries();
   } catch (e) {
@@ -4314,7 +4369,7 @@ function renderOffsite(vols) {
   for (const v of vols || []) {
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `${cartridgeLabelHTML(v.barcode, v.tape_set, v.cleaning ? undefined : v.write_protected, canOperate)}<div>${fmtBytes(v.written_bytes)} / ${fmtBytes(v.capacity_bytes)}</div>`;
+    card.innerHTML = `${cartridgeLabelHTML(v.barcode, v.tape_set, v.cleaning ? undefined : v.write_protected, canOperate, v)}<div>${fmtBytes(v.written_bytes)} / ${fmtBytes(v.capacity_bytes)}</div>`;
     wireWriteProtectSwitch(card, v.barcode, v.write_protected);
     const actions = document.createElement("div");
     actions.className = "actions";

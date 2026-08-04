@@ -185,6 +185,103 @@ func TestSetVolumeWriteProtectAccessibleInOpenMailbox(t *testing.T) {
 	}
 }
 
+func TestSetDriveVolumeNumberOfPartitions(t *testing.T) {
+	lib := newTestLibrary(t)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if err := lib.SetDriveVolumeNumberOfPartitions(0, 2); err != nil {
+		t.Fatalf("set number of partitions: %v", err)
+	}
+	if lib.drives[0].Volume.NumberOfPartitions != 2 {
+		t.Errorf("NumberOfPartitions = %d, want 2", lib.drives[0].Volume.NumberOfPartitions)
+	}
+}
+
+func TestSetDriveVolumeNumberOfPartitionsEmptyDrive(t *testing.T) {
+	lib := newTestLibrary(t)
+	if err := lib.SetDriveVolumeNumberOfPartitions(0, 2); !errors.Is(err, ErrEmpty) {
+		t.Fatalf("err = %v, want ErrEmpty", err)
+	}
+}
+
+func TestSetDriveVolumeNumberOfPartitionsUnknownDrive(t *testing.T) {
+	lib := newTestLibrary(t)
+	if err := lib.SetDriveVolumeNumberOfPartitions(99, 2); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetDriveVolumeMAMAttributes(t *testing.T) {
+	lib := newTestLibrary(t)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	fromAddr := lib.slots[0].Address
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	vendor := "ACME"
+	label := "My Label"
+	if err := lib.SetDriveVolumeMAMAttributes(0, MAMAttributes{ApplicationVendor: &vendor, UserMediumTextLabel: &label}); err != nil {
+		t.Fatalf("set MAM attributes: %v", err)
+	}
+	vol := lib.drives[0].Volume
+	if vol.ApplicationVendor != "ACME" {
+		t.Errorf("ApplicationVendor = %q, want ACME", vol.ApplicationVendor)
+	}
+	if vol.UserMediumTextLabel != "My Label" {
+		t.Errorf("UserMediumTextLabel = %q, want %q", vol.UserMediumTextLabel, "My Label")
+	}
+
+	// A nil field must leave the corresponding attribute untouched - a
+	// second call setting only ApplicationName must not clear Vendor/
+	// Label set above.
+	name := "gotochanger-test"
+	if err := lib.SetDriveVolumeMAMAttributes(0, MAMAttributes{ApplicationName: &name}); err != nil {
+		t.Fatalf("set MAM attributes (2nd call): %v", err)
+	}
+	if vol.ApplicationVendor != "ACME" {
+		t.Errorf("ApplicationVendor changed to %q after an unrelated call, want unchanged ACME", vol.ApplicationVendor)
+	}
+	if vol.ApplicationName != "gotochanger-test" {
+		t.Errorf("ApplicationName = %q, want gotochanger-test", vol.ApplicationName)
+	}
+}
+
+func TestSetDriveVolumeMAMAttributesEmptyDrive(t *testing.T) {
+	lib := newTestLibrary(t)
+	if err := lib.SetDriveVolumeMAMAttributes(0, MAMAttributes{}); !errors.Is(err, ErrEmpty) {
+		t.Fatalf("err = %v, want ErrEmpty", err)
+	}
+}
+
+func TestLoadIncrementsVolumeLoadCount(t *testing.T) {
+	lib := newTestLibrary(t)
+	placeVolumeInFirstSlot(lib, "VOLA0001")
+	vol := lib.slots[0].Volume
+	fromAddr := lib.slots[0].Address
+
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if vol.LoadCount != 1 {
+		t.Errorf("LoadCount = %d, want 1 after first load", vol.LoadCount)
+	}
+
+	if err := lib.Unload(0, ElementRef{Kind: KindSlot, Address: fromAddr}, ""); err != nil {
+		t.Fatalf("unload: %v", err)
+	}
+	if err := lib.Load(ElementRef{Kind: KindSlot, Address: fromAddr}, 0, ""); err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+	if vol.LoadCount != 2 {
+		t.Errorf("LoadCount = %d, want 2 after second load", vol.LoadCount)
+	}
+}
+
 func TestMoveAndLoadIgnoreWriteProtected(t *testing.T) {
 	lib := newTestLibrary(t)
 	placeVolumeInFirstSlot(lib, "VOLA0001")

@@ -56,6 +56,12 @@ type LogicalLibrary struct {
 	Slots   []*Slot   `json:"slots"`
 	IOSlots []*IOSlot `json:"io_slots"`
 	Color   string    `json:"color"`
+
+	// ChangerModel mirrors config.LogicalLibraryConfig.ChangerModel - see
+	// that field's own doc comment. Plain data, copied through
+	// resolveLogicalLibraryLocked/snapshotLogicalLibLocked exactly like
+	// Color already is; nothing in internal/library itself acts on it.
+	ChangerModel string `json:"changer_model,omitempty"`
 }
 
 // Library is the concurrency-safe in-memory model of the simulated
@@ -419,11 +425,12 @@ func (l *Library) resolveCleaningLocked(cs config.CleaningSettings) {
 // too). Callers must hold l.mu.
 func (l *Library) resolveLogicalLibraryLocked(libCfg config.LogicalLibraryConfig) *LogicalLibrary {
 	lib := &LogicalLibrary{
-		Name:    libCfg.Name,
-		Color:   libCfg.Color,
-		Drives:  make([]*Drive, 0),
-		Slots:   make([]*Slot, 0),
-		IOSlots: make([]*IOSlot, 0),
+		Name:         libCfg.Name,
+		Color:        libCfg.Color,
+		ChangerModel: libCfg.ChangerModel,
+		Drives:       make([]*Drive, 0),
+		Slots:        make([]*Slot, 0),
+		IOSlots:      make([]*IOSlot, 0),
 	}
 	for _, driveIdx := range libCfg.Drives {
 		if driveIdx >= 0 && driveIdx < len(l.drives) {
@@ -1144,11 +1151,12 @@ func (l *Library) snapshotLogicalLibsLocked(byAddr map[int]*Slot, byIOAddr map[i
 
 func (l *Library) snapshotLogicalLibLocked(lib *LogicalLibrary, byAddr map[int]*Slot, byIOAddr map[int]*IOSlot, byDriveIndex map[int]*Drive) *LogicalLibrary {
 	c := &LogicalLibrary{
-		Name:    lib.Name,
-		Color:   lib.Color,
-		Drives:  make([]*Drive, 0, len(lib.Drives)),
-		Slots:   make([]*Slot, 0, len(lib.Slots)),
-		IOSlots: make([]*IOSlot, 0, len(lib.IOSlots)),
+		Name:         lib.Name,
+		Color:        lib.Color,
+		ChangerModel: lib.ChangerModel,
+		Drives:       make([]*Drive, 0, len(lib.Drives)),
+		Slots:        make([]*Slot, 0, len(lib.Slots)),
+		IOSlots:      make([]*IOSlot, 0, len(lib.IOSlots)),
 	}
 	for _, d := range lib.Drives {
 		if cd, ok := byDriveIndex[d.Index]; ok {
@@ -2802,6 +2810,11 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	origin := from
 	drive.Origin = &origin
 	l.startDriveWatcherLocked(driveIndex, vol.Path)
+	// LoadCount (Milestone 8's MAM READ ATTRIBUTE support) counts every
+	// real mount, cleaning cartridge or not - unlike MountsSinceCleaning
+	// below, which deliberately excludes cleaning tapes (it's counting
+	// towards a cleaning threshold, not overall mount history).
+	vol.LoadCount++
 
 	if cleaning {
 		vol.CleaningState = CleaningTapeInUse
@@ -3206,6 +3219,94 @@ func (l *Library) SetDriveFault(driveIndex int, fault bool) error {
 		msg = "raised"
 	}
 	l.emit("drive-fault", fmt.Sprintf("%s fault on drive %d", msg, driveIndex), map[string]string{"drive": fmt.Sprint(driveIndex)})
+	l.saveLocked()
+	return nil
+}
+
+// SetDriveVolumeNumberOfPartitions sets the number of SSC partitions
+// (Milestone 8) the volume currently mounted in driveIndex is formatted
+// with - the real-kernel-mode counterpart of a SCSI FORMAT MEDIUM
+// command (see internal/scsi.Drive.formatMedium, the only caller).
+// Addressed by drive, not barcode, mirroring SetDriveFault above rather
+// than SetVolumeWriteProtect below: a real FORMAT MEDIUM always targets
+// whichever cartridge a specific drive currently has mounted, the same
+// reasoning a drive fault is addressed by drive rather than by element.
+// Unlike SetVolumeWriteProtect, there is no "physically accessible"
+// restriction to check - a drive's own head/servo is exactly what
+// performs a real FORMAT MEDIUM, so requiring the volume to be mounted
+// (not requiring it to be un-mounted) is the correct constraint here.
+func (l *Library) SetDriveVolumeNumberOfPartitions(driveIndex, n int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	d, err := l.findDrive(driveIndex)
+	if err != nil {
+		return err
+	}
+	if d.Volume == nil {
+		return fmt.Errorf("drive %d: %w", driveIndex, ErrEmpty)
+	}
+	d.Volume.NumberOfPartitions = n
+	l.emit("format-medium", fmt.Sprintf("formatted volume %q on drive %d with %d partition(s)", d.Volume.Barcode, driveIndex, n), map[string]string{"drive": fmt.Sprint(driveIndex), "volume": d.Volume.Barcode, "partitions": fmt.Sprint(n)})
+	l.saveLocked()
+	return nil
+}
+
+// SetDriveVolumeMAMAttributes sets whichever mutable MAM attributes
+// (Milestone 9) attrs' non-nil fields carry on the volume currently
+// mounted in driveIndex - the real-kernel-mode counterpart of a SCSI
+// WRITE ATTRIBUTE command (see internal/scsi.Drive.writeAttribute, the
+// only caller), addressed by drive for the same reason
+// SetDriveVolumeNumberOfPartitions is (a real WRITE ATTRIBUTE always
+// targets whichever cartridge a specific drive currently has mounted).
+func (l *Library) SetDriveVolumeMAMAttributes(driveIndex int, attrs MAMAttributes) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	d, err := l.findDrive(driveIndex)
+	if err != nil {
+		return err
+	}
+	if d.Volume == nil {
+		return fmt.Errorf("drive %d: %w", driveIndex, ErrEmpty)
+	}
+	if attrs.ApplicationVendor != nil {
+		d.Volume.ApplicationVendor = *attrs.ApplicationVendor
+	}
+	if attrs.ApplicationName != nil {
+		d.Volume.ApplicationName = *attrs.ApplicationName
+	}
+	if attrs.ApplicationVersion != nil {
+		d.Volume.ApplicationVersion = *attrs.ApplicationVersion
+	}
+	if attrs.UserMediumTextLabel != nil {
+		d.Volume.UserMediumTextLabel = *attrs.UserMediumTextLabel
+	}
+	l.emit("mam-attributes", fmt.Sprintf("updated MAM attributes on volume %q on drive %d", d.Volume.Barcode, driveIndex), map[string]string{"drive": fmt.Sprint(driveIndex), "volume": d.Volume.Barcode})
+	l.saveLocked()
+	return nil
+}
+
+// SetDriveVolumeEncrypted records whether the volume currently mounted in
+// driveIndex's recorded data is encrypted (Milestone 10) - called by
+// internal/scsi.Drive.write6 at the start of each fresh recording pass
+// (BOT), reflecting whatever SECURITY PROTOCOL OUT last negotiated for
+// that drive session. Same by-drive-index addressing/posture as
+// SetDriveVolumeNumberOfPartitions/SetDriveVolumeMAMAttributes.
+func (l *Library) SetDriveVolumeEncrypted(driveIndex int, encrypted bool) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	d, err := l.findDrive(driveIndex)
+	if err != nil {
+		return err
+	}
+	if d.Volume == nil {
+		return fmt.Errorf("drive %d: %w", driveIndex, ErrEmpty)
+	}
+	d.Volume.Encrypted = encrypted
+	msg := "cleared"
+	if encrypted {
+		msg = "set"
+	}
+	l.emit("encrypted", fmt.Sprintf("%s encrypted flag on volume %q on drive %d", msg, d.Volume.Barcode, driveIndex), map[string]string{"drive": fmt.Sprint(driveIndex), "volume": d.Volume.Barcode})
 	l.saveLocked()
 	return nil
 }

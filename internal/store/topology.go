@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS drive_types (
 	capacity TEXT NOT NULL,
 	description TEXT NOT NULL,
 	model TEXT NOT NULL DEFAULT '',
-	generation TEXT NOT NULL DEFAULT ''
+	generation TEXT NOT NULL DEFAULT '',
+	scsi_identity TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS tape_types (
 	name TEXT PRIMARY KEY,
@@ -50,7 +51,8 @@ CREATE TABLE IF NOT EXISTS drive_devices (
 );
 CREATE TABLE IF NOT EXISTS logical_libraries (
 	name TEXT PRIMARY KEY,
-	color TEXT NOT NULL
+	color TEXT NOT NULL,
+	changer_model TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS logical_library_drives (
 	logical_library TEXT NOT NULL REFERENCES logical_libraries(name) ON DELETE CASCADE,
@@ -89,6 +91,9 @@ func (s *Store) initTopologySchema() error {
 		return err
 	}
 	if err := s.migrateDriveDevicesSchema(); err != nil {
+		return err
+	}
+	if err := s.migrateLogicalLibrariesSchema(); err != nil {
 		return err
 	}
 	if err := s.migrateMailboxesPINSchema(); err != nil {
@@ -268,13 +273,33 @@ func (s *Store) migrateDriveTypesSchema() error {
 		return fmt.Errorf("inspect drive_types schema: %w", err)
 	}
 	for col, ddl := range map[string]string{
-		"model":      `ALTER TABLE drive_types ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
-		"generation": `ALTER TABLE drive_types ADD COLUMN generation TEXT NOT NULL DEFAULT ''`,
+		"model":         `ALTER TABLE drive_types ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		"generation":    `ALTER TABLE drive_types ADD COLUMN generation TEXT NOT NULL DEFAULT ''`,
+		"scsi_identity": `ALTER TABLE drive_types ADD COLUMN scsi_identity TEXT NOT NULL DEFAULT ''`,
 	} {
 		if !cols[col] {
 			if _, err := s.db.Exec(ddl); err != nil {
 				return fmt.Errorf("add drive_types.%s: %w", col, err)
 			}
+		}
+	}
+	return nil
+}
+
+// migrateLogicalLibrariesSchema adds the changer_model column (Milestone
+// 5) to a pre-existing logical_libraries table - idempotent, same
+// "blank on a pre-existing row is simply blank, not silently wrong"
+// posture as migrateDriveTypesSchema above (see its own doc comment):
+// changer_model is opt-in display/identity data, not something a blank
+// value could misrepresent.
+func (s *Store) migrateLogicalLibrariesSchema() error {
+	cols, err := s.tableColumns("logical_libraries")
+	if err != nil {
+		return fmt.Errorf("inspect logical_libraries schema: %w", err)
+	}
+	if !cols["changer_model"] {
+		if _, err := s.db.Exec(`ALTER TABLE logical_libraries ADD COLUMN changer_model TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add logical_libraries.changer_model: %w", err)
 		}
 	}
 	return nil
@@ -356,8 +381,8 @@ func (s *Store) SeedDefaults() error {
 	}
 	if n == 0 {
 		for _, dt := range config.DefaultDriveTypes() {
-			if _, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation) VALUES (?, ?, ?, ?, ?, ?)",
-				dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation); err != nil {
+			if _, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity); err != nil {
 				return fmt.Errorf("seed drive type %s: %w", dt.Name, err)
 			}
 		}
@@ -646,7 +671,7 @@ func (s *Store) SetCleaningSettings(cs config.CleaningSettings) error {
 // ---- drive types ----
 
 func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
-	rows, err := s.db.Query("SELECT name, speed, capacity, description, model, generation FROM drive_types ORDER BY name")
+	rows, err := s.db.Query("SELECT name, speed, capacity, description, model, generation, scsi_identity FROM drive_types ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("list drive types: %w", err)
 	}
@@ -654,7 +679,7 @@ func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
 	var out []config.DriveType
 	for rows.Next() {
 		var dt config.DriveType
-		if err := rows.Scan(&dt.Name, &dt.Speed, &dt.Capacity, &dt.Description, &dt.Model, &dt.Generation); err != nil {
+		if err := rows.Scan(&dt.Name, &dt.Speed, &dt.Capacity, &dt.Description, &dt.Model, &dt.Generation, &dt.SCSIIdentity); err != nil {
 			return nil, fmt.Errorf("scan drive type: %w", err)
 		}
 		out = append(out, dt)
@@ -664,8 +689,8 @@ func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
 
 // CreateDriveType inserts a new drive type, rejecting a duplicate name.
 func (s *Store) CreateDriveType(dt config.DriveType) error {
-	_, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation) VALUES (?, ?, ?, ?, ?, ?)",
-		dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation)
+	_, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity)
 	if err != nil {
 		return fmt.Errorf("drive type %s already exists or is invalid: %w", dt.Name, err)
 	}
@@ -674,8 +699,8 @@ func (s *Store) CreateDriveType(dt config.DriveType) error {
 
 // UpdateDriveType replaces an existing drive type's fields.
 func (s *Store) UpdateDriveType(name string, dt config.DriveType) error {
-	res, err := s.db.Exec("UPDATE drive_types SET speed = ?, capacity = ?, description = ?, model = ?, generation = ? WHERE name = ?",
-		dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, name)
+	res, err := s.db.Exec("UPDATE drive_types SET speed = ?, capacity = ?, description = ?, model = ?, generation = ?, scsi_identity = ? WHERE name = ?",
+		dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity, name)
 	if err != nil {
 		return fmt.Errorf("update drive type %s: %w", name, err)
 	}
@@ -1013,7 +1038,7 @@ func nullIfEmpty(s string) any {
 // ---- logical libraries ----
 
 func (s *Store) ListLogicalLibraries() ([]config.LogicalLibraryConfig, error) {
-	rows, err := s.db.Query("SELECT name, color FROM logical_libraries ORDER BY name")
+	rows, err := s.db.Query("SELECT name, color, changer_model FROM logical_libraries ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("list logical libraries: %w", err)
 	}
@@ -1021,7 +1046,7 @@ func (s *Store) ListLogicalLibraries() ([]config.LogicalLibraryConfig, error) {
 	var out []config.LogicalLibraryConfig
 	for rows.Next() {
 		var lib config.LogicalLibraryConfig
-		if err := rows.Scan(&lib.Name, &lib.Color); err != nil {
+		if err := rows.Scan(&lib.Name, &lib.Color, &lib.ChangerModel); err != nil {
 			return nil, fmt.Errorf("scan logical library: %w", err)
 		}
 		out = append(out, lib)
@@ -1085,11 +1110,11 @@ func (s *Store) queryStringColumn(query, arg string) ([]string, error) {
 // fully replaces its junction rows, in the given transaction.
 func saveLogicalLibraryTx(tx *sql.Tx, lib config.LogicalLibraryConfig, isCreate bool) error {
 	if isCreate {
-		if _, err := tx.Exec("INSERT INTO logical_libraries (name, color) VALUES (?, ?)", lib.Name, lib.Color); err != nil {
+		if _, err := tx.Exec("INSERT INTO logical_libraries (name, color, changer_model) VALUES (?, ?, ?)", lib.Name, lib.Color, lib.ChangerModel); err != nil {
 			return fmt.Errorf("logical library %s already exists or is invalid: %w", lib.Name, err)
 		}
 	} else {
-		if _, err := tx.Exec("UPDATE logical_libraries SET color = ? WHERE name = ?", lib.Color, lib.Name); err != nil {
+		if _, err := tx.Exec("UPDATE logical_libraries SET color = ?, changer_model = ? WHERE name = ?", lib.Color, lib.ChangerModel, lib.Name); err != nil {
 			return fmt.Errorf("update logical library %s: %w", lib.Name, err)
 		}
 	}
@@ -1144,7 +1169,7 @@ func (s *Store) UpdateLogicalLibrary(name string, lib config.LogicalLibraryConfi
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec("UPDATE logical_libraries SET color = ? WHERE name = ?", lib.Color, name)
+	res, err := tx.Exec("UPDATE logical_libraries SET color = ?, changer_model = ? WHERE name = ?", lib.Color, lib.ChangerModel, name)
 	if err != nil {
 		return fmt.Errorf("update logical library %s: %w", name, err)
 	}

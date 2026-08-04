@@ -42,6 +42,73 @@ type Volume struct {
 	Cleaning           bool   `json:"cleaning,omitempty"`
 	CleaningState      string `json:"cleaning_state,omitempty"`
 	CleaningUsageCount int    `json:"cleaning_usage_count,omitempty"`
+
+	// NumberOfPartitions is how many SSC partitions (Milestone 8) this
+	// volume is currently formatted with, set only via a real SCSI
+	// FORMAT MEDIUM command in kernel mode (see
+	// Library.SetDriveVolumeNumberOfPartitions/internal/scsi.Drive.
+	// formatMedium) - nothing in userspace/file mode or the Admin UI ever
+	// sets this. 0 and 1 are both treated as "a single, ordinary
+	// partition" everywhere this is read (matching every volume's exact
+	// behavior before this field existed - `omitempty` keeps a
+	// single-partition volume's JSON representation unchanged too); only
+	// a value >1 means additional partitions exist. Deliberately doesn't
+	// track per-partition byte sizes at all - each partition's own
+	// backing file (see internal/scsi's own <path>.p1/.p2/... sidecar
+	// convention) simply grows as written, independently, up to this
+	// same Volume's own CapacityBytes ceiling; a stricter model
+	// enforcing one shared "total bytes across every partition" ceiling
+	// would be more physically accurate but adds real bookkeeping
+	// complexity this project doesn't need in practice, since LTFS's own
+	// index partition stays tiny by convention rather than by any
+	// enforced limit.
+	NumberOfPartitions int `json:"number_of_partitions,omitempty"`
+
+	// LoadCount/ApplicationVendor/ApplicationName/ApplicationVersion/
+	// UserMediumTextLabel (Milestone 9) back a handful of the T10 MAM
+	// (Medium Auxiliary Memory) attributes internal/scsi.Drive's READ/
+	// WRITE ATTRIBUTE handlers expose - see internal/scsi/mam.go's own
+	// doc comment for which attribute IDs these map to and the source
+	// (sg3_utils' sg_read_attr.c/sg_write_attr.c) their byte layout was
+	// verified against. LoadCount is read-only (incremented by Library.
+	// Load itself, on every real mount); the other four are genuinely
+	// mutable, set only via a real SCSI WRITE ATTRIBUTE command (see
+	// Library.SetDriveVolumeMAMAttributes) - nothing in userspace/file
+	// mode or the Admin UI sets them, same posture as NumberOfPartitions
+	// above.
+	LoadCount           int    `json:"load_count,omitempty"`
+	ApplicationVendor   string `json:"application_vendor,omitempty"`
+	ApplicationName     string `json:"application_name,omitempty"`
+	ApplicationVersion  string `json:"application_version,omitempty"`
+	UserMediumTextLabel string `json:"user_medium_text_label,omitempty"`
+
+	// Encrypted (Milestone 10) reflects whether this volume's recorded
+	// data was written under SECURITY PROTOCOL OUT-negotiated AES-256-GCM
+	// encryption (see internal/scsi/encryption.go) - set only by a real
+	// SCSI WRITE(6) issued while a kernel-mode Drive session has
+	// encryption active (see Library.SetDriveVolumeEncrypted), re-checked
+	// at the start of each fresh recording pass (BOT), never by
+	// userspace/file mode or the Admin UI. This project has no concept of
+	// "partially encrypted" data on one volume - encryption is decided
+	// once, at BOT, for the whole recording pass, matching how real tape
+	// encryption is used in practice (set before a job starts writing,
+	// not toggled mid-job) - see internal/scsi.Drive.write6's own doc
+	// comment for what happens if that assumption is violated.
+	Encrypted bool `json:"encrypted,omitempty"`
+}
+
+// MAMAttributes is Library.SetDriveVolumeMAMAttributes' own input: the
+// mutable MAM attributes a real WRITE ATTRIBUTE command can set on the
+// volume currently mounted in a drive, in one call - a nil field means
+// "this WRITE ATTRIBUTE call didn't touch this attribute, leave it
+// unchanged" (a real WRITE ATTRIBUTE parameter list can set any subset
+// of attributes at once), distinct from a non-nil pointer to an empty
+// string (which genuinely clears the attribute).
+type MAMAttributes struct {
+	ApplicationVendor   *string
+	ApplicationName     *string
+	ApplicationVersion  *string
+	UserMediumTextLabel *string
 }
 
 // Slot is a Storage Element: a home location for a Volume. Address is a

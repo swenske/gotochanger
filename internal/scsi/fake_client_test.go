@@ -15,6 +15,13 @@ type fakeClient struct {
 	statusErr error
 	failMove  bool
 	moveErr   error // takes precedence over failMove when set - lets a test control exactly what error Load/Unload/Move return
+
+	// ioDoorOpen/doorErr back OpenIODoor/CloseIODoor (Milestone 7's
+	// OPEN/CLOSE IMPORT/EXPORT ELEMENT) - mirrors real Library.ioDoorOpen's
+	// own per-mailbox open/closed bookkeeping closely enough for this
+	// package's own dispatch logic to be exercised without a real daemon.
+	ioDoorOpen map[string]bool
+	doorErr    error
 }
 
 func (f *fakeClient) Status() (library.Status, error) { return f.st, f.statusErr }
@@ -110,5 +117,65 @@ func (f *fakeClient) Move(fromKind string, fromAddr int, toKind string, toAddr i
 	}
 	*dst = *src
 	*src = nil
+	return nil
+}
+
+func (f *fakeClient) OpenIODoor(mailboxID, pin string) error {
+	if f.doorErr != nil {
+		return f.doorErr
+	}
+	if f.ioDoorOpen == nil {
+		f.ioDoorOpen = make(map[string]bool)
+	}
+	f.ioDoorOpen[mailboxID] = true
+	return nil
+}
+
+func (f *fakeClient) CloseIODoor(mailboxID string, actions []library.DoorAction) error {
+	if f.doorErr != nil {
+		return f.doorErr
+	}
+	if !f.ioDoorOpen[mailboxID] {
+		return fmt.Errorf("mailbox %q door not open", mailboxID)
+	}
+	delete(f.ioDoorOpen, mailboxID)
+	return nil
+}
+
+func (f *fakeClient) SetDriveVolumeNumberOfPartitions(index, n int) error {
+	d := f.findDrive(index)
+	if d == nil || d.Volume == nil {
+		return fmt.Errorf("drive %d: empty", index)
+	}
+	d.Volume.NumberOfPartitions = n
+	return nil
+}
+
+func (f *fakeClient) SetDriveVolumeMAMAttributes(index int, attrs library.MAMAttributes) error {
+	d := f.findDrive(index)
+	if d == nil || d.Volume == nil {
+		return fmt.Errorf("drive %d: empty", index)
+	}
+	if attrs.ApplicationVendor != nil {
+		d.Volume.ApplicationVendor = *attrs.ApplicationVendor
+	}
+	if attrs.ApplicationName != nil {
+		d.Volume.ApplicationName = *attrs.ApplicationName
+	}
+	if attrs.ApplicationVersion != nil {
+		d.Volume.ApplicationVersion = *attrs.ApplicationVersion
+	}
+	if attrs.UserMediumTextLabel != nil {
+		d.Volume.UserMediumTextLabel = *attrs.UserMediumTextLabel
+	}
+	return nil
+}
+
+func (f *fakeClient) SetDriveVolumeEncrypted(index int, encrypted bool) error {
+	d := f.findDrive(index)
+	if d == nil || d.Volume == nil {
+		return fmt.Errorf("drive %d: empty", index)
+	}
+	d.Volume.Encrypted = encrypted
 	return nil
 }
