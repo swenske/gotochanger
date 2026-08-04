@@ -1,3 +1,16 @@
+gotochanger (0.9.0) UNRELEASED; urgency=medium
+
+  * Update Go version badge in Docker README to 1.26
+  * Add banner SVG to README and update image reference
+  * ci: bump actions/upload-pages-artifact from 3 to 5
+  * Fix telemetry test suite leaking real pings to the live collector
+  * ci: keep .nojekyll in Pages artifact after upload-pages-artifact v5 bump
+  * Add more SCSI commands (kernel mode): TapeAlert logging, vendor/product identity, write-path completeness, multi-partition tapes, MAM attributes, and real tape encryption
+  * Update dashboard image in documentation
+  * Fix nil volume checks in Drive locate methods and add tests for empty drives
+
+ -- github-actions[bot] <github-actions[bot]@users.noreply.github.com>  Tue, 04 Aug 2026 14:55:11 +0000
+
 gotochanger (0.8.6) UNRELEASED; urgency=medium
 
   * Add opt-in telemetry
