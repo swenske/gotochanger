@@ -1204,7 +1204,39 @@ func (l *Library) Status() Status {
 		CleaningMaxUses:        l.cleaningMaxUses,
 		MagazinePINRequired:    l.magazinePINHash != "",
 		MailboxPINRequired:     l.mailboxPINRequiredLocked(),
+		TapeSetFamilies:        l.tapeSetFamiliesLocked(),
+		DriveTypeFamilies:      l.driveTypeFamiliesLocked(),
 	}
+}
+
+// tapeSetFamiliesLocked returns a tape-set-name -> barcode-family map for
+// every tape set that currently resolves to a known tape type, for
+// Status's TapeSetFamilies field. Callers must hold l.mu.
+func (l *Library) tapeSetFamiliesLocked() map[string]string {
+	if len(l.cfg.Library.TapeSets) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(l.cfg.Library.TapeSets))
+	for _, ts := range l.cfg.Library.TapeSets {
+		if _, spec, _, err := l.resolveTapeSetLocked(ts.Name); err == nil {
+			out[ts.Name] = string(spec.Family)
+		}
+	}
+	return out
+}
+
+// driveTypeFamiliesLocked returns a drive-type-name -> barcode-family map
+// for the current drive type catalog, for Status's DriveTypeFamilies
+// field. Callers must hold l.mu.
+func (l *Library) driveTypeFamiliesLocked() map[string]string {
+	if len(l.cfg.Library.DriveTypes) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(l.cfg.Library.DriveTypes))
+	for _, dt := range l.cfg.Library.DriveTypes {
+		out[dt.Name] = dt.BarcodeFamily
+	}
+	return out
 }
 
 // mailboxPINRequiredLocked returns a sparse mailbox-ID -> true map for
@@ -1636,6 +1668,7 @@ var (
 	ErrInvalidPIN              = errors.New("incorrect PIN")
 	ErrOffsiteDisabled         = errors.New("offsite vaulting is not enabled")
 	ErrVolumeNotAccessible     = errors.New("volume is not physically accessible (mounted in a drive, or behind a closed magazine/mailbox door)")
+	ErrIncompatibleTapeFamily  = errors.New("tape family is not compatible with drive family")
 )
 
 func (l *Library) findSlot(addr int) (*Slot, error) {
@@ -2368,6 +2401,37 @@ func (l *Library) resolveTapeSetLocked(tapeSet string) (config.TapeSetConfig, ba
 	return ts, spec, capacityBytes, nil
 }
 
+// driveTypeFamilyLocked returns the barcode family linked to driveType in
+// the current catalog, or ("", false) when it can't be confidently
+// resolved (unlinked drive, or a name with no matching catalog entry -
+// e.g. a dangling reference left behind by an out-of-band DeleteDriveType).
+// Callers must treat false as "no constraint", never as an error - see
+// Load's compatibility check. Callers must hold l.mu.
+func (l *Library) driveTypeFamilyLocked(driveType string) (barcode.Family, bool) {
+	if driveType == "" {
+		return "", false
+	}
+	for _, dt := range l.cfg.Library.DriveTypes {
+		if dt.Name == driveType {
+			return barcode.Family(dt.BarcodeFamily), dt.BarcodeFamily != ""
+		}
+	}
+	return "", false
+}
+
+// tapeFamilyLocked mirrors driveTypeFamilyLocked for a volume's tape set.
+// Callers must hold l.mu.
+func (l *Library) tapeFamilyLocked(vol *Volume) (barcode.Family, bool) {
+	if vol.TapeSet == "" {
+		return "", false
+	}
+	_, spec, _, err := l.resolveTapeSetLocked(vol.TapeSet)
+	if err != nil {
+		return "", false
+	}
+	return spec.Family, true
+}
+
 // createCartridgeLocked creates one cartridge file for ts with an explicit
 // barcode already known to be free and well-formed. Callers must hold l.mu.
 func (l *Library) createCartridgeLocked(ts config.TapeSetConfig, bc string, capacityBytes int64) (*Volume, error) {
@@ -2747,6 +2811,27 @@ func (l *Library) Load(from ElementRef, driveIndex int, logicalLibrary string) e
 	cleaning := l.cleaningEnabled && vol.Cleaning
 	if cleaning && vol.CleaningState == CleaningTapeExpired {
 		return fmt.Errorf("cleaning tape %q: %w", vol.Barcode, ErrCleaningTapeExpired)
+	}
+
+	// Family-level compatibility only (never generation-aware: an LTO-6
+	// tape loads fine into a drive type labeled "LTO-9") - see
+	// ErrIncompatibleTapeFamily. Cleaning tapes are exempt regardless of
+	// the cleaning feature's global enabled state (gated on vol.Cleaning
+	// directly, not the `cleaning` var above - see
+	// TestCleaningDisabledActsAsOrdinaryVolume, which loads a cleaning
+	// volume with no TapeSet set while cleaning management is globally
+	// disabled and expects it to succeed like any other volume). Both
+	// driveTypeFamilyLocked/tapeFamilyLocked fail open (ok == false) on
+	// anything unresolvable - an unlinked/unknown drive type, or a volume
+	// whose tape set can't be resolved - so this never blocks a load that
+	// worked before this check existed.
+	if !vol.Cleaning {
+		if driveFamily, ok := l.driveTypeFamilyLocked(drive.DriveType); ok && driveFamily != barcode.FamilyGeneric {
+			if tapeFamily, ok := l.tapeFamilyLocked(vol); ok && tapeFamily != barcode.FamilyGeneric && tapeFamily != driveFamily {
+				return fmt.Errorf("drive %d (family %s): volume %q (family %s): %w",
+					driveIndex, driveFamily, vol.Barcode, tapeFamily, ErrIncompatibleTapeFamily)
+			}
+		}
 	}
 
 	l.setArmBusy(true)

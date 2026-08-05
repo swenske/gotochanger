@@ -340,6 +340,16 @@ type Status struct {
 	// sparse - only mailboxes with a PIN configured appear, always true.
 	MagazinePINRequired bool            `json:"magazine_pin_required,omitempty"`
 	MailboxPINRequired  map[string]bool `json:"mailbox_pin_required,omitempty"`
+
+	// TapeSetFamilies/DriveTypeFamilies let any role compute drive/tape
+	// family compatibility (see Library.Load's compatibility check and
+	// driveTypeFamilyLocked/tapeFamilyLocked) client-side from the
+	// already-Viewer-readable Status, without a round trip to the
+	// Admin-only /api/v1/drive-types or /api/v1/tape-types endpoints -
+	// see internal/api/static/app.js's driveOptions(). Keyed by tape set
+	// name / drive type name; values are barcode.Family strings.
+	TapeSetFamilies   map[string]string `json:"tape_set_families,omitempty"`
+	DriveTypeFamilies map[string]string `json:"drive_type_families,omitempty"`
 }
 
 // DoorStatus reflects whether physical access doors are currently open.

@@ -18,14 +18,15 @@ import (
 // a plain error) falls back to the same generic sense this project has
 // always used for an unrecognized Move/Load/Unload failure.
 //
-// The two causes distinguished here - a drive/robotic fault, and a
-// cleaning-cartridge operation that couldn't proceed - are the only
-// Library errors realistically reachable from Changer.moveMedium's
-// Load/Unload/Move calls in practice (see library.Library's own error
-// sentinels): every other one (ErrFull/ErrEmpty/ErrOutsideLogicalLibrary)
-// is either already checked before the call happens (full/empty) or
-// structurally unreachable from an already-scoped kernel-mode request (see
-// cmd/gotochanger-tcmud's --logical-library flag).
+// The causes distinguished here - a drive/robotic fault, a cleaning-
+// cartridge operation that couldn't proceed, and a family-incompatible
+// tape/drive pairing - are the only Library errors realistically reachable
+// from Changer.moveMedium's Load/Unload/Move calls in practice (see
+// library.Library's own error sentinels): every other one (ErrFull/
+// ErrEmpty/ErrOutsideLogicalLibrary) is either already checked before the
+// call happens (full/empty) or structurally unreachable from an already-
+// scoped kernel-mode request (see cmd/gotochanger-tcmud's
+// --logical-library flag).
 func senseForLibraryError(err error) (key, asc, ascq uint8) {
 	var apiErr *apiclient.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
@@ -34,6 +35,8 @@ func senseForLibraryError(err error) (key, asc, ascq uint8) {
 			return SenseNotReady, AscLogicalUnitNotReady, AscqManualInterventionRequired
 		case strings.Contains(apiErr.Message, "cleaning"):
 			return SenseNotReady, AscCleaningFailure, AscqCleaningFailure
+		case strings.Contains(apiErr.Message, "compatible"):
+			return SenseIllegalRequest, AscIncompatibleMedium, AscqIncompatibleMedium
 		}
 	}
 	return SenseAbortedCommand, AscMechanicalPositioningOrChangerError, AscqMechanicalPositioningOrChangerError

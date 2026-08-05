@@ -192,7 +192,7 @@ func TestMigrateTapeTypesSchemaRepairsKnownLegacyNames(t *testing.T) {
 
 func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	s := newTestStore(t)
-	dt := config.DriveType{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "test", Model: "LTO Ultrium 9", Generation: "LTO-9", SCSIIdentity: config.SCSIIdentityRealistic}
+	dt := config.DriveType{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "test", Model: "LTO Ultrium 9", Generation: "LTO-9", SCSIIdentity: config.SCSIIdentityRealistic, BarcodeFamily: "lto"}
 	if err := s.CreateDriveType(dt); err != nil {
 		t.Fatalf("create drive type: %v", err)
 	}
@@ -200,12 +200,13 @@ func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list drive types: %v", err)
 	}
-	if len(got) != 1 || got[0].Model != "LTO Ultrium 9" || got[0].Generation != "LTO-9" || got[0].SCSIIdentity != config.SCSIIdentityRealistic {
+	if len(got) != 1 || got[0].Model != "LTO Ultrium 9" || got[0].Generation != "LTO-9" || got[0].SCSIIdentity != config.SCSIIdentityRealistic || got[0].BarcodeFamily != "lto" {
 		t.Fatalf("unexpected drive types: %+v", got)
 	}
 
 	dt.Model = "LTO Ultrium 9 (updated)"
 	dt.SCSIIdentity = ""
+	dt.BarcodeFamily = "generic"
 	if err := s.UpdateDriveType("LTO-9", dt); err != nil {
 		t.Fatalf("update drive type: %v", err)
 	}
@@ -218,6 +219,9 @@ func TestDriveTypeCRUDRoundTrip(t *testing.T) {
 	}
 	if got[0].SCSIIdentity != "" {
 		t.Fatalf("expected SCSIIdentity cleared back to default, got %q", got[0].SCSIIdentity)
+	}
+	if got[0].BarcodeFamily != "generic" {
+		t.Fatalf("expected updated barcode family generic, got %q", got[0].BarcodeFamily)
 	}
 }
 
@@ -298,6 +302,109 @@ func TestMigrateDriveTypesSchemaBackfillsScsiIdentity(t *testing.T) {
 	}
 	if len(dts) != 1 || dts[0].Generation != "LTO-9" || dts[0].SCSIIdentity != "" {
 		t.Fatalf("expected pre-existing row to survive with Generation intact and blank SCSIIdentity, got %+v", dts)
+	}
+}
+
+// TestMigrateDriveTypesSchemaBackfillsBarcodeFamily simulates upgrading a
+// database created before barcode_family existed: a pre-existing row whose
+// Generation implies a known family must come back with that family
+// derived, not the plain-column-add default of "generic" - see
+// driveTypeBarcodeFamilyFromLabel/repairLegacyDriveTypeBarcodeFamilies.
+// Re-running the migration must be idempotent.
+func TestMigrateDriveTypesSchemaBackfillsBarcodeFamily(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE drive_types (name TEXT PRIMARY KEY, speed TEXT NOT NULL, capacity TEXT NOT NULL, description TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', generation TEXT NOT NULL DEFAULT '', scsi_identity TEXT NOT NULL DEFAULT '')`); err != nil {
+		t.Fatalf("create pre-barcode_family schema: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO drive_types (name, speed, capacity, description, generation) VALUES ('LTO-9', '400MB/s', '18TB', 'pre-existing row', 'LTO-9')`); err != nil {
+		t.Fatalf("seed pre-existing row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s := New(path)
+	if err := s.Open(); err != nil {
+		t.Fatalf("open store over pre-barcode_family schema: %v", err)
+	}
+	defer s.Close()
+
+	dts, err := s.ListDriveTypes()
+	if err != nil {
+		t.Fatalf("list drive types: %v", err)
+	}
+	if len(dts) != 1 || dts[0].BarcodeFamily != "lto" {
+		t.Fatalf("expected pre-existing LTO-9 row to backfill barcode_family=lto, got %+v", dts)
+	}
+
+	if err := s.migrateDriveTypesSchema(); err != nil {
+		t.Fatalf("re-running migration should be a no-op, got: %v", err)
+	}
+	dts, err = s.ListDriveTypes()
+	if err != nil {
+		t.Fatalf("list drive types after re-migration: %v", err)
+	}
+	if len(dts) != 1 || dts[0].BarcodeFamily != "lto" {
+		t.Fatalf("expected barcode_family to remain lto after idempotent re-migration, got %+v", dts)
+	}
+}
+
+// TestDriveTypeBarcodeFamilyFromLabelCoversEachPrefix exercises every
+// family prefix the legacy backfill recognizes, plus the fail-open default
+// for anything unrecognized.
+func TestDriveTypeBarcodeFamilyFromLabelCoversEachPrefix(t *testing.T) {
+	cases := []struct {
+		generation, name, want string
+	}{
+		{generation: "LTO-9", want: "lto"},
+		{generation: "SDLT-600", want: "sdlt"},
+		{generation: "DLT-IV", want: "dlt"},
+		{generation: "DDS-3", want: "dds"},
+		{generation: "DAT-72", want: "dds"},
+		{generation: "AIT-2", want: "ait"},
+		{generation: "SAIT-1", want: "ait"},
+		{generation: "3592-J1", want: "3592"},
+		{generation: "", name: "Some Weird Drive", want: "generic"},
+		{generation: "", name: "", want: "generic"},
+		{generation: "", name: "SDLT Autoloader", want: "sdlt"}, // falls back to Name when Generation is blank
+	}
+	for _, c := range cases {
+		if got := driveTypeBarcodeFamilyFromLabel(c.generation, c.name); got != c.want {
+			t.Errorf("driveTypeBarcodeFamilyFromLabel(%q, %q) = %q, want %q", c.generation, c.name, got, c.want)
+		}
+	}
+}
+
+// TestSeedDefaultsDriveTypesCoverEveryTapeTypeFamily is the store-level
+// regression test for the original bug report: after seeding a brand-new
+// database, every barcode.Family used by a default tape type must have at
+// least one default drive type of the same family.
+func TestSeedDefaultsDriveTypesCoverEveryTapeTypeFamily(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SeedDefaults(); err != nil {
+		t.Fatalf("seed defaults: %v", err)
+	}
+	dts, err := s.ListDriveTypes()
+	if err != nil {
+		t.Fatalf("list drive types: %v", err)
+	}
+	tts, err := s.ListTapeTypes()
+	if err != nil {
+		t.Fatalf("list tape types: %v", err)
+	}
+	driveFamilies := map[string]bool{}
+	for _, dt := range dts {
+		driveFamilies[dt.BarcodeFamily] = true
+	}
+	for _, tt := range tts {
+		if !driveFamilies[tt.BarcodeFamily] {
+			t.Errorf("seeded tape type %s (family %q) has no matching seeded drive type", tt.Name, tt.BarcodeFamily)
+		}
 	}
 }
 

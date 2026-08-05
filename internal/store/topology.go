@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/instanceid"
@@ -23,7 +24,8 @@ CREATE TABLE IF NOT EXISTS drive_types (
 	description TEXT NOT NULL,
 	model TEXT NOT NULL DEFAULT '',
 	generation TEXT NOT NULL DEFAULT '',
-	scsi_identity TEXT NOT NULL DEFAULT ''
+	scsi_identity TEXT NOT NULL DEFAULT '',
+	barcode_family TEXT NOT NULL DEFAULT 'generic'
 );
 CREATE TABLE IF NOT EXISTS tape_types (
 	name TEXT PRIMARY KEY,
@@ -260,26 +262,104 @@ func (s *Store) repairLegacyTapeTypeBarcodeFormats() error {
 	return nil
 }
 
-// migrateDriveTypesSchema adds the model/generation columns to a pre-
-// existing drive_types table (idempotent - a no-op once both columns
-// exist). Unlike tape types' barcode-format repair, no backfill step is
-// needed afterward: Model/Generation are purely descriptive labels, so a
-// blank value on a pre-existing row is simply blank, not silently *wrong*
-// the way tape-type's generic-barcode backfill was (that one affected real
-// generated filenames; this one only affects a UI display column).
+// migrateDriveTypesSchema adds the model/generation/scsi_identity/
+// barcode_family columns to a pre-existing drive_types table (idempotent -
+// a no-op once every column exists). Model/Generation/SCSIIdentity are
+// purely descriptive labels, so a blank value on a pre-existing row is
+// simply blank, not silently *wrong* the way tape-type's generic-barcode
+// backfill was (that one affected real generated filenames; these only
+// affect UI display columns). barcode_family is different: once it gates
+// real Load-time compatibility enforcement (see library.Library.Load), a
+// pre-existing row silently defaulting to "generic" would be silently
+// *permissive* rather than wrong - safe, but worth a best-effort repair so
+// upgraded installs get real enforcement without any manual step. See
+// repairLegacyDriveTypeBarcodeFamilies below.
 func (s *Store) migrateDriveTypesSchema() error {
 	cols, err := s.tableColumns("drive_types")
 	if err != nil {
 		return fmt.Errorf("inspect drive_types schema: %w", err)
 	}
 	for col, ddl := range map[string]string{
-		"model":         `ALTER TABLE drive_types ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
-		"generation":    `ALTER TABLE drive_types ADD COLUMN generation TEXT NOT NULL DEFAULT ''`,
-		"scsi_identity": `ALTER TABLE drive_types ADD COLUMN scsi_identity TEXT NOT NULL DEFAULT ''`,
+		"model":          `ALTER TABLE drive_types ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		"generation":     `ALTER TABLE drive_types ADD COLUMN generation TEXT NOT NULL DEFAULT ''`,
+		"scsi_identity":  `ALTER TABLE drive_types ADD COLUMN scsi_identity TEXT NOT NULL DEFAULT ''`,
+		"barcode_family": `ALTER TABLE drive_types ADD COLUMN barcode_family TEXT NOT NULL DEFAULT 'generic'`,
 	} {
 		if !cols[col] {
 			if _, err := s.db.Exec(ddl); err != nil {
 				return fmt.Errorf("add drive_types.%s: %w", col, err)
+			}
+		}
+	}
+	return s.repairLegacyDriveTypeBarcodeFamilies()
+}
+
+// driveTypeBarcodeFamilyFromLabel best-effort derives a barcode.Family from
+// a drive type's own Generation (falling back to Name if Generation is
+// blank - an admin-created row might only have a descriptive Name). Order
+// matters: "SDLT" is checked before the plain "DLT" prefix it would
+// otherwise also match. Returns "generic" for anything unrecognized -
+// deliberately fail-open: an upgrade must never suddenly block a load that
+// worked yesterday, so an unconfident guess must resolve to the
+// universally-compatible wildcard, never to a specific family that could
+// wrongly reject a real cartridge.
+func driveTypeBarcodeFamilyFromLabel(generation, name string) string {
+	for _, label := range []string{generation, name} {
+		u := strings.ToUpper(label)
+		switch {
+		case strings.HasPrefix(u, "LTO"):
+			return "lto"
+		case strings.HasPrefix(u, "SDLT"):
+			return "sdlt"
+		case strings.HasPrefix(u, "DLT"):
+			return "dlt"
+		case strings.HasPrefix(u, "DDS"), strings.HasPrefix(u, "DAT"):
+			return "dds"
+		case strings.HasPrefix(u, "AIT"), strings.HasPrefix(u, "SAIT"):
+			return "ait"
+		case strings.HasPrefix(u, "3592"):
+			return "3592"
+		}
+	}
+	return "generic"
+}
+
+// repairLegacyDriveTypeBarcodeFamilies upgrades a drive_types row still at
+// the plain-column-add signature (barcode_family = 'generic') to a
+// specific family derived from its own Generation/Name, mirroring
+// repairLegacyTapeTypeBarcodeFormats's idempotency above: only rows nobody
+// has deliberately edited since upgrading are touched. Known limitation
+// this shares with that function: an admin who deliberately chooses
+// "generic" on purpose after upgrading (a legitimate choice, e.g. for
+// "Unlimited") looks identical to an unrepaired legacy row and may get
+// re-derived on the next Open() if Generation/Name happens to match a
+// known prefix - low-risk, since it always resolves to a no-less-
+// permissive value than "generic" was already granting.
+func (s *Store) repairLegacyDriveTypeBarcodeFamilies() error {
+	rows, err := s.db.Query(`SELECT name, generation FROM drive_types WHERE barcode_family = 'generic'`)
+	if err != nil {
+		return fmt.Errorf("scan for legacy drive types: %w", err)
+	}
+	type legacyDriveType struct{ name, generation string }
+	var dts []legacyDriveType
+	for rows.Next() {
+		var dt legacyDriveType
+		if err := rows.Scan(&dt.name, &dt.generation); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan legacy drive type: %w", err)
+		}
+		dts = append(dts, dt)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, dt := range dts {
+		if family := driveTypeBarcodeFamilyFromLabel(dt.generation, dt.name); family != "generic" {
+			if _, err := s.db.Exec(`UPDATE drive_types SET barcode_family = ? WHERE name = ?`, family, dt.name); err != nil {
+				return fmt.Errorf("repair legacy drive type %s: %w", dt.name, err)
 			}
 		}
 	}
@@ -381,8 +461,8 @@ func (s *Store) SeedDefaults() error {
 	}
 	if n == 0 {
 		for _, dt := range config.DefaultDriveTypes() {
-			if _, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity) VALUES (?, ?, ?, ?, ?, ?, ?)",
-				dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity); err != nil {
+			if _, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity, barcode_family) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity, dt.BarcodeFamily); err != nil {
 				return fmt.Errorf("seed drive type %s: %w", dt.Name, err)
 			}
 		}
@@ -671,7 +751,7 @@ func (s *Store) SetCleaningSettings(cs config.CleaningSettings) error {
 // ---- drive types ----
 
 func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
-	rows, err := s.db.Query("SELECT name, speed, capacity, description, model, generation, scsi_identity FROM drive_types ORDER BY name")
+	rows, err := s.db.Query("SELECT name, speed, capacity, description, model, generation, scsi_identity, barcode_family FROM drive_types ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("list drive types: %w", err)
 	}
@@ -679,7 +759,7 @@ func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
 	var out []config.DriveType
 	for rows.Next() {
 		var dt config.DriveType
-		if err := rows.Scan(&dt.Name, &dt.Speed, &dt.Capacity, &dt.Description, &dt.Model, &dt.Generation, &dt.SCSIIdentity); err != nil {
+		if err := rows.Scan(&dt.Name, &dt.Speed, &dt.Capacity, &dt.Description, &dt.Model, &dt.Generation, &dt.SCSIIdentity, &dt.BarcodeFamily); err != nil {
 			return nil, fmt.Errorf("scan drive type: %w", err)
 		}
 		out = append(out, dt)
@@ -689,8 +769,8 @@ func (s *Store) ListDriveTypes() ([]config.DriveType, error) {
 
 // CreateDriveType inserts a new drive type, rejecting a duplicate name.
 func (s *Store) CreateDriveType(dt config.DriveType) error {
-	_, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity)
+	_, err := s.db.Exec("INSERT INTO drive_types (name, speed, capacity, description, model, generation, scsi_identity, barcode_family) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		dt.Name, dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity, dt.BarcodeFamily)
 	if err != nil {
 		return fmt.Errorf("drive type %s already exists or is invalid: %w", dt.Name, err)
 	}
@@ -699,8 +779,8 @@ func (s *Store) CreateDriveType(dt config.DriveType) error {
 
 // UpdateDriveType replaces an existing drive type's fields.
 func (s *Store) UpdateDriveType(name string, dt config.DriveType) error {
-	res, err := s.db.Exec("UPDATE drive_types SET speed = ?, capacity = ?, description = ?, model = ?, generation = ?, scsi_identity = ? WHERE name = ?",
-		dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity, name)
+	res, err := s.db.Exec("UPDATE drive_types SET speed = ?, capacity = ?, description = ?, model = ?, generation = ?, scsi_identity = ?, barcode_family = ? WHERE name = ?",
+		dt.Speed, dt.Capacity, dt.Description, dt.Model, dt.Generation, dt.SCSIIdentity, dt.BarcodeFamily, name)
 	if err != nil {
 		return fmt.Errorf("update drive type %s: %w", name, err)
 	}

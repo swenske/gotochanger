@@ -1719,9 +1719,28 @@ function outsideOptions() {
   return vols.slice().sort((a, b) => a.barcode.localeCompare(b.barcode)).map((v) => ({ value: v.barcode, label: v.barcode }));
 }
 
-function driveOptions() {
+// familiesCompatible mirrors library.Library.Load's server-side family
+// check (UX only - the server is the actual enforcement): unresolved data
+// on either side, or either side being "generic", is always compatible.
+function familiesCompatible(tapeFamily, driveFamily) {
+  if (!tapeFamily || !driveFamily) return true;
+  return tapeFamily === "generic" || driveFamily === "generic" || tapeFamily === driveFamily;
+}
+
+// driveOptions lists empty, non-faulted drives available as a Load
+// destination. When sourceVolume is given, drives whose linked drive
+// type's barcode family doesn't match the volume's tape set family are
+// filtered out - cleaning tapes are exempt, matching Load's own exemption.
+function driveOptions(sourceVolume) {
   const drives = (state.status && state.status.drives) || [];
-  return drives.filter((d) => !d.volume && !d.fault).sort((a, b) => a.index - b.index).map((d) => ({ value: `drive:${d.index}`, label: `Drive ${d.index}` }));
+  const tapeSetFamilies = (state.status && state.status.tape_set_families) || {};
+  const driveTypeFamilies = (state.status && state.status.drive_type_families) || {};
+  const tapeFamily = sourceVolume && !sourceVolume.cleaning ? tapeSetFamilies[sourceVolume.tape_set] : null;
+  return drives
+    .filter((d) => !d.volume && !d.fault)
+    .filter((d) => familiesCompatible(tapeFamily, driveTypeFamilies[d.drive_type]))
+    .sort((a, b) => a.index - b.index)
+    .map((d) => ({ value: `drive:${d.index}`, label: `Drive ${d.index}` }));
 }
 
 function emptySlotOptions() {
@@ -2568,9 +2587,9 @@ function renderIOSlots(ioslots, status, maps) {
               refresh();
             }));
             actions.appendChild(mkBtn("Load", async () => {
-              const options = driveOptions();
+              const options = driveOptions(io.volume);
               if (!options.length) {
-                alert("No destination available (need an empty, non-faulted drive).");
+                alert("No destination available (need an empty, non-faulted drive of a compatible type).");
                 return;
               }
               const v = await openDialog("Load I/O slot " + (io.label || io.address) + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
@@ -2800,9 +2819,9 @@ function renderSlots(slots, status, maps) {
               refresh();
             }));
             actions.appendChild(mkBtn("Load", async () => {
-              const options = driveOptions();
+              const options = driveOptions(s.volume);
               if (!options.length) {
-                alert("No destination available (need an empty, non-faulted drive).");
+                alert("No destination available (need an empty, non-faulted drive of a compatible type).");
                 return;
               }
               const v = await openDialog("Load storage slot " + (s.label || s.address) + " into drive", [{ name: "to", label: "Drive", type: "select", options }]);
@@ -3626,7 +3645,8 @@ async function loadDriveTypes() {
   tbody.innerHTML = "";
   for (const dt of dts || []) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${dt.name}</td><td>${dt.model || ""}</td><td>${dt.generation || ""}</td><td>${dt.speed}</td><td>${dt.capacity}</td><td>${dt.description}</td><td>${dt.scsi_identity === "realistic" ? "Realistic" : "Default"}</td>`;
+    const family = (barcodeFamilyOptions.find((f) => f.value === dt.barcode_family) || {}).label || dt.barcode_family;
+    tr.innerHTML = `<td>${dt.name}</td><td>${dt.model || ""}</td><td>${dt.generation || ""}</td><td>${dt.speed}</td><td>${dt.capacity}</td><td>${family}</td><td>${dt.description}</td><td>${dt.scsi_identity === "realistic" ? "Realistic" : "Default"}</td>`;
     const td = document.createElement("td");
     td.appendChild(mkBtn("Edit", async () => {
       const v = await openDialog("Edit drive type " + dt.name, [
@@ -3635,6 +3655,7 @@ async function loadDriveTypes() {
         { name: "speed", label: "Speed", value: dt.speed },
         { name: "capacity", label: "Capacity", value: dt.capacity },
         { name: "description", label: "Description", value: dt.description },
+        { name: "barcode_family", label: "Barcode Family", type: "select", value: dt.barcode_family, options: barcodeFamilyOptions },
         { name: "scsi_identity", label: "SCSI Identity", type: "select", options: scsiIdentityOptions, value: dt.scsi_identity || "" },
       ]);
       if (!v) return;
@@ -3659,6 +3680,7 @@ document.getElementById("newDriveTypeBtn").addEventListener("click", async () =>
     { name: "speed", label: "Speed", placeholder: "300MB/s" },
     { name: "capacity", label: "Capacity", placeholder: "12TB" },
     { name: "description", label: "Description" },
+    { name: "barcode_family", label: "Barcode Family", type: "select", options: barcodeFamilyOptions, value: "generic" },
     { name: "scsi_identity", label: "SCSI Identity", type: "select", options: scsiIdentityOptions },
   ]);
   if (!v || !v.name) return;

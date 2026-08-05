@@ -526,7 +526,7 @@ func statusFor(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, library.ErrInvalidBarcode), errors.Is(err, library.ErrInvalidTarget), errors.Is(err, library.ErrUnknownTapeSet), errors.Is(err, library.ErrInvalidRoboticFaultKind):
 		return http.StatusBadRequest
-	case errors.Is(err, library.ErrEmpty), errors.Is(err, library.ErrFull), errors.Is(err, library.ErrDriveFault), errors.Is(err, library.ErrRoboticFault), errors.Is(err, library.ErrDoorClosed), errors.Is(err, library.ErrOutsideOnly), errors.Is(err, library.ErrAlreadyExists), errors.Is(err, library.ErrBarcodeExists), errors.Is(err, library.ErrCleaningTapeExpired), errors.Is(err, library.ErrCleaningPoolFull), errors.Is(err, library.ErrCleaningTapeUnavailable), errors.Is(err, library.ErrOffsiteDisabled), errors.Is(err, library.ErrVolumeNotAccessible):
+	case errors.Is(err, library.ErrEmpty), errors.Is(err, library.ErrFull), errors.Is(err, library.ErrDriveFault), errors.Is(err, library.ErrRoboticFault), errors.Is(err, library.ErrDoorClosed), errors.Is(err, library.ErrOutsideOnly), errors.Is(err, library.ErrAlreadyExists), errors.Is(err, library.ErrBarcodeExists), errors.Is(err, library.ErrCleaningTapeExpired), errors.Is(err, library.ErrCleaningPoolFull), errors.Is(err, library.ErrCleaningTapeUnavailable), errors.Is(err, library.ErrOffsiteDisabled), errors.Is(err, library.ErrVolumeNotAccessible), errors.Is(err, library.ErrIncompatibleTapeFamily):
 		return http.StatusConflict
 	case errors.Is(err, library.ErrOutsideLogicalLibrary), errors.Is(err, library.ErrPINRequired), errors.Is(err, library.ErrInvalidPIN):
 		return http.StatusForbidden

@@ -53,8 +53,16 @@ func (s *Server) handleCreateDriveType(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	if err := config.ValidateDriveType(dt); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	if err := s.topology.CreateDriveType(dt); err != nil {
 		writeError(w, http.StatusConflict, err)
+		return
+	}
+	if err := s.reconfigureFromStore(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dt)
@@ -67,8 +75,17 @@ func (s *Server) handleUpdateDriveType(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	dt.Name = name
+	if err := config.ValidateDriveType(dt); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	if err := s.topology.UpdateDriveType(name, dt); err != nil {
 		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err := s.reconfigureFromStore(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dt)
@@ -78,6 +95,10 @@ func (s *Server) handleDeleteDriveType(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.topology.DeleteDriveType(name); err != nil {
 		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err := s.reconfigureFromStore(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

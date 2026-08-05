@@ -453,6 +453,24 @@ func TestChangerMoveMediumCleaningFailureSense(t *testing.T) {
 	}
 }
 
+func TestChangerMoveMediumIncompatibleTapeFamilySense(t *testing.T) {
+	fc := &fakeClient{st: testStatus(), moveErr: &apiclient.APIError{
+		StatusCode: http.StatusConflict,
+		Message:    `POST /api/v1/load: drive 0 (family dds): volume "000001L8" (family lto): tape family is not compatible with drive family`,
+	}}
+	c := &Changer{Client: fc}
+	resp := c.Handle(entryWithCDB(buildMoveMediumCDB(2, 3)))
+	if resp.Status != StatusCheckCondition {
+		t.Fatalf("resp.Status = %d, want CHECK CONDITION", resp.Status)
+	}
+	if key := resp.Sense[2] & 0x0F; key != SenseIllegalRequest {
+		t.Errorf("sense key = %#x, want SenseIllegalRequest (%#x)", key, SenseIllegalRequest)
+	}
+	if resp.Sense[12] != AscIncompatibleMedium || resp.Sense[13] != AscqIncompatibleMedium {
+		t.Errorf("ASC/ASCQ = %#x/%#x, want %#x/%#x", resp.Sense[12], resp.Sense[13], AscIncompatibleMedium, AscqIncompatibleMedium)
+	}
+}
+
 func TestChangerMoveMediumUnrelatedConflictKeepsGenericSense(t *testing.T) {
 	fc := &fakeClient{st: testStatus(), moveErr: &apiclient.APIError{
 		StatusCode: http.StatusConflict,
