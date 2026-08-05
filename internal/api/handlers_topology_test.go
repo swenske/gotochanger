@@ -260,3 +260,78 @@ func TestMailboxCreateProducesContiguousAddressesAndLabels(t *testing.T) {
 		t.Fatalf("expected Mailbox2 labels 2.1/2.2, got %q/%q", mb2[0].Label, mb2[1].Label)
 	}
 }
+
+// TestUpdateDriveTypeBarcodeFamilyTakesEffectWithoutUnrelatedWrite is a
+// regression test for a gap found while wiring up drive/tape family
+// compatibility (see library.Library.Load): handleCreateDriveType/
+// handleUpdateDriveType/handleDeleteDriveType used to be the only
+// topology-mutating handlers that never called reconfigureFromStore, so an
+// admin's drive-type edit wouldn't reach the running Library until some
+// unrelated topology write happened to trigger a reload. Once
+// BarcodeFamily gates real Load-time enforcement that staleness becomes
+// user-visible: this confirms a PUT to /api/v1/drive-types/{name} takes
+// effect on the very next Load, with no other topology write in between.
+func TestUpdateDriveTypeBarcodeFamilyTakesEffectWithoutUnrelatedWrite(t *testing.T) {
+	s := newTopologyTestServer(t, 1)
+	h := s.TrustedHandler()
+	createMagazine(t, h, "Magazine1", 5)
+
+	// An "lto" family tape type/tape set, added directly through the store
+	// (not exercised by this test) alongside the base "TESTTYPE"/"TS1"
+	// newTopologyTestServer already seeds - reconfigureFromStore picks it
+	// up once, before any drive-type handler is involved.
+	ltoTapeType := config.TapeType{Name: "LTOTAPE", Capacity: "1MiB", BarcodeFamily: "lto", MediaID: "L8", VolSerLength: 6}
+	if err := s.topology.CreateTapeType(ltoTapeType); err != nil {
+		t.Fatalf("create LTOTAPE: %v", err)
+	}
+	ltoTapeSet := config.TapeSetConfig{Name: "LTOSET", TapeType: "LTOTAPE", StorageFolder: filepath.Join(t.TempDir(), "ltoset")}
+	if err := s.topology.CreateTapeSet(ltoTapeSet); err != nil {
+		t.Fatalf("create LTOSET: %v", err)
+	}
+	if err := s.reconfigureFromStore(); err != nil {
+		t.Fatalf("reconfigure: %v", err)
+	}
+
+	if _, err := s.lib.CreateManualCartridge("LTOSET", "000001L8"); err != nil {
+		t.Fatalf("create manual cartridge: %v", err)
+	}
+	slot := s.lib.Status().Slots[0]
+	if err := s.lib.OpenStorageDoor("Magazine1", ""); err != nil {
+		t.Fatalf("open storage door: %v", err)
+	}
+	if err := s.lib.CloseStorageDoor("Magazine1", []library.DoorAction{{Action: "load", Address: slot.Address, Barcode: "000001L8"}}); err != nil {
+		t.Fatalf("close storage door: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, reqJSON(t, http.MethodPost, "/api/v1/drive-types", map[string]any{"name": "TAPE1", "speed": "1MB/s", "capacity": "1TB", "description": "test", "barcode_family": "dds"}))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create drive type TAPE1: expected %d got %d body=%s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, reqJSON(t, http.MethodPut, "/api/v1/drives/0", map[string]any{"device_path": s.lib.Status().Drives[0].DevicePath, "drive_type": "TAPE1"}))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("link drive 0 to TAPE1: expected %d got %d body=%s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, reqJSON(t, http.MethodPost, "/api/v1/load", map[string]any{"from_kind": "slot", "from_address": slot.Address, "drive": 0}))
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected %d loading an LTO tape into a DDS-family drive, got %d body=%s", http.StatusConflict, rr.Code, rr.Body.String())
+	}
+
+	// Fix the mismatch by editing the drive type alone - no other
+	// topology write happens in between. Before the reconfigureFromStore
+	// fix, the Library would still be using the stale "dds" family here.
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, reqJSON(t, http.MethodPut, "/api/v1/drive-types/TAPE1", map[string]any{"speed": "1MB/s", "capacity": "1TB", "description": "test", "barcode_family": "lto"}))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update drive type TAPE1: expected %d got %d body=%s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, reqJSON(t, http.MethodPost, "/api/v1/load", map[string]any{"from_kind": "slot", "from_address": slot.Address, "drive": 0}))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected the drive-type edit to take effect immediately, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}

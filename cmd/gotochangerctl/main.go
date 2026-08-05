@@ -397,11 +397,12 @@ func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 	switch args[0] {
 	case "new":
 		if len(args) < 5 {
-			return fmt.Errorf("usage: drive-type new <name> <speed> <capacity> <description> [--scsi-identity realistic]")
+			return fmt.Errorf("usage: drive-type new <name> <speed> <capacity> <description> [--scsi-identity realistic] [--barcode-family lto|dlt|sdlt|dds|ait|3592|generic]")
 		}
 		dt := config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]}
 		fs := flag.NewFlagSet("drive-type new", flag.ExitOnError)
 		fs.StringVar(&dt.SCSIIdentity, "scsi-identity", "", `SCSI INQUIRY identity this drive type reports in kernel mode: "" (default) or "realistic" (see config.SCSIIdentityRealistic)`)
+		fs.StringVar(&dt.BarcodeFamily, "barcode-family", "generic", `barcode.Family of tape this drive type accepts (see Library.Load's compatibility check); "generic" (default) accepts any family`)
 		if err := fs.Parse(args[5:]); err != nil {
 			return err
 		}
@@ -413,16 +414,17 @@ func runDriveType(c *apiclient.Client, args []string, jsonOut bool) error {
 		}
 		return printResult(dts, jsonOut, func() {
 			for _, dt := range dts {
-				fmt.Printf("%-12s %-10s %-10s %-10s %s\n", dt.Name, dt.Speed, dt.Capacity, dt.SCSIIdentity, dt.Description)
+				fmt.Printf("%-12s %-10s %-10s %-10s %-10s %s\n", dt.Name, dt.Speed, dt.Capacity, dt.BarcodeFamily, dt.SCSIIdentity, dt.Description)
 			}
 		})
 	case "update":
 		if len(args) < 5 {
-			return fmt.Errorf("usage: drive-type update <name> <speed> <capacity> <description> [--scsi-identity realistic]")
+			return fmt.Errorf("usage: drive-type update <name> <speed> <capacity> <description> [--scsi-identity realistic] [--barcode-family lto|dlt|sdlt|dds|ait|3592|generic]")
 		}
 		dt := config.DriveType{Name: args[1], Speed: args[2], Capacity: args[3], Description: args[4]}
 		fs := flag.NewFlagSet("drive-type update", flag.ExitOnError)
 		fs.StringVar(&dt.SCSIIdentity, "scsi-identity", "", `SCSI INQUIRY identity this drive type reports in kernel mode: "" (default) or "realistic" (see config.SCSIIdentityRealistic)`)
+		fs.StringVar(&dt.BarcodeFamily, "barcode-family", "generic", `barcode.Family of tape this drive type accepts (see Library.Load's compatibility check); "generic" (default) accepts any family`)
 		if err := fs.Parse(args[5:]); err != nil {
 			return err
 		}

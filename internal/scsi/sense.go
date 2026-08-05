@@ -41,6 +41,15 @@ const (
 	AscCleaningFailure  = 0x30
 	AscqCleaningFailure = 0x07
 
+	// AscIncompatibleMedium/AscqIncompatibleMedium (T10's "INCOMPATIBLE
+	// MEDIUM INSTALLED") report a Load rejected by library.Library.Load's
+	// family-compatibility check (library.ErrIncompatibleTapeFamily) - the
+	// command is fundamentally invalid given the loaded medium's format,
+	// the same category as AscWriteProtected below, not a "needs operator/
+	// mechanical intervention" condition. See senseForLibraryError.
+	AscIncompatibleMedium  = 0x30
+	AscqIncompatibleMedium = 0x00
+
 	AscInvalidCommandOperationCode  = 0x20
 	AscqInvalidCommandOperationCode = 0x00
 

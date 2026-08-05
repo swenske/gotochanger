@@ -135,6 +135,71 @@ func TestDefaultTapeTypesAreAllValid(t *testing.T) {
 	}
 }
 
+func TestValidateDriveTypeAcceptsWellFormed(t *testing.T) {
+	dt := DriveType{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", BarcodeFamily: "lto"}
+	if err := ValidateDriveType(dt); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDriveTypeAcceptsUnlimitedCapacity(t *testing.T) {
+	dt := DriveType{Name: "Unlimited", Capacity: "unlimited", BarcodeFamily: "generic"}
+	if err := ValidateDriveType(dt); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDriveTypeRejectsEmptyName(t *testing.T) {
+	dt := DriveType{Capacity: "18TB", BarcodeFamily: "lto"}
+	if err := ValidateDriveType(dt); err == nil {
+		t.Fatalf("expected error for empty name")
+	}
+}
+
+func TestValidateDriveTypeRejectsBadCapacity(t *testing.T) {
+	dt := DriveType{Name: "LTO-9", Capacity: "not-a-size", BarcodeFamily: "lto"}
+	if err := ValidateDriveType(dt); err == nil {
+		t.Fatalf("expected error for invalid capacity")
+	}
+}
+
+func TestValidateDriveTypeRejectsUnknownBarcodeFamily(t *testing.T) {
+	dt := DriveType{Name: "LTO-9", Capacity: "18TB", BarcodeFamily: "bogus"}
+	if err := ValidateDriveType(dt); err == nil {
+		t.Fatalf("expected error for unknown barcode family")
+	}
+}
+
+func TestDefaultDriveTypesAreAllValid(t *testing.T) {
+	for _, dt := range DefaultDriveTypes() {
+		if err := ValidateDriveType(dt); err != nil {
+			t.Errorf("default drive type %s failed validation: %v", dt.Name, err)
+		}
+	}
+}
+
+// TestDefaultCatalogsCoverEveryFamily is the regression test for the
+// original bug report: SDLT/AIT/3592 tape types shipped with zero
+// matching default drive type. Every barcode.Family (except the
+// meaningless "no tape uses this family" case, which doesn't apply here
+// since every physical family below has at least one default tape type)
+// must have at least one default drive type of the same family.
+func TestDefaultCatalogsCoverEveryFamily(t *testing.T) {
+	driveFamilies := map[string]bool{}
+	for _, dt := range DefaultDriveTypes() {
+		driveFamilies[dt.BarcodeFamily] = true
+	}
+	tapeFamilies := map[string]bool{}
+	for _, tt := range DefaultTapeTypes() {
+		tapeFamilies[tt.BarcodeFamily] = true
+	}
+	for family := range tapeFamilies {
+		if !driveFamilies[family] {
+			t.Errorf("tape type family %q has no matching default drive type", family)
+		}
+	}
+}
+
 func TestValidateLogicalLibraryAcceptsNoMailboxes(t *testing.T) {
 	// Mailboxes are optional: a logical library with drives and magazines
 	// but zero mailboxes is a legitimate deployment that never needs

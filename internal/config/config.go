@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,15 @@ type DriveType struct {
 	Description string `yaml:"description" json:"description"`
 	Model       string `yaml:"model" json:"model,omitempty"`           // e.g., "IBM TS1160"
 	Generation  string `yaml:"generation" json:"generation,omitempty"` // e.g., "LTO-9"
+
+	// BarcodeFamily is the barcode.Family of tape this drive type can load
+	// (see Library.Load's compatibility check) - family-level only, never
+	// generation-aware: any LTO generation loads into any LTO-labeled
+	// drive type. barcode.FamilyGeneric is a wildcard on both sides - a
+	// generic drive type accepts every tape family, and a generic-family
+	// tape type loads into any drive type - reusing the same enum
+	// TapeType.BarcodeFamily already uses.
+	BarcodeFamily string `yaml:"barcode_family" json:"barcode_family"`
 
 	// SCSIIdentity selects which SCSI INQUIRY vendor/product identity a
 	// kernel-mode drive of this type reports: "" (default) keeps this
@@ -535,6 +545,24 @@ func ValidateTapeType(tt TapeType) error {
 	return nil
 }
 
+// ValidateDriveType checks a drive type's capacity and barcode-family
+// compatibility label, used by the topology store's write path and the
+// wizard/Admin API before a drive type is saved.
+func ValidateDriveType(dt DriveType) error {
+	if strings.TrimSpace(dt.Name) == "" {
+		return fmt.Errorf("drive type name must not be empty")
+	}
+	if dt.Capacity != "unlimited" {
+		if _, err := ParseSize(dt.Capacity); err != nil {
+			return fmt.Errorf("drive type %s: capacity: %w", dt.Name, err)
+		}
+	}
+	if !slices.Contains(barcode.KnownFamilies(), barcode.Family(dt.BarcodeFamily)) {
+		return fmt.Errorf("drive type %s: barcode family %q not recognized (known families: %v)", dt.Name, dt.BarcodeFamily, barcode.KnownFamilies())
+	}
+	return nil
+}
+
 // tapeSetNameRE restricts tape set names to safe characters, since a tape
 // set's name is also used to derive its default storage-folder suggestion.
 var tapeSetNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
@@ -563,11 +591,14 @@ func ValidateTapeSet(ts TapeSetConfig, knownTapeTypes map[string]bool) error {
 // brand-new installation's topology store.
 func DefaultDriveTypes() []DriveType {
 	return []DriveType{
-		{Name: "Unlimited", Speed: "unlimited", Capacity: "unlimited", Description: "Unlimited capacity/performance", Model: "Unlimited", Generation: "Unlimited"},
-		{Name: "LTO-8", Speed: "300MB/s", Capacity: "12TB", Description: "LTO-8 tape drive", Model: "LTO Ultrium 8", Generation: "LTO-8"},
-		{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "LTO-9 tape drive", Model: "LTO Ultrium 9", Generation: "LTO-9"},
-		{Name: "DDS", Speed: "12MB/s", Capacity: "80GB", Description: "DDS (DAT) tape drive", Model: "DDS", Generation: "DDS"},
-		{Name: "DLT", Speed: "10MB/s", Capacity: "40GB", Description: "DLT tape drive", Model: "DLT", Generation: "DLT"},
+		{Name: "Unlimited", Speed: "unlimited", Capacity: "unlimited", Description: "Unlimited capacity/performance", Model: "Unlimited", Generation: "Unlimited", BarcodeFamily: "generic"},
+		{Name: "LTO-8", Speed: "300MB/s", Capacity: "12TB", Description: "LTO-8 tape drive", Model: "LTO Ultrium 8", Generation: "LTO-8", BarcodeFamily: "lto"},
+		{Name: "LTO-9", Speed: "400MB/s", Capacity: "18TB", Description: "LTO-9 tape drive", Model: "LTO Ultrium 9", Generation: "LTO-9", BarcodeFamily: "lto"},
+		{Name: "DDS", Speed: "12MB/s", Capacity: "80GB", Description: "DDS (DAT) tape drive", Model: "DDS", Generation: "DDS", BarcodeFamily: "dds"},
+		{Name: "DLT", Speed: "10MB/s", Capacity: "40GB", Description: "DLT tape drive", Model: "DLT", Generation: "DLT", BarcodeFamily: "dlt"},
+		{Name: "SDLT", Speed: "36MB/s", Capacity: "300GB", Description: "SDLT (Super DLT) tape drive", Model: "SDLT", Generation: "SDLT", BarcodeFamily: "sdlt"},
+		{Name: "AIT", Speed: "30MB/s", Capacity: "500GB", Description: "AIT/SAIT tape drive", Model: "AIT", Generation: "AIT", BarcodeFamily: "ait"},
+		{Name: "3592", Speed: "360MB/s", Capacity: "7TB", Description: "IBM 3592 tape drive", Model: "IBM 3592", Generation: "3592", BarcodeFamily: "3592"},
 	}
 }
 

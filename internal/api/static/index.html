@@ -233,10 +233,10 @@
 
     <section id="admin-drive-types" class="panel" hidden>
       <h2>Drive Types</h2>
-      <p class="hint">The catalog of drive hardware models suggested during setup and used by logical libraries.</p>
+      <p class="hint">The catalog of drive hardware models suggested during setup and used by logical libraries. Barcode Family determines which tape types can be loaded into a drive of this type - Load is rejected across a family mismatch (e.g. an LTO tape into a DDS drive); "Generic" accepts any tape family.</p>
       <button id="newDriveTypeBtn">New drive type</button>
       <table class="admin-table">
-        <thead><tr><th>Name</th><th>Model</th><th>Generation</th><th>Speed</th><th>Capacity</th><th>Description</th><th>SCSI Identity</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Model</th><th>Generation</th><th>Speed</th><th>Capacity</th><th>Barcode Family</th><th>Description</th><th>SCSI Identity</th><th>Actions</th></tr></thead>
         <tbody id="driveTypesTable"></tbody>
       </table>
     </section>
