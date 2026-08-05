@@ -40,9 +40,9 @@ actual SCSI changer rather than a changer-script convention — see
 
 Modeled after SCSI Medium Changer (SMC) element types:
 
-- **Storage slots** — home locations for cartridges (`slot:N`), addressed
+- **Storage slots** — home locations for cartridges (`slot`), addressed
   `1..slots`.
-- **I/O slots** (`ioslot:N`) — "mail slots" used to physically load/pickup
+- **I/O slots** (`ioslot`) — "mail slots" used to physically load/pickup
   media through door-gated operator actions.
   Addressed contiguously right after the storage slots (e.g. slots 1..20
   followed by I/O slots 21..24) exactly like a real SCSI medium changer and
@@ -51,8 +51,9 @@ Modeled after SCSI Medium Changer (SMC) element types:
   which learns the *total* addressable element count from the changer's
   `slots` command and maps individual addresses to regular or
   import/export slots solely by which range they fall in. gotochangerctl
-  and the web UI display I/O slot addresses with a trailing `@` (e.g.
-  `21@`), the same convention used by real tape library tooling.
+  and the web UI display a human-facing, magazine/mailbox-relative label
+  instead of the raw address where available (e.g. `2.3` for slot 3 of the
+  2nd currently-existing magazine).
 - **Mailboxes** — named, independently addressable groups of I/O slots
   (1-5 slots each), the I/O-slot equivalent of a magazine. I/O slots
   aren't configured as a flat count; they belong to a mailbox, and logical
@@ -63,7 +64,7 @@ Modeled after SCSI Medium Changer (SMC) element types:
   (5-20 slots, in increments of 5). Like mailboxes, a magazine can
   optionally require a 4-digit PIN to open its storage door; no PIN
   configured means the door opens freely.
-- **Drives** (`drive:N`) — data transfer elements. Loading a drive symlinks
+- **Drives** (`drive`) — data transfer elements. Loading a drive symlinks
   its configured device path (Bareos's "Archive Device") to the volume's
   backing file, exactly like `disk-changer.in` did (in userspace/file
   mode — see "Kernel mode" below for the alternative). Drives track
@@ -72,9 +73,10 @@ Modeled after SCSI Medium Changer (SMC) element types:
   `pickup_failure`, `drop_failure`, `movement_jam`, `other`) targets the
   single shared arm instead, blocking *all* Load/Unload/Move until
   cleared — there's only one robot.
-- **Volumes** are plain files under `<data_dir>/volumes/`, growable up to a
-  configured capacity; once a loaded volume's file reaches that capacity it
-  is marked full and made read-only, simulating end-of-tape. A volume can
+- **Volumes** are plain files stored under their tape set's own storage
+  folder (see "Tape sets" below), growable up to a configured capacity;
+  once a loaded volume's file reaches that capacity it is marked full and
+  made read-only, simulating end-of-tape. A volume can
   also be individually write-protected (simulating a physical write-protect
   tab), and can be sent to and recalled from an offsite vault, either
   manually or on an automatic rotation schedule.
@@ -163,8 +165,12 @@ From the **Admin** section (admin role required) you can:
 - **API Tokens**: create/revoke tokens scoped to a role, used by scripts
   via the `X-Api-Key` header or `Authorization: Bearer <token>`.
 - **Drive Types** / **Tape Types**: manage the suggested catalogs (add,
-  update, remove) — LTO-8, LTO-9, DDS, DLT, and an Unlimited
-  capacity/performance model are seeded on first start.
+  update, remove). Drive Types seeds LTO-8, LTO-9, DDS, DLT, SDLT, AIT,
+  3592, and an Unlimited capacity/performance model on first start; Tape
+  Types seeds a larger, generation-specific catalog (`LTO-1`..`LTO-9`,
+  `DLT-III`/`DLT-IV`, `SDLT-220`/`SDLT-600`, `DDS-1`..`DDS-4`,
+  `DAT-72`/`160`/`320`, `AIT-1`..`AIT-4`, `SAIT-1`, `IBM-3592`, and
+  `Unlimited`).
 - **Drives**: create/edit/remove drives (device path + drive-type
   assignment). Changes hot-apply immediately — no restart needed. Deleting
   a drive that currently holds a volume is refused.
@@ -663,8 +669,9 @@ Remote redeploy example:
 scripts/redeploy.sh --host bareos-sd01.example.com --user <ssh-user>
 ```
 
-Dependencies are vendored (`vendor/`), so the build does not require
-network access.
+Dependencies are not vendored — `go build` resolves modules from the local
+module cache, falling back to the network/proxy on a cold cache, and
+verifies them against `go.sum`.
 
 ## Scope and limitations
 
