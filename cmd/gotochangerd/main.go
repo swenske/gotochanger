@@ -21,6 +21,8 @@ import (
 	"github.com/swenske/gotochanger/internal/api"
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/library"
+	"github.com/swenske/gotochanger/internal/mailer"
+	"github.com/swenske/gotochanger/internal/offsite"
 	"github.com/swenske/gotochanger/internal/snmp"
 	"github.com/swenske/gotochanger/internal/store"
 )
@@ -81,6 +83,7 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 		return fmt.Errorf("load daemon settings: %w", err)
 	}
 	cfg.SNMP = daemonSettings.SNMP
+	cfg.SMTP = daemonSettings.SMTP
 	cfg.Prometheus = daemonSettings.Prometheus
 	cfg.PollIntervalRaw = daemonSettings.PollIntervalRaw
 	cfg.LogLevel = daemonSettings.LogLevel
@@ -145,11 +148,45 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 	lib.SetPhaseNotifier(broadcaster)
 	log.Info("library initialized", "magazines", len(cfg.Library.Magazines), "mailboxes", len(cfg.Library.Mailboxes), "drives", len(cfg.Library.DriveDevices))
 
-	settings := api.NewSettings(cfg, lib, snmpSender, logLevel, st)
+	// smtpMailer is constructed unconditionally (like snmp.New) - its own
+	// Enabled check inside Send decides whether it actually dials out.
+	// Shared between Settings (for hot-reload via SetConfig) and the
+	// offsite engine's mailer below.
+	smtpMailer := mailer.NewSMTPMailer(cfg.SMTP)
+	settings := api.NewSettings(cfg, lib, snmpSender, smtpMailer, logLevel, st)
 	backupsDir := cfg.DataDir + "/backups"
 	srv := api.New(lib, tokens, users, sessions, settings, cfg, log, st, st, st, backupsDir)
 	srv.SetVersion(version)
 	srv.SetBroadcaster(broadcaster)
+
+	// Offsite mode engine: Continuous Rotation (this project's original,
+	// only offsite behavior, now wrapped behind the OffsiteMode interface)
+	// and Scheduled Pickup are both registered unconditionally - which
+	// mode (if any) is actually active is a live setting (offsite_active_
+	// mode), not something decided at startup. mail always fans out to
+	// both a LoggingMailer (the recap is always logged/recorded as a
+	// library.Event for the audit trail, unconditionally) and smtpMailer
+	// (actually delivers whenever SMTP is enabled and configured); see
+	// internal/mailer's doc comment.
+	logMailer := mailer.NewLoggingMailer(lib, log)
+	mail := mailer.MultiMailer{logMailer, smtpMailer}
+	offsiteRegistry := offsite.NewRegistry()
+	offsiteRegistry.Register(offsite.NewContinuousRotationMode())
+	offsiteRegistry.Register(offsite.NewScheduledPickupMode())
+	offsiteEngine := offsite.NewEngine(lib, st, mail, offsiteRegistry)
+	srv.SetOffsiteEngine(offsiteEngine)
+
+	// Volumes vaulted offsite by a pre-mode-architecture binary have
+	// Offsite == nil (the field didn't exist yet) even though they're
+	// genuinely vaulted - backfill a minimal record for each so the
+	// tracked-offsite view/Admin UI don't show them with a blank status.
+	// Idempotent (only touches volumes that still have Offsite == nil), so
+	// safe to run unconditionally on every startup.
+	for _, v := range lib.OffsiteVolumes() {
+		if v.Offsite == nil {
+			lib.BackfillOffsiteInfo(v.Barcode)
+		}
+	}
 
 	// Restore (see internal/api/backup.go) replaces the database file out
 	// from under this running process and then deliberately exits non-zero
@@ -241,37 +278,32 @@ func run(configPath string, log *slog.Logger, logLevel *slog.LevelVar) error {
 		}
 	}()
 
-	// Optional scheduled offsite rotation, simulating scheduled tape
-	// rotation/vaulting: re-read the interval/count from the store on every
-	// tick (like the poll ticker above) so a live Settings change takes
-	// effect without a restart. Disabled (interval empty) by default.
+	// Offsite mode scheduler: dispatches to whichever mode is currently
+	// active (offsite_active_mode) - completing due pickups/returns and
+	// running that mode's own scheduled behavior (Continuous Rotation's
+	// interval sweep, Scheduled Pickup's D-1 recap email), both inside the
+	// mode's own Tick rather than hardcoded here. Replaces the old
+	// offsite-rotation-only ticker.
 	go func() {
-		lastRotation := time.Now()
-		const rotationCheckTick = 5 * time.Second
-		ticker := time.NewTicker(rotationCheckTick)
+		const offsiteTickInterval = 30 * time.Second
+		ticker := time.NewTicker(offsiteTickInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case now := <-ticker.C:
-				rawInterval, ok, _ := st.GetSetting("offsite_rotation_interval")
-				if !ok || rawInterval == "" {
+				active, err := st.GetOffsiteActiveMode()
+				if err != nil || active == "" {
 					continue
 				}
-				interval, err := config.ParseDuration(rawInterval)
-				if err != nil || interval <= 0 {
+				mode, ok := offsiteRegistry.Get(active)
+				if !ok {
 					continue
 				}
-				if now.Sub(lastRotation) < interval {
-					continue
+				if err := mode.Tick(ctx, offsiteEngine, now); err != nil {
+					log.Error("offsite mode tick failed", "mode", active, "error", err)
 				}
-				count, _, _ := st.GetSetting("offsite_rotation_count")
-				n, _ := strconv.Atoi(count)
-				if n > 0 {
-					lib.RotateOffsite(n)
-				}
-				lastRotation = now
 			}
 		}
 	}()

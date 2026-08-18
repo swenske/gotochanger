@@ -10,6 +10,7 @@ import (
 
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/library"
+	"github.com/swenske/gotochanger/internal/mailer"
 	"github.com/swenske/gotochanger/internal/snmp"
 )
 
@@ -23,14 +24,15 @@ type Settings struct {
 	cfg      config.Config
 	lib      *library.Library
 	snmp     *snmp.Sender
+	mailer   *mailer.SMTPMailer
 	logLevel *slog.LevelVar
 	topology TopologyStore
 }
 
 // NewSettings builds a Settings manager. topology may be nil in tests that
 // don't exercise setting persistence.
-func NewSettings(cfg config.Config, lib *library.Library, sender *snmp.Sender, logLevel *slog.LevelVar, topology TopologyStore) *Settings {
-	return &Settings{cfg: cfg, lib: lib, snmp: sender, logLevel: logLevel, topology: topology}
+func NewSettings(cfg config.Config, lib *library.Library, sender *snmp.Sender, smtpMailer *mailer.SMTPMailer, logLevel *slog.LevelVar, topology TopologyStore) *Settings {
+	return &Settings{cfg: cfg, lib: lib, snmp: sender, mailer: smtpMailer, logLevel: logLevel, topology: topology}
 }
 
 // Current returns the effective configuration, with the store-backed
@@ -72,14 +74,6 @@ func (s *Settings) refreshStoreBackedLocked() {
 	if v, ok, err := s.topology.GetSetting("offsite_location"); err == nil && ok {
 		s.cfg.Library.OffsiteLocation = v == "true"
 	}
-	if v, ok, err := s.topology.GetSetting("offsite_rotation_interval"); err == nil && ok {
-		s.cfg.Library.OffsiteRotationInterval = v
-	}
-	if v, ok, err := s.topology.GetSetting("offsite_rotation_count"); err == nil && ok {
-		if n, convErr := strconv.Atoi(v); convErr == nil {
-			s.cfg.Library.OffsiteRotationCount = n
-		}
-	}
 	if v, ok, err := s.topology.GetSetting("magazine_pin_hash"); err == nil && ok {
 		s.cfg.Library.MagazinePINHash = v
 	}
@@ -101,17 +95,23 @@ var restartRequiredFields = []string{
 // persists to the database (internal/store/topology.go) and hot-applies
 // immediately.
 type UpdateSettingsRequest struct {
-	VTLName                 *string              `json:"vtl_name,omitempty"`
-	DefaultCapacity         *string              `json:"default_capacity,omitempty"`
-	PollInterval            *string              `json:"poll_interval,omitempty"`
-	LogLevel                *string              `json:"log_level,omitempty"`
-	SNMPEnabled             *bool                `json:"snmp_enabled,omitempty"`
-	SNMPEnterpriseOID       *string              `json:"snmp_enterprise_oid,omitempty"`
-	SNMPAgentAddress        *string              `json:"snmp_agent_address,omitempty"`
-	SNMPTargets             *[]config.SNMPTarget `json:"snmp_targets,omitempty"`
-	OffsiteLocation         *bool                `json:"offsite_location,omitempty"`
-	OffsiteRotationInterval *string              `json:"offsite_rotation_interval,omitempty"`
-	OffsiteRotationCount    *int                 `json:"offsite_rotation_count,omitempty"`
+	VTLName           *string              `json:"vtl_name,omitempty"`
+	DefaultCapacity   *string              `json:"default_capacity,omitempty"`
+	PollInterval      *string              `json:"poll_interval,omitempty"`
+	LogLevel          *string              `json:"log_level,omitempty"`
+	SNMPEnabled       *bool                `json:"snmp_enabled,omitempty"`
+	SNMPEnterpriseOID *string              `json:"snmp_enterprise_oid,omitempty"`
+	SNMPAgentAddress  *string              `json:"snmp_agent_address,omitempty"`
+	SNMPTargets       *[]config.SNMPTarget `json:"snmp_targets,omitempty"`
+	OffsiteLocation   *bool                `json:"offsite_location,omitempty"`
+	SMTPEnabled       *bool                `json:"smtp_enabled,omitempty"`
+	SMTPHost          *string              `json:"smtp_host,omitempty"`
+	SMTPPort          *int                 `json:"smtp_port,omitempty"`
+	SMTPUsername      *string              `json:"smtp_username,omitempty"`
+	SMTPPassword      *string              `json:"smtp_password,omitempty"`
+	SMTPFrom          *string              `json:"smtp_from,omitempty"`
+	SMTPUseTLS        *bool                `json:"smtp_use_tls,omitempty"`
+	SMTPStartTLS      *bool                `json:"smtp_start_tls,omitempty"`
 }
 
 // UpdateSettingsResult is returned after applying a settings update.
@@ -178,17 +178,38 @@ func (s *Settings) Update(req UpdateSettingsRequest) (UpdateSettingsResult, erro
 	if req.OffsiteLocation != nil {
 		next.Library.OffsiteLocation = *req.OffsiteLocation
 	}
-	if req.OffsiteRotationInterval != nil {
-		if *req.OffsiteRotationInterval != "" {
-			if _, err := config.ParseDuration(*req.OffsiteRotationInterval); err != nil {
-				return UpdateSettingsResult{}, fmt.Errorf("offsite_rotation_interval: %w", err)
-			}
-		}
-		next.Library.OffsiteRotationInterval = *req.OffsiteRotationInterval
+	if req.SMTPEnabled != nil {
+		next.SMTP.Enabled = *req.SMTPEnabled
 	}
-	if req.OffsiteRotationCount != nil {
-		next.Library.OffsiteRotationCount = *req.OffsiteRotationCount
+	if req.SMTPHost != nil {
+		next.SMTP.Host = *req.SMTPHost
 	}
+	if req.SMTPPort != nil {
+		next.SMTP.Port = *req.SMTPPort
+	}
+	if req.SMTPUsername != nil {
+		next.SMTP.Username = *req.SMTPUsername
+	}
+	// Blank/omitted always means "leave unchanged," never "clear": the
+	// Settings page submits every field together on every save, and this
+	// input always starts blank (GET never returns the real password), so
+	// "blank = clear" would silently wipe a working password the moment an
+	// admin saved any unrelated setting - mirrors the mailbox-edit
+	// dialog's PIN field (app.js), which has the same pointer-semantics
+	// comment for the same reason.
+	if req.SMTPPassword != nil && *req.SMTPPassword != "" {
+		next.SMTP.Password = *req.SMTPPassword
+	}
+	if req.SMTPFrom != nil {
+		next.SMTP.From = *req.SMTPFrom
+	}
+	if req.SMTPUseTLS != nil {
+		next.SMTP.UseTLS = *req.SMTPUseTLS
+	}
+	if req.SMTPStartTLS != nil {
+		next.SMTP.StartTLS = *req.SMTPStartTLS
+	}
+	next.SMTP.PasswordConfigured = next.SMTP.Password != ""
 
 	if err := next.Validate(); err != nil {
 		return UpdateSettingsResult{}, err
@@ -206,12 +227,6 @@ func (s *Settings) Update(req UpdateSettingsRequest) (UpdateSettingsResult, erro
 			offsiteLocation = "true"
 		}
 		if err := s.topology.SetSetting("offsite_location", offsiteLocation); err != nil {
-			return UpdateSettingsResult{}, err
-		}
-		if err := s.topology.SetSetting("offsite_rotation_interval", next.Library.OffsiteRotationInterval); err != nil {
-			return UpdateSettingsResult{}, err
-		}
-		if err := s.topology.SetSetting("offsite_rotation_count", strconv.Itoa(next.Library.OffsiteRotationCount)); err != nil {
 			return UpdateSettingsResult{}, err
 		}
 		if err := s.topology.SetSetting("poll_interval", next.PollIntervalRaw); err != nil {
@@ -236,11 +251,54 @@ func (s *Settings) Update(req UpdateSettingsRequest) (UpdateSettingsResult, erro
 		if err := s.topology.SetSNMPTargets(next.SNMP.Targets); err != nil {
 			return UpdateSettingsResult{}, err
 		}
+		smtpEnabled := "false"
+		if next.SMTP.Enabled {
+			smtpEnabled = "true"
+		}
+		if err := s.topology.SetSetting("smtp_enabled", smtpEnabled); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		if err := s.topology.SetSetting("smtp_host", next.SMTP.Host); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		if err := s.topology.SetSetting("smtp_port", strconv.Itoa(next.SMTP.Port)); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		if err := s.topology.SetSetting("smtp_username", next.SMTP.Username); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		// Persisted unconditionally (not just when non-blank): by this
+		// point next.SMTP.Password is already correct from the
+		// leave-unchanged-unless-non-blank logic applied above, so there's
+		// nothing left to special-case here - same as every other field.
+		if err := s.topology.SetSetting("smtp_password", next.SMTP.Password); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		if err := s.topology.SetSetting("smtp_from", next.SMTP.From); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		smtpUseTLS := "false"
+		if next.SMTP.UseTLS {
+			smtpUseTLS = "true"
+		}
+		if err := s.topology.SetSetting("smtp_use_tls", smtpUseTLS); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		smtpStartTLS := "false"
+		if next.SMTP.StartTLS {
+			smtpStartTLS = "true"
+		}
+		if err := s.topology.SetSetting("smtp_start_tls", smtpStartTLS); err != nil {
+			return UpdateSettingsResult{}, err
+		}
 	}
 
 	s.cfg = next
 	if s.snmp != nil {
 		s.snmp.SetConfig(next.SNMP)
+	}
+	if s.mailer != nil {
+		s.mailer.SetConfig(next.SMTP)
 	}
 	if s.lib != nil {
 		s.lib.UpdateLiveSettings(next.Library.DefaultCapacity, next.Library.OffsiteLocation)

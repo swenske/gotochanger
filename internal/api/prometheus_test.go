@@ -65,7 +65,7 @@ func newPrometheusTestServer(t *testing.T) *Server {
 		t.Fatalf("set initial admin password: %v", err)
 	}
 	sessions := NewSessionStore()
-	settings := NewSettings(cfg, lib, nil, nil, st)
+	settings := NewSettings(cfg, lib, nil, nil, nil, st)
 
 	return New(lib, tokens, users, sessions, settings, cfg, nil, nil, st, st, filepath.Join(tmp, "backups"))
 }

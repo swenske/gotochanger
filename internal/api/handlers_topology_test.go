@@ -68,7 +68,7 @@ func newTopologyTestServer(t *testing.T, driveCount int) *Server {
 		t.Fatalf("set initial admin password: %v", err)
 	}
 	sessions := NewSessionStore()
-	settings := NewSettings(cfg, lib, nil, nil, st)
+	settings := NewSettings(cfg, lib, nil, nil, nil, st)
 	return New(lib, tokens, users, sessions, settings, cfg, nil, st, st, st, filepath.Join(tmp, "backups"))
 }
 

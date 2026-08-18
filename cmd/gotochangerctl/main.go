@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/swenske/gotochanger/internal/apiclient"
 	"github.com/swenske/gotochanger/internal/config"
@@ -699,7 +700,7 @@ func runDrive(c *apiclient.Client, args []string, jsonOut bool) error {
 
 func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: offsite <list|send|recall>")
+		return fmt.Errorf("usage: offsite <list|send|recall|requests|cancel>")
 	}
 	switch args[0] {
 	case "list":
@@ -735,6 +736,29 @@ func runOffsite(c *apiclient.Client, args []string, jsonOut bool) error {
 			return err
 		}
 		return c.OffsiteRecall(args[1], args[2], addr)
+	case "requests":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: offsite requests")
+		}
+		reqs, err := c.ListOffsiteRequests()
+		if err != nil {
+			return err
+		}
+		return printResult(reqs, jsonOut, func() {
+			for _, req := range reqs {
+				fmt.Printf("%-18s %-8s %-10s %-24s %s\n",
+					req.ID, req.Kind, req.Status, req.CreatedAt.Format(time.RFC3339), strings.Join(req.Barcodes, ","))
+			}
+		})
+	case "cancel":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: offsite cancel <request-id>")
+		}
+		if err := c.CancelOffsiteRequest(args[1]); err != nil {
+			return err
+		}
+		fmt.Printf("cancelled offsite request %s\n", args[1])
+		return nil
 	default:
 		return fmt.Errorf("unknown offsite subcommand %q", args[0])
 	}
@@ -967,13 +991,13 @@ func runSettings(c *apiclient.Client, args []string, jsonOut bool) error {
 		// aren't - sending those as a bare string (e.g. {"snmp_enabled":
 		// "true"}) fails server-side JSON unmarshaling into *bool/*int.
 		switch key {
-		case "snmp_enabled", "offsite_location":
+		case "snmp_enabled", "offsite_location", "smtp_enabled", "smtp_use_tls", "smtp_start_tls":
 			b, err := strconv.ParseBool(val)
 			if err != nil {
 				return fmt.Errorf("invalid boolean for %q: %w", key, err)
 			}
 			req[key] = b
-		case "offsite_rotation_count":
+		case "smtp_port":
 			n, err := strconv.Atoi(val)
 			if err != nil {
 				return fmt.Errorf("invalid integer for %q: %w", key, err)
@@ -1369,7 +1393,7 @@ subcommands:
   mailbox new|list|update|delete ...
   drive new|list|update|delete ...
   unassigned
-  offsite list|send|recall ...
+  offsite list|send|recall|requests|cancel ...
   backup download <output-file>
   backup list
   backup download-stored <filename> <output-file>

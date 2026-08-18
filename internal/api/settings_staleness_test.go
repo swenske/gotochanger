@@ -35,7 +35,7 @@ func TestSettingsUpdateDoesNotClobberWizardWrittenValues(t *testing.T) {
 	// Startup: Settings caches a config with no VTL name, which is exactly
 	// what a fresh install looks like before the wizard runs.
 	cfg := config.Default()
-	settings := NewSettings(cfg, nil, nil, nil, st)
+	settings := NewSettings(cfg, nil, nil, nil, nil, st)
 
 	// The wizard writes straight to the store, as UpdateWizardState does.
 	if err := st.SetSetting("vtl_name", "VTL0"); err != nil {
@@ -66,7 +66,7 @@ func TestSettingsUpdateDoesNotClobberWizardWrittenValues(t *testing.T) {
 // install) rather than the name the wizard had just set.
 func TestSettingsCurrentReflectsWizardWrittenValues(t *testing.T) {
 	st := newSettingsTestStore(t)
-	settings := NewSettings(config.Default(), nil, nil, nil, st)
+	settings := NewSettings(config.Default(), nil, nil, nil, nil, st)
 
 	if err := st.SetSetting("vtl_name", "VTL0"); err != nil {
 		t.Fatalf("set vtl_name: %v", err)
@@ -81,7 +81,7 @@ func TestSettingsCurrentReflectsWizardWrittenValues(t *testing.T) {
 // the request actually asked to change.
 func TestSettingsUpdateStillPersistsRequestedFields(t *testing.T) {
 	st := newSettingsTestStore(t)
-	settings := NewSettings(config.Default(), nil, nil, nil, st)
+	settings := NewSettings(config.Default(), nil, nil, nil, nil, st)
 
 	name := "RENAMED"
 	offsite := true

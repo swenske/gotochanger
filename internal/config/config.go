@@ -30,6 +30,27 @@ type SNMPConfig struct {
 	AgentAddress  string       `yaml:"agent_address" json:"agent_address"`
 }
 
+// SMTPConfig configures optional real email delivery for the offsite
+// feature's D-1 recap (see internal/mailer.SMTPMailer). Password is
+// deliberately never serialized to JSON (see PasswordConfigured) - unlike
+// every other field in this file, it's a real, reusable credential the
+// daemon must retain in a form it can actually authenticate with, and
+// there is no at-rest encryption primitive in this codebase to protect it
+// further - GET /api/v1/settings must not echo it back in plaintext the
+// way it does for e.g. an SNMP community string.
+type SMTPConfig struct {
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+	Host     string `yaml:"host" json:"host"`
+	Port     int    `yaml:"port" json:"port"`
+	Username string `yaml:"username" json:"username"`
+	From     string `yaml:"from" json:"from"`
+	UseTLS   bool   `yaml:"use_tls" json:"use_tls"`     // implicit TLS, typically :465
+	StartTLS bool   `yaml:"start_tls" json:"start_tls"` // plaintext connect then upgrade, typically :587
+
+	Password           string `yaml:"-" json:"-"`
+	PasswordConfigured bool   `yaml:"-" json:"password_configured"`
+}
+
 // PrometheusConfig controls the /metrics exporter. Enabled defaults to
 // false, matching every other optional feature (SNMP, latency simulation,
 // cleaning) - an operator opts in explicitly.
@@ -314,21 +335,26 @@ func ValidateCleaningSettings(cs CleaningSettings) error {
 // discards whatever is under `library:` in the file and never treats it as
 // authoritative.
 type LibraryConfig struct {
-	Name                    string                 `yaml:"name" json:"name"`
-	OperationalMode         string                 `yaml:"operational_mode" json:"operational_mode"`
-	DriveTypes              []DriveType            `yaml:"drive_types" json:"drive_types"`
-	TapeTypes               []TapeType             `yaml:"tape_types" json:"tape_types"`
-	Magazines               []MagazineConfig       `yaml:"magazines" json:"magazines"`
-	Mailboxes               []MailboxConfig        `yaml:"mailboxes" json:"mailboxes"`
-	DriveDevices            []DriveDeviceConfig    `yaml:"drive_devices" json:"drive_devices"`
-	DefaultCapacity         string                 `yaml:"default_capacity" json:"default_capacity"`
-	LogicalLibraries        []LogicalLibraryConfig `yaml:"logical_libraries" json:"logical_libraries"`
-	TapeSets                []TapeSetConfig        `yaml:"tape_sets" json:"tape_sets"`
-	Latency                 LatencySettings        `yaml:"latency" json:"latency"`
-	Cleaning                CleaningSettings       `yaml:"cleaning" json:"cleaning"`
-	OffsiteLocation         bool                   `yaml:"offsite_location" json:"offsite_location"`
-	OffsiteRotationInterval string                 `yaml:"offsite_rotation_interval" json:"offsite_rotation_interval"`
-	OffsiteRotationCount    int                    `yaml:"offsite_rotation_count" json:"offsite_rotation_count"`
+	Name             string                 `yaml:"name" json:"name"`
+	OperationalMode  string                 `yaml:"operational_mode" json:"operational_mode"`
+	DriveTypes       []DriveType            `yaml:"drive_types" json:"drive_types"`
+	TapeTypes        []TapeType             `yaml:"tape_types" json:"tape_types"`
+	Magazines        []MagazineConfig       `yaml:"magazines" json:"magazines"`
+	Mailboxes        []MailboxConfig        `yaml:"mailboxes" json:"mailboxes"`
+	DriveDevices     []DriveDeviceConfig    `yaml:"drive_devices" json:"drive_devices"`
+	DefaultCapacity  string                 `yaml:"default_capacity" json:"default_capacity"`
+	LogicalLibraries []LogicalLibraryConfig `yaml:"logical_libraries" json:"logical_libraries"`
+	TapeSets         []TapeSetConfig        `yaml:"tape_sets" json:"tape_sets"`
+	Latency          LatencySettings        `yaml:"latency" json:"latency"`
+	Cleaning         CleaningSettings       `yaml:"cleaning" json:"cleaning"`
+
+	// OffsiteLocation enables the offsite-vaulting feature as a whole (see
+	// internal/offsite and Library.OffsiteEnabled) - which mode (if any) is
+	// active, and that mode's own parameters, are configured separately
+	// (offsite_active_mode/offsite_mode_config_* in the topology store,
+	// never part of this struct), so adding a new mode never requires a
+	// LibraryConfig change.
+	OffsiteLocation bool `yaml:"offsite_location" json:"offsite_location"`
 
 	// MagazinePINHash is the single PIN-code hash (see secrethash) that
 	// applies to every magazine's storage door, or empty if no PIN is
@@ -350,6 +376,7 @@ type Config struct {
 	Listen          ListenConfig     `yaml:"listen" json:"listen"`
 	Library         LibraryConfig    `yaml:"-" json:"library"`
 	SNMP            SNMPConfig       `yaml:"-" json:"snmp"`
+	SMTP            SMTPConfig       `yaml:"-" json:"smtp"`
 	Prometheus      PrometheusConfig `yaml:"-" json:"prometheus"`
 	PollInterval    time.Duration    `yaml:"-" json:"-"`
 	PollIntervalRaw string           `yaml:"-" json:"poll_interval"`
@@ -388,6 +415,7 @@ func Default() Config {
 			EnterpriseOID: "1.3.6.1.4.1.55555.1",
 			AgentAddress:  "127.0.0.1",
 		},
+		SMTP:            SMTPConfig{Enabled: false, Port: 587},
 		Prometheus:      PrometheusConfig{Enabled: false},
 		PollIntervalRaw: "5s",
 		LogLevel:        "info",

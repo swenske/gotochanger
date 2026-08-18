@@ -459,10 +459,10 @@
     },
     "/api/v1/volumes/{barcode}/write-protect": {
       "post": {
-        "summary": "Set or clear the simulated write-protect tab on a cartridge; only reachable while the cartridge is physically accessible (outside/offsite, or in a storage/mailbox slot whose door is open) - never while mounted in a drive or behind a closed door; does not affect Move/Load/Unload, only enforced on an actual write attempt (operator+)",
+        "summary": "Set or clear the simulated write-protect tab on a cartridge; only reachable while the cartridge is physically accessible (outside the library, or in a storage/mailbox slot whose door is open) - never while mounted in a drive, behind a closed door, or offsite; does not affect Move/Load/Unload, only enforced on an actual write attempt (operator+)",
         "parameters": [ { "name": "barcode", "in": "path", "required": true, "schema": { "type": "string" } } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "write_protected": { "type": "boolean" } }, "required": ["write_protected"] } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "404": { "description": "Not found" }, "409": { "description": "Volume is not physically accessible (mounted in a drive, or behind a closed magazine/mailbox door)" } }
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } }, "404": { "description": "Not found" }, "409": { "description": "Volume is not physically accessible (mounted in a drive, behind a closed magazine/mailbox door, or offsite)" } }
       }
     },
     "/api/v1/robotics/fault": {

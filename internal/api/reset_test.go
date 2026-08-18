@@ -56,7 +56,7 @@ func newResetTestServer(t *testing.T) (*Server, *store.Store, string) {
 		t.Fatalf("set initial admin password: %v", err)
 	}
 	sessions := NewSessionStore()
-	settings := NewSettings(cfg, lib, nil, nil, st)
+	settings := NewSettings(cfg, lib, nil, nil, nil, st)
 
 	backupsDir := filepath.Join(tmp, "backups")
 	s := New(lib, tokens, users, sessions, settings, cfg, nil, st, st, st, backupsDir)
