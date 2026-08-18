@@ -97,7 +97,7 @@ func (m *ContinuousRotationMode) Tick(ctx context.Context, eng *Engine, now time
 		return nil
 	}
 	for _, ref := range eng.lib.OffsiteRotationCandidates(cfg.Count) {
-		eng.SendNow(ref, m.Name()) // best-effort, errors already logged by SendNow
+		_, _ = eng.SendNow(ref, m.Name()) // best-effort, errors already logged by SendNow
 	}
 	return eng.store.SetSetting("offsite_mode_continuous_rotation_last_run", now.UTC().Format(time.RFC3339))
 }

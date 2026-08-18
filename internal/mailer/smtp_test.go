@@ -165,8 +165,8 @@ func (s *fakeSMTPServer) acceptOne() {
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
 	writeLine := func(line string) {
-		w.WriteString(line + "\r\n")
-		w.Flush()
+		_, _ = w.WriteString(line + "\r\n")
+		_ = w.Flush()
 	}
 
 	writeLine("220 fake.test ESMTP ready")
@@ -176,12 +176,12 @@ func (s *fakeSMTPServer) acceptOne() {
 		return
 	}
 	if s.advertiseAuth {
-		w.WriteString("250-fake.test greets you\r\n")
-		w.WriteString("250 AUTH PLAIN\r\n")
+		_, _ = w.WriteString("250-fake.test greets you\r\n")
+		_, _ = w.WriteString("250 AUTH PLAIN\r\n")
 	} else {
-		w.WriteString("250 fake.test greets you\r\n")
+		_, _ = w.WriteString("250 fake.test greets you\r\n")
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	line, err = r.ReadString('\n')
 	if err != nil {
