@@ -120,6 +120,41 @@ button .icon, .nav-btn .icon, .subnav-btn .icon { margin-right: 0.35rem; }
 .nav-btn.active, .nav-btn:hover { background: var(--card); color: var(--text); border-color: var(--border); }
 .nav-btn:hover { transform: translateY(-1px); }
 
+#notifyBell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s ease;
+}
+#notifyBell:hover { border-color: var(--accent); }
+#notifyBell .icon { width: 1.1em; height: 1.1em; margin-right: 0; }
+#notifyCount {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--err);
+  color: #2a0505;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .userbox { display: flex; align-items: center; gap: 0.6rem; }
 .userbox button {
   padding: 0.3rem 0.6rem;
@@ -420,6 +455,29 @@ main {
 .stat-card .stat-value.ok { color: var(--ok); }
 .stat-card .stat-value.warn { color: var(--warn); }
 .stat-card .stat-value.err { color: var(--err); }
+
+/* Offsite Location tab's one-card-per-mode list (Admin > Offsite
+   Location). Reuses the existing .card base (background/border/radius/
+   hover) rather than a parallel family - .card.offsite-mode-card (two
+   classes) outranks plain .card's flex-direction: column the same way
+   .card.stat-card does above. */
+.offsite-mode-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.card.offsite-mode-card {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  cursor: default;
+}
+.card.offsite-mode-card:has(input:checked) { border-color: var(--accent); }
+.offsite-mode-card-radio { flex: none; display: flex; align-items: center; }
+.offsite-mode-card-info { flex: 1; cursor: pointer; display: flex; flex-direction: column; gap: 0.15rem; }
+.offsite-mode-card-title { font-weight: 600; }
+.offsite-mode-card-desc { color: var(--muted); font-size: 0.82rem; }
 
 .magazine-groups {
   display: flex;

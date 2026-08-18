@@ -11,6 +11,7 @@ import (
 
 	"github.com/swenske/gotochanger/internal/config"
 	"github.com/swenske/gotochanger/internal/library"
+	"github.com/swenske/gotochanger/internal/offsite"
 	"github.com/swenske/gotochanger/internal/store"
 )
 
@@ -69,6 +70,17 @@ type TopologyStore interface {
 	GetCleaningSettings() (config.CleaningSettings, error)
 	SetCleaningSettings(cs config.CleaningSettings) error
 	InstanceID() (string, error)
+
+	GetOffsiteActiveMode() (string, error)
+	SetOffsiteActiveMode(name string) error
+	GetOffsiteModeConfig(mode string) (json.RawMessage, bool, error)
+	SetOffsiteModeConfig(mode string, raw json.RawMessage) error
+	RecordOffsiteMovement(store.OffsiteMovement) error
+	ListOffsiteMovements(barcode string, limit int) ([]store.OffsiteMovement, error)
+	CreateOffsiteRequest(store.OffsiteRequest) error
+	GetOffsiteRequest(id string) (store.OffsiteRequest, bool, error)
+	ListOffsiteRequests(limit int) ([]store.OffsiteRequest, error)
+	CancelOffsiteRequestRecord(id string, cancelledAt time.Time) (bool, error)
 }
 
 // BackupStore is everything the API layer needs from *store.Store to serve
@@ -113,6 +125,7 @@ type Server struct {
 	kernelModeDevices map[string]KernelModeDeviceReport
 	startedAt         time.Time
 	pm                *prometheusMetrics
+	offsiteEngine     *offsite.Engine
 }
 
 // New builds a Server. lib, tokens, users and sessions must be non-nil; log
@@ -156,6 +169,16 @@ func (s *Server) SetBroadcaster(b *Broadcaster) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.broadcaster = b
+}
+
+// SetOffsiteEngine registers the offsite mode engine (see cmd/gotochangerd,
+// which constructs it alongside the mode registry and mailer) so the
+// Admin API's offsite-mode/request/recap-preview handlers have something
+// to call. Optional - if never set, those handlers respond with 503.
+func (s *Server) SetOffsiteEngine(eng *offsite.Engine) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.offsiteEngine = eng
 }
 
 // PublicHandler returns the authenticated handler tree (session cookie or
@@ -391,6 +414,23 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/offsite/send", requireRole(RoleOperator, s.handleOffsiteSend))
 	mux.HandleFunc("POST /api/v1/offsite/recall", requireRole(RoleOperator, s.handleOffsiteRecall))
 
+	// Offsite Location: pluggable pickup/vaulting modes (see internal/offsite).
+	// Mode config/activation and the pickup/retrieval request all live under
+	// Admin > Operations > Offsite Location, so - unlike the manual
+	// send/recall above, which are routine Operator actions - every one of
+	// these is Admin-only, consistent with every other Admin-section
+	// route having no Operator exception. Movement history is Viewer-level,
+	// matching GET /api/v1/offsite's own read-only audit visibility.
+	mux.HandleFunc("GET /api/v1/offsite/modes", requireRole(RoleAdmin, s.handleListOffsiteModes))
+	mux.HandleFunc("PUT /api/v1/offsite/modes/{name}/config", requireRole(RoleAdmin, s.handleUpdateOffsiteModeConfig))
+	mux.HandleFunc("PUT /api/v1/offsite/active-mode", requireRole(RoleAdmin, s.handleSetOffsiteActiveMode))
+	mux.HandleFunc("POST /api/v1/offsite/request", requireRole(RoleAdmin, s.handleOffsiteRequest))
+	mux.HandleFunc("GET /api/v1/offsite/requests", requireRole(RoleViewer, s.handleListOffsiteRequests))
+	mux.HandleFunc("DELETE /api/v1/offsite/requests/{id}", requireRole(RoleAdmin, s.handleCancelOffsiteRequest))
+	mux.HandleFunc("GET /api/v1/offsite/tracked", requireRole(RoleViewer, s.handleListTrackedOffsiteVolumes))
+	mux.HandleFunc("GET /api/v1/offsite/history", requireRole(RoleViewer, s.handleOffsiteHistory))
+	mux.HandleFunc("GET /api/v1/offsite/recap-preview", requireRole(RoleAdmin, s.handleOffsiteRecapPreview))
+
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -526,10 +566,19 @@ func statusFor(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, library.ErrInvalidBarcode), errors.Is(err, library.ErrInvalidTarget), errors.Is(err, library.ErrUnknownTapeSet), errors.Is(err, library.ErrInvalidRoboticFaultKind):
 		return http.StatusBadRequest
-	case errors.Is(err, library.ErrEmpty), errors.Is(err, library.ErrFull), errors.Is(err, library.ErrDriveFault), errors.Is(err, library.ErrRoboticFault), errors.Is(err, library.ErrDoorClosed), errors.Is(err, library.ErrOutsideOnly), errors.Is(err, library.ErrAlreadyExists), errors.Is(err, library.ErrBarcodeExists), errors.Is(err, library.ErrCleaningTapeExpired), errors.Is(err, library.ErrCleaningPoolFull), errors.Is(err, library.ErrCleaningTapeUnavailable), errors.Is(err, library.ErrOffsiteDisabled), errors.Is(err, library.ErrVolumeNotAccessible), errors.Is(err, library.ErrIncompatibleTapeFamily):
+	case errors.Is(err, library.ErrEmpty), errors.Is(err, library.ErrFull), errors.Is(err, library.ErrDriveFault), errors.Is(err, library.ErrRoboticFault), errors.Is(err, library.ErrDoorClosed), errors.Is(err, library.ErrOutsideOnly), errors.Is(err, library.ErrAlreadyExists), errors.Is(err, library.ErrBarcodeExists), errors.Is(err, library.ErrCleaningTapeExpired), errors.Is(err, library.ErrCleaningPoolFull), errors.Is(err, library.ErrCleaningTapeUnavailable), errors.Is(err, library.ErrOffsiteDisabled), errors.Is(err, library.ErrVolumeNotAccessible), errors.Is(err, library.ErrIncompatibleTapeFamily), errors.Is(err, library.ErrVolumeOffsite), errors.Is(err, library.ErrOffsiteAlreadyTracked), errors.Is(err, library.ErrOffsiteNotVaulted), errors.Is(err, library.ErrOffsiteNotOnsite):
 		return http.StatusConflict
 	case errors.Is(err, library.ErrOutsideLogicalLibrary), errors.Is(err, library.ErrPINRequired), errors.Is(err, library.ErrInvalidPIN):
 		return http.StatusForbidden
+	// offsite.ErrRequestNotCancellable is the one domain sentinel in this
+	// switch that doesn't originate in internal/library - it can only be
+	// distinguished from library.ErrNotFound ("no such request id")
+	// inside internal/offsite's Engine, which alone sees the
+	// offsite_requests row, so it gets its own explicit case here rather
+	// than being folded into the internal/library-only convention every
+	// other case follows.
+	case errors.Is(err, offsite.ErrRequestNotCancellable):
+		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
 	}

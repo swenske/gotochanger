@@ -101,6 +101,15 @@ func (s *Store) initTopologySchema() error {
 	if err := s.migrateMailboxesPINSchema(); err != nil {
 		return err
 	}
+	if err := s.initOffsiteSchema(); err != nil {
+		return err
+	}
+	if err := s.migrateOffsiteMovementsSchema(); err != nil {
+		return err
+	}
+	if err := s.migrateLegacyOffsiteRotationSetting(); err != nil {
+		return err
+	}
 	return s.migrateLegacyLatencySetting()
 }
 
@@ -521,6 +530,10 @@ func (s *Store) SeedDefaults() error {
 		"snmp_enterprise_oid": "1.3.6.1.4.1.55555.1",
 		"snmp_agent_address":  "127.0.0.1",
 		"snmp_targets":        "[]",
+		"smtp_enabled":        "false",
+		"smtp_port":           "587",
+		"smtp_use_tls":        "false",
+		"smtp_start_tls":      "false",
 		"prometheus_enabled":  "false",
 		"telemetry_enabled":   "false",
 	}
@@ -1401,12 +1414,6 @@ func (s *Store) LoadTopology() (config.LibraryConfig, error) {
 	if lc.OffsiteLocation, err = s.getBoolSetting("offsite_location", false); err != nil {
 		return lc, err
 	}
-	if lc.OffsiteRotationInterval, err = s.getStringSetting("offsite_rotation_interval", ""); err != nil {
-		return lc, err
-	}
-	if lc.OffsiteRotationCount, err = s.getIntSetting("offsite_rotation_count", 0); err != nil {
-		return lc, err
-	}
 	if lc.MagazinePINHash, err = s.getStringSetting("magazine_pin_hash", ""); err != nil {
 		return lc, err
 	}
@@ -1421,6 +1428,7 @@ func (s *Store) LoadTopology() (config.LibraryConfig, error) {
 // settings fields above.
 type DaemonSettings struct {
 	SNMP            config.SNMPConfig
+	SMTP            config.SMTPConfig
 	Prometheus      config.PrometheusConfig
 	PollIntervalRaw string
 	LogLevel        string
@@ -1453,6 +1461,31 @@ func (s *Store) LoadDaemonSettings() (DaemonSettings, error) {
 		if err := json.Unmarshal([]byte(targetsJSON), &ds.SNMP.Targets); err != nil {
 			return ds, fmt.Errorf("parse snmp_targets: %w", err)
 		}
+	}
+	if ds.SMTP.Enabled, err = s.getBoolSetting("smtp_enabled", false); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.Host, err = s.getStringSetting("smtp_host", ""); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.Port, err = s.getIntSetting("smtp_port", 587); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.Username, err = s.getStringSetting("smtp_username", ""); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.Password, err = s.getStringSetting("smtp_password", ""); err != nil {
+		return ds, err
+	}
+	ds.SMTP.PasswordConfigured = ds.SMTP.Password != ""
+	if ds.SMTP.From, err = s.getStringSetting("smtp_from", ""); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.UseTLS, err = s.getBoolSetting("smtp_use_tls", false); err != nil {
+		return ds, err
+	}
+	if ds.SMTP.StartTLS, err = s.getBoolSetting("smtp_start_tls", false); err != nil {
+		return ds, err
 	}
 	if ds.Prometheus.Enabled, err = s.getBoolSetting("prometheus_enabled", false); err != nil {
 		return ds, err

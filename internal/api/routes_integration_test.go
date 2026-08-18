@@ -47,7 +47,7 @@ func newPublicTestServer(t *testing.T) *Server {
 		t.Fatalf("set initial admin password: %v", err)
 	}
 	sessions := NewSessionStore()
-	settings := NewSettings(cfg, lib, nil, nil, nil)
+	settings := NewSettings(cfg, lib, nil, nil, nil, nil)
 
 	return New(lib, tokens, users, sessions, settings, cfg, nil, nil, nil, nil, filepath.Join(tmp, "backups"))
 }

@@ -89,6 +89,28 @@ const (
 	EventCodeRoboticsLoadStarted   = "ROBOTICS.LOAD.STARTED"
 	EventCodeRoboticsUnloadStarted = "ROBOTICS.UNLOAD.STARTED"
 
+	EventCodeOffsiteSendSuccess             = "OFFSITE.SEND.SUCCESS"
+	EventCodeOffsiteSendFailure             = "OFFSITE.SEND.FAILURE"
+	EventCodeOffsiteRecallSuccess           = "OFFSITE.RECALL.SUCCESS"
+	EventCodeOffsiteRecallFailure           = "OFFSITE.RECALL.FAILURE"
+	EventCodeOffsiteRotationFailure         = "OFFSITE.ROTATION.FAILURE"
+	EventCodeOffsitePickupRequestSuccess    = "OFFSITE.PICKUP_REQUEST.SUCCESS"
+	EventCodeOffsitePickupRequestFailure    = "OFFSITE.PICKUP_REQUEST.FAILURE"
+	EventCodeOffsiteReturnRequestSuccess    = "OFFSITE.RETURN_REQUEST.SUCCESS"
+	EventCodeOffsiteReturnRequestFailure    = "OFFSITE.RETURN_REQUEST.FAILURE"
+	EventCodeOffsitePickupCompleteSuccess   = "OFFSITE.PICKUP_COMPLETE.SUCCESS"
+	EventCodeOffsitePickupCompleteFailure   = "OFFSITE.PICKUP_COMPLETE.FAILURE"
+	EventCodeOffsiteReturnCompleteSuccess   = "OFFSITE.RETURN_COMPLETE.SUCCESS"
+	EventCodeOffsiteReturnCompleteFailure   = "OFFSITE.RETURN_COMPLETE.FAILURE"
+	EventCodeOffsitePickupCancelSuccess     = "OFFSITE.PICKUP_CANCEL.SUCCESS"
+	EventCodeOffsitePickupCancelFailure     = "OFFSITE.PICKUP_CANCEL.FAILURE"
+	EventCodeOffsiteReturnCancelSuccess     = "OFFSITE.RETURN_CANCEL.SUCCESS"
+	EventCodeOffsiteReturnCancelFailure     = "OFFSITE.RETURN_CANCEL.FAILURE"
+	EventCodeOffsiteModeConfigUpdateSuccess = "OFFSITE.MODE_CONFIG.UPDATE.SUCCESS"
+	EventCodeOffsiteModeConfigUpdateFailure = "OFFSITE.MODE_CONFIG.UPDATE.FAILURE"
+	EventCodeOffsiteRecapEmailSuccess       = "OFFSITE.RECAP_EMAIL.SEND.SUCCESS"
+	EventCodeOffsiteRecapEmailFailure       = "OFFSITE.RECAP_EMAIL.SEND.FAILURE"
+
 	EventCodeAuthBootstrapSuccess      = "AUTH.BOOTSTRAP.SUCCESS"
 	EventCodeAuthBootstrapFailure      = "AUTH.BOOTSTRAP.FAILURE"
 	EventCodeAuthLoginSuccess          = "AUTH.LOGIN.SUCCESS"
@@ -183,6 +205,8 @@ func CanonicalizeEvent(e Event) Event {
 			e.Category = "security"
 		case "SYSTEM":
 			e.Category = "system"
+		case "OFFSITE":
+			e.Category = "offsite"
 		default:
 			e.Category = strings.ToLower(parts[0])
 		}
@@ -317,6 +341,24 @@ func legacyTypeToCode(typ, message string) string {
 		return "ROBOTICS.DOOR.STORAGE.LOAD.SUCCESS"
 	case "storage-pickup":
 		return "ROBOTICS.DOOR.STORAGE.PICKUP.SUCCESS"
+	case "offsite-send":
+		return EventCodeOffsiteSendSuccess
+	case "offsite-recall":
+		return EventCodeOffsiteRecallSuccess
+	case "offsite-rotation-error":
+		return EventCodeOffsiteRotationFailure // was silently reporting success before this taxonomy entry existed
+	case "offsite-pickup-request":
+		return EventCodeOffsitePickupRequestSuccess
+	case "offsite-return-request":
+		return EventCodeOffsiteReturnRequestSuccess
+	case "offsite-pickup-complete":
+		return EventCodeOffsitePickupCompleteSuccess
+	case "offsite-return-complete":
+		return EventCodeOffsiteReturnCompleteSuccess
+	case "offsite-pickup-cancel":
+		return EventCodeOffsitePickupCancelSuccess
+	case "offsite-return-cancel":
+		return EventCodeOffsiteReturnCancelSuccess
 	default:
 		normalized := strings.ToUpper(nonCodeRE.ReplaceAllString(typ, "_"))
 		normalized = strings.Trim(normalized, "_")

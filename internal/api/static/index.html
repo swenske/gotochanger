@@ -70,6 +70,7 @@
     <a class="nav-btn" href="/docs" target="_blank" rel="noopener"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H18a1 1 0 0 1 1 1v17a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 18.5v-14z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>API Docs</a>
     <a class="nav-btn" href="/guide" target="_blank" rel="noopener">📘 User Guide</a>
   </nav>
+  <button id="notifyBell" class="icon-btn" title="Offsite activity" hidden><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 3h16l-2-3z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg><span id="notifyCount" class="badge" hidden>0</span></button>
   <div class="userbox">
     <span id="whoami" class="pill"></span>
     <button id="logoutBtn">Sign out</button>
@@ -202,6 +203,7 @@
         <div class="subnav-group-buttons">
           <button class="subnav-btn" data-admin="latency"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Latency</button>
           <button class="subnav-btn" data-admin="cleaning-tapes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Cleaning Tapes</button>
+          <button class="subnav-btn" data-admin="offsite-location"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>Offsite Location</button>
           <button class="subnav-btn" data-admin="settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.02 5.98l-1.7 1.7M7.68 16.32l-1.7 1.7M18.02 18.02l-1.7-1.7M7.68 7.68l-1.7-1.7"/></svg>Settings</button>
           <button class="subnav-btn" data-admin="prometheus"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M9 20V4M14 20v-7M19 20V8"/></svg>Prometheus</button>
           <button class="subnav-btn" data-admin="telemetry"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v10l7-7"/></svg>Telemetry</button>
@@ -419,6 +421,67 @@
       <div id="cleaningTapesGrid" class="grid"></div>
     </section>
 
+    <section id="admin-offsite-location" class="panel" hidden>
+      <h2>Offsite Location</h2>
+      <p class="hint">Simulates physical tape outsourcing: an offsite tape is completely unusable until it's physically back onsite. Behavior is driven by a pluggable mode - only one mode is active at a time.</p>
+
+      <h3>Enable</h3>
+      <form id="offsiteEnableForm" class="settings-form">
+        <label><input type="checkbox" id="ol_enabled"> Enable offsite location</label>
+        <p class="hint">When disabled, tapes can't be sent offsite via any mode or the dashboard's Offsite Vault panel.</p>
+        <button type="submit">Save</button>
+        <p class="auth-error" id="offsiteEnableError"></p>
+      </form>
+
+      <h3>Mode</h3>
+      <p class="hint" id="ol_active_hint"></p>
+      <p class="hint">Click a card to configure that mode. The radio button marks - and sets - which mode is currently active; only one mode runs at a time.</p>
+      <div id="ol_mode_cards" class="offsite-mode-cards"></div>
+      <p class="auth-error" id="offsiteModeError"></p>
+
+      <h3>Request pickup / return</h3>
+      <p class="hint">Only usable while the active mode supports manual requests (Scheduled Pickup does; Continuous Rotation doesn't - it has no per-tape request concept). Barcodes are comma or whitespace separated.</p>
+      <form id="offsiteRequestForm" class="settings-form">
+        <label>Pickup barcodes</label>
+        <input type="text" id="ol_req_pickup" placeholder="VOL000001, VOL000002">
+        <label>Return barcodes</label>
+        <input type="text" id="ol_req_return" placeholder="VOL000099">
+        <label>Urgent return barcodes (uses the mode's exceptional retrieval delay)</label>
+        <input type="text" id="ol_req_return_urgent" placeholder="VOL000042">
+        <div class="dialog-actions">
+          <button type="submit">Submit request</button>
+        </div>
+        <p class="auth-error" id="offsiteRequestError"></p>
+      </form>
+      <div id="ol_request_results"></div>
+
+      <h3>Requests</h3>
+      <p class="hint">Every pickup/return batch ever submitted, newest first. Only "pending" requests can be cancelled - cancelling reverts whichever of its tapes are still pending (some may have already completed independently before the cancel arrived).</p>
+      <table class="admin-table">
+        <thead><tr><th>Request ID</th><th>Kind</th><th>Mode</th><th>Barcodes</th><th>Status</th><th>Created</th><th>Actor</th><th></th></tr></thead>
+        <tbody id="offsiteRequestsTable"></tbody>
+      </table>
+
+      <h3>D-1 recap email</h3>
+      <p class="hint">Only meaningful for Scheduled Pickup. Renders what the next recap email would contain right now, from live pending pickups/returns - this feature simulates/logs the email rather than delivering it (see <code>internal/mailer</code>).</p>
+      <button type="button" id="ol_recap_preview_btn">Preview recap email</button>
+      <div class="raw-config" id="ol_recap_preview" hidden><pre></pre></div>
+
+      <h3>Tracked offsite tapes</h3>
+      <p class="hint">Every tape currently carrying an active offsite record, regardless of status.</p>
+      <table class="admin-table">
+        <thead><tr><th>Barcode</th><th>Status</th><th>Mode</th><th>Due</th><th>Urgent</th><th>Request</th></tr></thead>
+        <tbody id="offsiteTrackedTable"></tbody>
+      </table>
+
+      <h3>Movement history</h3>
+      <p class="hint">Audit trail of every offsite pickup/vaulting/return-request/return, across every mode (including manual sends/recalls from the dashboard's Offsite Vault panel).</p>
+      <table class="admin-table">
+        <thead><tr><th>Time</th><th>Barcode</th><th>Direction</th><th>Status</th><th>Mode</th><th>Actor</th></tr></thead>
+        <tbody id="offsiteHistoryTable"></tbody>
+      </table>
+    </section>
+
     <section id="admin-settings" class="panel" hidden>
       <h2>Settings</h2>
       <p class="hint" id="restartHint"></p>
@@ -427,16 +490,6 @@
           <legend>Library</legend>
           <label>Default volume capacity</label>
           <input type="text" id="s_default_capacity" placeholder="10GiB">
-        </fieldset>
-        <fieldset>
-          <legend>Offsite</legend>
-          <label><input type="checkbox" id="s_offsite_location"> Enable offsite location</label>
-          <p class="hint">When disabled, the dashboard's Offsite Vault panel is hidden and sending/recalling volumes offsite is rejected.</p>
-          <label>Rotation interval</label>
-          <input type="text" id="s_offsite_rotation_interval" placeholder="24h">
-          <label>Volumes per rotation</label>
-          <input type="number" id="s_offsite_rotation_count" min="0" placeholder="1">
-          <p class="hint">Optional: automatically send full volumes to the offsite vault on a schedule, simulating tape rotation. Leave interval blank to disable.</p>
         </fieldset>
         <fieldset>
           <legend>Daemon</legend>
@@ -460,6 +513,23 @@
           <input type="text" id="s_snmp_agent" placeholder="127.0.0.1">
           <label>Targets (one per line: host:port:community)</label>
           <textarea id="s_snmp_targets" rows="3" placeholder="192.0.2.10:162:public"></textarea>
+        </fieldset>
+        <fieldset>
+          <legend>SMTP (real email delivery)</legend>
+          <p class="hint">When enabled, the offsite D-1 recap email (and any future email feature) is actually delivered via this relay, in addition to being logged/recorded as before. When disabled, email is simulated/logged only.</p>
+          <label><input type="checkbox" id="s_smtp_enabled"> Enabled</label>
+          <label>Host</label>
+          <input type="text" id="s_smtp_host" placeholder="smtp.example.com">
+          <label>Port</label>
+          <input type="number" id="s_smtp_port" placeholder="587">
+          <label>Username</label>
+          <input type="text" id="s_smtp_username" placeholder="optional">
+          <label id="s_smtp_password_label">Password</label>
+          <input type="password" id="s_smtp_password" autocomplete="new-password">
+          <label>From address</label>
+          <input type="text" id="s_smtp_from" placeholder="gotochanger@example.com">
+          <label><input type="checkbox" id="s_smtp_use_tls"> Use TLS (implicit, typically port 465)</label>
+          <label><input type="checkbox" id="s_smtp_start_tls"> Use STARTTLS (typically port 587)</label>
         </fieldset>
         <button type="submit">Save settings</button>
         <p class="auth-error" id="settingsError"></p>
@@ -526,7 +596,7 @@
 
     <section id="admin-reset" class="panel" hidden>
       <h2>Reset</h2>
-      <p class="hint"><strong>Warning:</strong> this permanently deletes the entire VTL - every magazine, mailbox, drive, logical library and tape set, all settings (latency, cleaning, offsite, SNMP, etc.), and <strong>all user accounts and API tokens</strong>. You will need to set a new Admin password afterward, exactly as on a brand new install. A safety backup is taken automatically first and can be restored via Admin &gt; Backup if this was a mistake. The service restarts to apply the reset and will be briefly unreachable.</p>
+      <p class="hint"><strong>Warning:</strong> this permanently deletes the entire VTL - every magazine, mailbox, drive, logical library and tape set, all settings (latency, cleaning, offsite, SMTP, SNMP, etc.), and <strong>all user accounts and API tokens</strong>. You will need to set a new Admin password afterward, exactly as on a brand new install. A safety backup is taken automatically first and can be restored via Admin &gt; Backup if this was a mistake. The service restarts to apply the reset and will be briefly unreachable.</p>
       <form id="resetForm" class="settings-form">
         <label>Type <strong id="resetExpectedName"></strong> to confirm</label>
         <input type="text" id="resetConfirmName" autocomplete="off">

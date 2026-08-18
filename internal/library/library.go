@@ -538,6 +538,28 @@ func shiftOriginAcrossRebuild(origin *ElementRef, oldSlotKeyByAddress map[int]ma
 	}
 }
 
+// shiftVolumeOffsiteOrigins re-projects every reachable OffsiteInfo.Origin
+// (on slot/ioslot-resident and offsite-vaulted volumes alike) across a
+// topology rebuild, exactly like shiftOriginAcrossRebuild does for
+// Drive.Origin - called from both restore() and Reconfigure(), which
+// already build the four maps this needs for Drive.Origin's own shift.
+func shiftVolumeOffsiteOrigins(slots []*Slot, ioslots []*IOSlot, offsite []*Volume, oldSlotKeyByAddress map[int]magazineSlotKey, oldIOSlotKeyByAddress map[int]mailboxSlotKey, newSlotAddrByKey map[magazineSlotKey]int, newIOSlotAddrByKey map[mailboxSlotKey]int) {
+	shift := func(v *Volume) {
+		if v != nil && v.Offsite != nil && v.Offsite.Origin != nil {
+			v.Offsite.Origin = shiftOriginAcrossRebuild(v.Offsite.Origin, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
+		}
+	}
+	for _, s := range slots {
+		shift(s.Volume)
+	}
+	for _, io := range ioslots {
+		shift(io.Volume)
+	}
+	for _, v := range offsite {
+		shift(v)
+	}
+}
+
 // Reconfigure applies a new topology to an already-running Library without
 // requiring a daemon restart: used when the setup wizard completes and when
 // the Admin API adds/changes drives, magazines, I/O slots, or logical
@@ -610,6 +632,7 @@ func (l *Library) Reconfigure(cfg config.Config) error {
 			d.Origin = shiftOriginAcrossRebuild(old.Origin, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
 		}
 	}
+	shiftVolumeOffsiteOrigins(l.slots, l.ioslots, l.offsite, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
 	// Resume/stop activity watchers to match the drives that actually
 	// carried a volume forward above - a watcher is keyed by index on
 	// Library (see driveWatchers' doc comment), not on the now-discarded
@@ -742,6 +765,7 @@ func (l *Library) restore(s *State) error {
 	}
 	l.outside = append([]*Volume(nil), s.OutsideVolumes...)
 	l.offsite = append([]*Volume(nil), s.OffsiteVolumes...)
+	shiftVolumeOffsiteOrigins(l.slots, l.ioslots, l.offsite, oldSlotKeyByAddress, oldIOSlotKeyByAddress, newSlotAddrByKey, newIOSlotAddrByKey)
 	for _, magID := range s.Doors.OpenMagazines {
 		l.stDoorOpen[magID] = true
 	}
@@ -1069,11 +1093,24 @@ func (l *Library) elementInLogicalLibraryLocked(logicalLibrary string, ref Eleme
 }
 
 // snapshotVolume deep-copies v (nil stays nil) - see snapshotElementsLocked.
+// Offsite needs an explicit deep copy (not just the `c := *v` shallow
+// struct copy that's otherwise sufficient): it's a pointer field, and a
+// snapshot handed to an HTTP handler after l.mu releases must never alias
+// live library-owned memory - the same "read of live memory after lock
+// release" bug class this codebase has hit twice before.
 func snapshotVolume(v *Volume) *Volume {
 	if v == nil {
 		return nil
 	}
 	c := *v
+	if v.Offsite != nil {
+		oi := *v.Offsite
+		if v.Offsite.Origin != nil {
+			origin := *v.Offsite.Origin
+			oi.Origin = &origin
+		}
+		c.Offsite = &oi
+	}
 	return &c
 }
 
@@ -1669,6 +1706,10 @@ var (
 	ErrOffsiteDisabled         = errors.New("offsite vaulting is not enabled")
 	ErrVolumeNotAccessible     = errors.New("volume is not physically accessible (mounted in a drive, or behind a closed magazine/mailbox door)")
 	ErrIncompatibleTapeFamily  = errors.New("tape family is not compatible with drive family")
+	ErrVolumeOffsite           = errors.New("volume is offsite and not physically accessible")
+	ErrOffsiteAlreadyTracked   = errors.New("volume already has an active offsite pickup/return record")
+	ErrOffsiteNotVaulted       = errors.New("volume is not currently vaulted offsite")
+	ErrOffsiteNotOnsite        = errors.New("volume is not onsite in a slot or ioslot")
 )
 
 func (l *Library) findSlot(addr int) (*Slot, error) {
@@ -1739,11 +1780,12 @@ func (l *Library) containsBarcodeLocked(label string) bool {
 // findAccessibleVolumeForWriteProtectLocked finds bc across every location it
 // might currently be in and reports whether an operator could physically
 // reach it right now to flip a write-protect tab - mirroring a real tape:
-// reachable while sitting outside the library or offsite, or in a
-// storage/mailbox slot whose door is currently open, but never while
-// mounted in a drive (sealed shut) or sitting behind a closed magazine/
-// mailbox door. Used by SetVolumeWriteProtect only - other operations that
-// need a plain barcode lookup regardless of location use
+// reachable while sitting outside the library, or in a storage/mailbox
+// slot whose door is currently open, but never while mounted in a drive
+// (sealed shut), sitting behind a closed magazine/mailbox door, or offsite
+// (see ErrVolumeOffsite - a tape at a vendor's vault has no write-protect
+// tab anyone here can reach). Used by SetVolumeWriteProtect only - other
+// operations that need a plain barcode lookup regardless of location use
 // containsBarcodeLocked (existence only) or a location-scoped finder like
 // findOutside/findOffsite.
 func (l *Library) findAccessibleVolumeForWriteProtectLocked(bc string) (*Volume, error) {
@@ -1775,7 +1817,7 @@ func (l *Library) findAccessibleVolumeForWriteProtectLocked(bc string) (*Volume,
 	}
 	for _, v := range l.offsite {
 		if v != nil && v.Barcode == bc {
-			return v, nil
+			return nil, fmt.Errorf("volume %q: %w", bc, ErrVolumeOffsite)
 		}
 	}
 	return nil, fmt.Errorf("volume %q: %w", bc, ErrNotFound)
@@ -1787,15 +1829,6 @@ func (l *Library) findAccessibleVolumeForWriteProtectLocked(bc string) (*Volume,
 // mutating (see snapshotElementsLocked). Callers must hold l.mu.
 func (l *Library) outsideVolumesSnapshotLocked() []*Volume {
 	return snapshotVolumes(l.outside)
-}
-
-func (l *Library) findOffsite(label string) (*Volume, int) {
-	for i, v := range l.offsite {
-		if v != nil && v.Barcode == label {
-			return v, i
-		}
-	}
-	return nil, -1
 }
 
 // displayLabel prefers a slot/ioslot's human-facing Label over its flat
@@ -2642,123 +2675,6 @@ func (l *Library) findAvailableCleaningTapeLocked() (ElementRef, *Volume, error)
 		}
 	}
 	return ElementRef{}, nil, ErrCleaningTapeUnavailable
-}
-
-// OffsiteVolumes returns a snapshot of tapes currently vaulted offsite.
-func (l *Library) OffsiteVolumes() []*Volume {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return snapshotVolumes(l.offsite)
-}
-
-// OffsiteSend simulates sending a volume to offsite vault storage: it moves
-// the volume from a storage slot to the (unlimited-capacity, like the
-// outside-library inventory) offsite collection, freeing the slot.
-func (l *Library) OffsiteSend(from ElementRef) (*Volume, error) {
-	if from.Kind == KindDrive {
-		return nil, fmt.Errorf("%w: source cannot be a drive", ErrInvalidTarget)
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if !l.cfg.Library.OffsiteLocation {
-		return nil, ErrOffsiteDisabled
-	}
-
-	getFrom, setFrom, fromLabel, err := l.volumeSlot(from)
-	if err != nil {
-		return nil, err
-	}
-	vol := getFrom()
-	if vol == nil {
-		return nil, fmt.Errorf("%s: %w", fromLabel, ErrEmpty)
-	}
-	setFrom(nil)
-	l.offsite = append(l.offsite, vol)
-	l.emit("offsite-send", fmt.Sprintf("sent volume %q offsite from %s", vol.Barcode, fromLabel),
-		map[string]string{"volume": vol.Barcode, "from": fromLabel})
-	l.saveLocked()
-	return vol, nil
-}
-
-// OffsiteRecall simulates recalling a volume from offsite vault storage back
-// into the library at the given slot or I/O slot.
-func (l *Library) OffsiteRecall(label string, to ElementRef) error {
-	if to.Kind == KindDrive {
-		return fmt.Errorf("%w: destination cannot be a drive", ErrInvalidTarget)
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if !l.cfg.Library.OffsiteLocation {
-		return ErrOffsiteDisabled
-	}
-
-	vol, idx := l.findOffsite(label)
-	if vol == nil {
-		return fmt.Errorf("offsite volume %q: %w", label, ErrNotFound)
-	}
-	getTo, setTo, toLabel, err := l.volumeSlot(to)
-	if err != nil {
-		return err
-	}
-	if getTo() != nil {
-		return fmt.Errorf("%s: %w", toLabel, ErrFull)
-	}
-	l.offsite = append(l.offsite[:idx], l.offsite[idx+1:]...)
-	setTo(vol)
-	l.emit("offsite-recall", fmt.Sprintf("recalled volume %q from offsite into %s", vol.Barcode, toLabel),
-		map[string]string{"volume": vol.Barcode, "to": toLabel})
-	l.saveLocked()
-	return nil
-}
-
-// RotateOffsite is run periodically (when offsite rotation is enabled) to
-// simulate scheduled tape rotation: it sends up to count of the
-// least-recently-created full volumes currently in storage slots offsite.
-//
-// Candidates are selected under the lock, which is then released before
-// each OffsiteSend re-acquires it - deliberately, since OffsiteSend is the
-// single place that owns the send's own validation/eventing and calling it
-// under an already-held lock would deadlock. The gap means a candidate that
-// something else moves in the meantime is simply skipped with a logged
-// error rather than moved from under that operation, which is the right
-// outcome for a best-effort background sweep (contrast with Move/Load/
-// Unload, which hold the lock throughout precisely because they must not
-// interleave).
-func (l *Library) RotateOffsite(count int) {
-	if count <= 0 {
-		return
-	}
-	l.mu.Lock()
-	if !l.cfg.Library.OffsiteLocation {
-		l.mu.Unlock()
-		return
-	}
-	type candidate struct {
-		ref ElementRef
-		vol *Volume
-	}
-	var candidates []candidate
-	for _, s := range l.slots {
-		if s.Volume != nil && s.Volume.Full {
-			candidates = append(candidates, candidate{ElementRef{Kind: KindSlot, Address: s.Address}, s.Volume})
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].vol.CreatedAt.Before(candidates[j].vol.CreatedAt)
-	})
-	if len(candidates) > count {
-		candidates = candidates[:count]
-	}
-	l.mu.Unlock()
-
-	for _, c := range candidates {
-		if _, err := l.OffsiteSend(c.ref); err != nil {
-			l.mu.Lock()
-			l.emit("offsite-rotation-error", fmt.Sprintf("scheduled offsite rotation failed for %s", c.vol.Barcode),
-				map[string]string{"volume": c.vol.Barcode, "error": err.Error()})
-			l.mu.Unlock()
-		}
-	}
 }
 
 // Load moves a volume from a slot or IO slot into a drive, and creates the

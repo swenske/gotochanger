@@ -31,6 +31,9 @@ const state = {
 const ROBOT_ACTIVITY_MAX = 50;
 const ROBOT_ACTIVITY_VISIBLE = 30;
 
+const offsiteNotifSeenKey = "gotochanger.offsite.lastSeen";
+let offsiteUnreadCount = 0;
+
 const panelOrderKey = "gotochanger.dashboard.panelOrder";
 const eventsCollapsedKey = "gotochanger.dashboard.eventsCollapsed";
 const collapsedPanelsKey = "gotochanger.dashboard.collapsedPanels";
@@ -211,6 +214,7 @@ function showApp(s) {
   loadBackupLastRun();
   refresh();
   connectStream();
+  initOffsiteNotifBadge();
 }
 
 document.getElementById("bootstrapForm").addEventListener("submit", async (e) => {
@@ -972,7 +976,7 @@ function switchView(view) {
 
 function selectAdminSection(section) {
   for (const b of document.querySelectorAll(".subnav-btn")) b.classList.toggle("active", b.dataset.admin === section);
-  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-settings", "admin-prometheus", "admin-telemetry", "admin-security", "admin-backup", "admin-reset"]) {
+  for (const id of ["admin-users", "admin-tokens", "admin-drive-types", "admin-tape-types", "admin-tape-sets", "admin-drives", "admin-magazines", "admin-mailboxes", "admin-logical-libraries", "admin-latency", "admin-cleaning-tapes", "admin-offsite-location", "admin-settings", "admin-prometheus", "admin-telemetry", "admin-security", "admin-backup", "admin-reset"]) {
     document.getElementById(id).hidden = id !== "admin-" + section;
   }
   loadAdmin(section);
@@ -992,6 +996,7 @@ function loadAdmin(section) {
   else if (section === "prometheus") loadPrometheusSettings();
   else if (section === "telemetry") loadTelemetrySettings();
   else if (section === "cleaning-tapes") loadCleaningAdmin();
+  else if (section === "offsite-location") loadOffsiteAdmin();
   else if (section === "security") loadSecuritySettings();
   else if (section === "backup") loadBackup();
   else if (section === "reset") loadReset();
@@ -1212,7 +1217,11 @@ function buildAssignmentBoardPane(title, kinds, membership, isRightPane, onChang
 
 // fields: {name, label, type, options, value, placeholder, disabled}.
 // type "checkboxgroup" resolves to an array of the checked option values;
-// type "folderpicker" is a text input (still directly typeable) plus a
+// type "checkbox" is a single standalone boolean, pre-checked from a
+// truthy f.value, resolving to true/false (NOT the generic string-value
+// fallback below, which for a bare <input type=checkbox> would read the
+// value ATTRIBUTE rather than whether it's actually checked); type
+// "folderpicker" is a text input (still directly typeable) plus a
 // "Browse..." button opening the folder-picker dialog above; type
 // "assignmentboard" (see buildAssignmentBoardPane above) resolves to
 // {[kind.field]: id[]} collected from its right-hand pane; every other
@@ -1223,6 +1232,7 @@ function openDialog(title, fields) {
     dlgBody.innerHTML = "";
     const inputs = {};
     const checkboxGroups = {};
+    const checkboxes = {};
     const boardFields = {};
     for (const f of fields) {
       if (f.type !== "assignmentboard") {
@@ -1255,6 +1265,15 @@ function openDialog(title, fields) {
           for (const k of f.kinds) result[k.field] = [...membership[k.kind]];
           return result;
         };
+        continue;
+      }
+      if (f.type === "checkbox") {
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = f.name;
+        input.checked = !!f.value;
+        dlgBody.appendChild(input);
+        checkboxes[f.name] = input;
         continue;
       }
       if (f.type === "checkboxgroup") {
@@ -1327,6 +1346,7 @@ function openDialog(title, fields) {
       const values = {};
       for (const k in inputs) values[k] = inputs[k].value;
       for (const k in checkboxGroups) values[k] = checkboxGroups[k].filter((cb) => cb.checked).map((cb) => cb.value);
+      for (const k in checkboxes) values[k] = checkboxes[k].checked;
       for (const k in boardFields) values[k] = boardFields[k]();
       resolve(values);
     };
@@ -2994,6 +3014,19 @@ function connectStream() {
   eventSource = new EventSource("/api/v1/stream");
   eventSource.addEventListener("update", (e) => {
     if (!state.username) return;
+    // The full Event is available as e.data (see internal/api/stream.go's
+    // Notify) - refresh() itself only re-fetches /api/v1/events while the
+    // dashboard view is visible, so the notification badge needs its own,
+    // view-independent look at every event as it arrives.
+    try {
+      const evt = JSON.parse(e.data);
+      if (evt.category === "offsite") {
+        offsiteUnreadCount++;
+        renderOffsiteNotifBadge();
+      }
+    } catch (err) {
+      // not JSON, or no category - nothing to notify about
+    }
     refresh();
   });
   eventSource.addEventListener("phase", (e) => {
@@ -3071,6 +3104,50 @@ function disconnectStream() {
     eventSource = null;
   }
 }
+
+// ==================== Header offsite notification badge ====================
+// Purely client-side unread tracking (a localStorage timestamp), not a new
+// server-side setting: this is presentation state, not domain state, and
+// this app already treats sessions as in-memory/lost-on-restart by design -
+// there's no existing precedent for per-user server-persisted UI
+// preferences to extend instead. No new transport either: every event
+// already reaches the browser over the existing /api/v1/stream "update"
+// SSE message (see connectStream), which now also feeds this badge.
+
+function offsiteNotifLastSeen() {
+  return localStorage.getItem(offsiteNotifSeenKey) || "1970-01-01T00:00:00Z";
+}
+
+function renderOffsiteNotifBadge() {
+  const bell = document.getElementById("notifyBell");
+  const countEl = document.getElementById("notifyCount");
+  bell.hidden = false;
+  countEl.hidden = offsiteUnreadCount <= 0;
+  countEl.textContent = offsiteUnreadCount > 9 ? "9+" : String(offsiteUnreadCount);
+}
+
+// initOffsiteNotifBadge computes the initial unread count at boot from
+// /api/v1/events (already-persisted history), so a page reload doesn't
+// lose track of activity that happened before this tab was open - the SSE
+// "update" listener above only catches activity from here on.
+async function initOffsiteNotifBadge() {
+  try {
+    const events = await api("/api/v1/events");
+    const since = offsiteNotifLastSeen();
+    offsiteUnreadCount = (events || []).filter((e) => e.category === "offsite" && e.time > since).length;
+    renderOffsiteNotifBadge();
+  } catch (err) {
+    // Not critical - the bell just stays hidden.
+  }
+}
+
+document.getElementById("notifyBell").addEventListener("click", () => {
+  localStorage.setItem(offsiteNotifSeenKey, new Date().toISOString());
+  offsiteUnreadCount = 0;
+  renderOffsiteNotifBadge();
+  switchView("admin");
+  selectAdminSection("offsite-location");
+});
 
 // "Create tape" always creates within a tape set now (issue: tapes outside
 // the library must still obey the same barcode/tape-set rules as tapes in
@@ -3203,9 +3280,15 @@ async function loadSettings() {
   document.getElementById("s_snmp_oid").value = cfg.snmp.enterprise_oid || "";
   document.getElementById("s_snmp_agent").value = cfg.snmp.agent_address || "";
   document.getElementById("s_snmp_targets").value = (cfg.snmp.targets || []).map((t) => `${t.host}:${t.port}:${t.community}`).join("\n");
-  document.getElementById("s_offsite_location").checked = !!cfg.library.offsite_location;
-  document.getElementById("s_offsite_rotation_interval").value = cfg.library.offsite_rotation_interval || "";
-  document.getElementById("s_offsite_rotation_count").value = cfg.library.offsite_rotation_count || "";
+  document.getElementById("s_smtp_enabled").checked = !!cfg.smtp.enabled;
+  document.getElementById("s_smtp_host").value = cfg.smtp.host || "";
+  document.getElementById("s_smtp_port").value = cfg.smtp.port || "";
+  document.getElementById("s_smtp_username").value = cfg.smtp.username || "";
+  document.getElementById("s_smtp_password").value = "";
+  document.getElementById("s_smtp_password").placeholder = cfg.smtp.password_configured ? "configured; blank = leave unchanged" : "blank = leave unchanged";
+  document.getElementById("s_smtp_from").value = cfg.smtp.from || "";
+  document.getElementById("s_smtp_use_tls").checked = !!cfg.smtp.use_tls;
+  document.getElementById("s_smtp_start_tls").checked = !!cfg.smtp.start_tls;
   document.getElementById("restartHint").textContent = "Fields requiring a service restart to take effect: " + (result.restart_required_fields || []).join(", ");
   document.getElementById("rawConfig").textContent = JSON.stringify(cfg, null, 2);
 }
@@ -3226,10 +3309,21 @@ document.getElementById("settingsForm").addEventListener("submit", async (e) => 
     snmp_enterprise_oid: document.getElementById("s_snmp_oid").value,
     snmp_agent_address: document.getElementById("s_snmp_agent").value,
     snmp_targets: targets,
-    offsite_location: document.getElementById("s_offsite_location").checked,
-    offsite_rotation_interval: document.getElementById("s_offsite_rotation_interval").value,
-    offsite_rotation_count: Number(document.getElementById("s_offsite_rotation_count").value || 0),
+    smtp_enabled: document.getElementById("s_smtp_enabled").checked,
+    smtp_host: document.getElementById("s_smtp_host").value,
+    smtp_port: Number(document.getElementById("s_smtp_port").value || 0),
+    smtp_username: document.getElementById("s_smtp_username").value,
+    smtp_from: document.getElementById("s_smtp_from").value,
+    smtp_use_tls: document.getElementById("s_smtp_use_tls").checked,
+    smtp_start_tls: document.getElementById("s_smtp_start_tls").checked,
   };
+  // Blank always means "leave unchanged" for this one field - it never
+  // comes back from GET, so it always starts blank, and treating blank as
+  // "clear" would silently wipe a working password the moment any
+  // unrelated setting on this page was saved (mirrors the mailbox-edit
+  // dialog's PIN field, `if (v.pin) body.pin = v.pin;`, just below).
+  const smtpPassword = document.getElementById("s_smtp_password").value;
+  if (smtpPassword) req.smtp_password = smtpPassword;
   try {
     await api("/api/v1/settings", { method: "PUT", body: JSON.stringify(req) });
     document.getElementById("settingsError").textContent = "";
@@ -3456,6 +3550,256 @@ document.getElementById("newCleaningTapeBtn").addEventListener("click", async ()
     alert("Error: " + err.message);
   }
 });
+
+// ==================== Admin: Offsite Location ====================
+// Mirrors internal/offsite.OffsiteMode.ParameterSchema generically, same
+// as the previous inline-form version this replaces - adding a third
+// mode server-side needs no change here, since this code never
+// special-cases a mode name, only a mode's declared field Types. Each
+// mode's config is edited in its own openDialog modal (see
+// openOffsiteModeDialog) rather than one shared form whose fields swap
+// out from under you when you change modes.
+
+let offsiteModesCache = []; // last GET /api/v1/offsite/modes response's modes[]
+
+function offsiteFieldToDialogField(field, value) {
+  const base = { name: field.key, label: field.label + (field.required ? " *" : "") };
+  switch (field.type) {
+    case "weekday":
+      return Object.assign(base, { type: "select", value: value,
+        options: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+          .map((d) => ({ value: d, label: d[0].toUpperCase() + d.slice(1) })) });
+    case "mailboxes":
+      // openDialog has no multi-select field type - checkboxgroup is the
+      // right adaptation, and state.mailboxOptions (populated below) is
+      // the same source of truth the old inline form used.
+      return Object.assign(base, { type: "checkboxgroup",
+        options: (state.mailboxOptions || []).map((mb) => ({ value: mb, label: mb, checked: Array.isArray(value) && value.includes(mb) })) });
+    case "bool":
+      return Object.assign(base, { type: "checkbox", value: !!value });
+    case "time_of_day":
+      return Object.assign(base, { type: "time", value: value || "" });
+    case "int":
+      return Object.assign(base, { type: "number", value: value ?? "" });
+    case "email_list":
+      return Object.assign(base, { type: "text", value: Array.isArray(value) ? value.join(", ") : "",
+        placeholder: "ops@example.com, backups@example.com" });
+    default: // "string", "duration"
+      return Object.assign(base, { type: "text", value: value ?? "", placeholder: field.placeholder });
+  }
+}
+
+function collectOffsiteDialogValue(field, raw) {
+  switch (field.type) {
+    case "int": return Number(raw || 0);
+    case "email_list": return String(raw || "").split(",").map((s) => s.trim()).filter(Boolean);
+    case "bool": return !!raw;
+    default: return raw; // "mailboxes" already resolves to an array via openDialog's checkboxgroup
+  }
+}
+
+async function openOffsiteModeDialog(mode) {
+  const current = mode.config || mode.default_config || {};
+  const fields = (mode.schema || []).map((f) => offsiteFieldToDialogField(f, current[f.key]));
+  const result = await openDialog(mode.label, fields);
+  if (!result) return;
+  const cfg = {};
+  for (const f of mode.schema || []) cfg[f.key] = collectOffsiteDialogValue(f, result[f.key]);
+  try {
+    await api(`/api/v1/offsite/modes/${encodeURIComponent(mode.name)}/config`, { method: "PUT", body: JSON.stringify(cfg) });
+    document.getElementById("offsiteModeError").textContent = "";
+    loadOffsiteAdmin();
+  } catch (err) {
+    document.getElementById("offsiteModeError").textContent = err.message;
+  }
+}
+
+function renderOffsiteModeCards(modes, active) {
+  const container = document.getElementById("ol_mode_cards");
+  container.innerHTML = "";
+  for (const mode of modes) {
+    const card = document.createElement("div");
+    card.className = "card offsite-mode-card";
+
+    const radioLabel = document.createElement("label");
+    radioLabel.className = "offsite-mode-card-radio";
+    radioLabel.title = "Set as active mode";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "ol_active_mode";
+    radio.value = mode.name;
+    radio.checked = mode.name === active;
+    radio.addEventListener("change", async () => {
+      try {
+        await api("/api/v1/offsite/active-mode", { method: "PUT", body: JSON.stringify({ mode: mode.name }) });
+        document.getElementById("offsiteModeError").textContent = "";
+        loadOffsiteAdmin();
+      } catch (err) {
+        document.getElementById("offsiteModeError").textContent = err.message;
+      }
+    });
+    radioLabel.appendChild(radio);
+
+    const info = document.createElement("div");
+    info.className = "offsite-mode-card-info";
+    info.innerHTML = `<div class="offsite-mode-card-title">${mode.label}</div><div class="offsite-mode-card-desc">${mode.describe || ""}</div>`;
+    info.addEventListener("click", () => openOffsiteModeDialog(mode));
+
+    card.appendChild(radioLabel);
+    card.appendChild(info);
+    container.appendChild(card);
+  }
+}
+
+async function loadOffsiteAdmin() {
+  try {
+    const settingsResp = await api("/api/v1/settings");
+    document.getElementById("ol_enabled").checked = !!settingsResp.config.library.offsite_location;
+    document.getElementById("offsiteEnableError").textContent = "";
+  } catch (err) {
+    document.getElementById("offsiteEnableError").textContent = err.message;
+  }
+
+  try {
+    const mbs = await api("/api/v1/mailboxes");
+    state.mailboxOptions = (mbs || []).map((m) => m.id);
+  } catch (err) {
+    state.mailboxOptions = [];
+  }
+
+  let resp;
+  try {
+    resp = await api("/api/v1/offsite/modes");
+  } catch (err) {
+    document.getElementById("offsiteModeError").textContent = err.message;
+    return;
+  }
+  offsiteModesCache = resp.modes || [];
+  const activeMode = offsiteModesCache.find((m) => m.name === resp.active);
+  document.getElementById("ol_active_hint").textContent = resp.active
+    ? "Currently active: " + (activeMode ? activeMode.label : resp.active)
+    : "No mode is currently active - offsite activity is fully manual (dashboard Offsite Vault panel only).";
+  renderOffsiteModeCards(offsiteModesCache, resp.active);
+
+  await loadOffsiteRequests();
+  await loadOffsiteTracked();
+  await loadOffsiteHistory();
+}
+
+document.getElementById("offsiteEnableForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/v1/settings", { method: "PUT", body: JSON.stringify({ offsite_location: document.getElementById("ol_enabled").checked }) });
+    document.getElementById("offsiteEnableError").textContent = "";
+  } catch (err) {
+    document.getElementById("offsiteEnableError").textContent = err.message;
+  }
+});
+
+function parseBarcodeList(raw) {
+  return (raw || "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+function renderOffsiteRequestResults(result) {
+  const container = document.getElementById("ol_request_results");
+  container.innerHTML = "";
+  const groups = [["Pickup", result.pickup], ["Return", result.return], ["Urgent return", result.return_urgent]];
+  for (const [label, items] of groups) {
+    if (!items || items.length === 0) continue;
+    const h = document.createElement("p");
+    h.className = "hint";
+    h.textContent = label + ":";
+    container.appendChild(h);
+    const ul = document.createElement("ul");
+    for (const it of items) {
+      const li = document.createElement("li");
+      li.textContent = it.ok
+        ? `${it.barcode}: ok, due ${it.due_at ? new Date(it.due_at).toLocaleString() : "unknown"}`
+        : `${it.barcode}: ${it.error}`;
+      ul.appendChild(li);
+    }
+    container.appendChild(ul);
+  }
+}
+
+document.getElementById("offsiteRequestForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    pickup: parseBarcodeList(document.getElementById("ol_req_pickup").value),
+    return: parseBarcodeList(document.getElementById("ol_req_return").value),
+    return_urgent: parseBarcodeList(document.getElementById("ol_req_return_urgent").value),
+  };
+  try {
+    const result = await api("/api/v1/offsite/request", { method: "POST", body: JSON.stringify(payload) });
+    document.getElementById("offsiteRequestError").textContent = "";
+    renderOffsiteRequestResults(result);
+    loadOffsiteRequests();
+    loadOffsiteTracked();
+  } catch (err) {
+    document.getElementById("offsiteRequestError").textContent = err.message;
+  }
+});
+
+document.getElementById("ol_recap_preview_btn").addEventListener("click", async () => {
+  const box = document.getElementById("ol_recap_preview");
+  try {
+    const msg = await api("/api/v1/offsite/recap-preview");
+    box.hidden = false;
+    box.querySelector("pre").textContent = `To: ${(msg.to || []).join(", ")}\nSubject: ${msg.subject}\n\n${msg.body}`;
+  } catch (err) {
+    box.hidden = false;
+    box.querySelector("pre").textContent = "Error: " + err.message;
+  }
+});
+
+async function loadOffsiteTracked() {
+  const vols = await api("/api/v1/offsite/tracked");
+  const tbody = document.getElementById("offsiteTrackedTable");
+  tbody.innerHTML = "";
+  for (const v of vols || []) {
+    const o = v.offsite || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${v.barcode}</td><td>${o.status || ""}</td><td>${o.mode || ""}</td>` +
+      `<td>${o.due_at ? new Date(o.due_at).toLocaleString() : ""}</td><td>${o.urgent ? "yes" : ""}</td>` +
+      `<td>${o.request_id || ""}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadOffsiteRequests() {
+  const reqs = await api("/api/v1/offsite/requests");
+  const tbody = document.getElementById("offsiteRequestsTable");
+  tbody.innerHTML = "";
+  for (const req of reqs || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${req.id}</td><td>${req.kind}</td><td>${req.mode}</td>` +
+      `<td>${(req.barcodes || []).join(", ")}</td><td>${req.status}</td>` +
+      `<td>${new Date(req.created_at).toLocaleString()}</td><td>${req.actor || ""}</td>`;
+    const td = document.createElement("td");
+    if (req.status === "pending") {
+      td.appendChild(mkBtn("Cancel", async () => {
+        if (!confirm(`Cancel offsite request ${req.id}? This reverts whichever of its tapes are still pending.`)) return;
+        await api(`/api/v1/offsite/requests/${encodeURIComponent(req.id)}`, { method: "DELETE" });
+        loadOffsiteRequests();
+        loadOffsiteTracked();
+      }));
+    }
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadOffsiteHistory() {
+  const movements = await api("/api/v1/offsite/history?limit=50");
+  const tbody = document.getElementById("offsiteHistoryTable");
+  tbody.innerHTML = "";
+  for (const m of movements || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${new Date(m.time).toLocaleString()}</td><td>${m.barcode}</td><td>${m.direction}</td>` +
+      `<td>${m.status || ""}</td><td>${m.mode}</td><td>${m.actor || ""}</td>`;
+    tbody.appendChild(tr);
+  }
+}
 
 // ==================== Admin: Backup ====================
 

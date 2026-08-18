@@ -95,6 +95,69 @@ type Volume struct {
 	// not toggled mid-job) - see internal/scsi.Drive.write6's own doc
 	// comment for what happens if that assumption is violated.
 	Encrypted bool `json:"encrypted,omitempty"`
+
+	// Offsite is non-nil exactly when this volume has an active offsite
+	// pickup/vaulting/return record - nil means "ordinary onsite volume".
+	// It travels with the cartridge regardless of which container
+	// currently holds it, the same "travels with the cartridge" contract
+	// WriteProtected documents above. See OffsiteInfo's own doc comment.
+	Offsite *OffsiteInfo `json:"offsite,omitempty"`
+}
+
+// OffsiteStatus is the sub-state of an active OffsiteInfo record.
+type OffsiteStatus string
+
+const (
+	// OffsiteStatusPendingPickup: still onsite, still physically in its
+	// slot/ioslot, flagged to leave at the next visit - fully USABLE. A
+	// tape merely scheduled for pickup is ordinary, live inventory right
+	// up until it's physically handed over; only OffsiteStatusVaulted/
+	// OffsiteStatusPendingReturn are blocked (see
+	// findAccessibleVolumeForWriteProtectLocked and the structural
+	// unreachability of l.offsite volumes via any ElementRef).
+	OffsiteStatusPendingPickup OffsiteStatus = "pending_pickup"
+	// OffsiteStatusVaulted: physically away (in Library.offsite), BLOCKED.
+	OffsiteStatusVaulted OffsiteStatus = "vaulted"
+	// OffsiteStatusPendingReturn: still vaulted/away (still BLOCKED), but
+	// a return has been requested and is waiting for DueAt.
+	OffsiteStatusPendingReturn OffsiteStatus = "pending_return"
+)
+
+// OffsiteInfo is a Volume's offsite pickup/vaulting/return record. Origin
+// is stored as a raw ElementRef and re-projected by
+// shiftOriginAcrossRebuild on every restore()/Reconfigure(), exactly like
+// Drive.Origin - never safe to treat as a stable value on its own, since
+// Slot/IOSlot.Address is recomputed on every topology rebuild (see
+// buildTopologyLocked's doc comment).
+type OffsiteInfo struct {
+	Status OffsiteStatus `json:"status"`
+	// Mode is which OffsiteMode.Name() owns this record (see
+	// internal/offsite), or "manual" for a direct OffsiteSend/OffsiteRecall
+	// call with no mode attribution.
+	Mode        string      `json:"mode"`
+	RequestedAt time.Time   `json:"requested_at"`
+	DueAt       time.Time   `json:"due_at,omitempty"`
+	Urgent      bool        `json:"urgent,omitempty"`
+	Origin      *ElementRef `json:"origin,omitempty"`
+	// RequestID is non-empty iff Status is PendingPickup or PendingReturn
+	// and this record still belongs to an open, cancelable batch request
+	// (see internal/offsite's Engine.RequestPickupBatch/RequestReturnBatch
+	// and CancelOffsiteRequest below) - cleared once the record resolves,
+	// whether by completing (CompleteOffsitePickup) or by being cancelled.
+	// Multiple volumes can share one RequestID (one batch, several
+	// barcodes); a volume can only ever carry one active OffsiteInfo at a
+	// time, so this is never ambiguous per volume.
+	RequestID string `json:"request_id,omitempty"`
+}
+
+// OffsiteMeta lets a mode-attributed send/recall (OffsiteSendMode/
+// OffsiteRecallMode) record which mode initiated it, without changing
+// OffsiteSend/OffsiteRecall's own signatures - those two are called
+// directly today by gotochangerctl, gotochanger-changer, and every
+// existing test, and keep working unmodified with an implicit
+// OffsiteMeta{Mode: "manual"}.
+type OffsiteMeta struct {
+	Mode string
 }
 
 // MAMAttributes is Library.SetDriveVolumeMAMAttributes' own input: the

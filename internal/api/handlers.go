@@ -161,6 +161,7 @@ func (s *Server) handleOffsiteSend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusFor(err), err)
 		return
 	}
+	s.recordManualOffsiteMovement(r, vol.Barcode, "sent_offsite", string(library.OffsiteStatusVaulted))
 	writeJSON(w, http.StatusOK, vol)
 }
 
@@ -185,6 +186,7 @@ func (s *Server) handleOffsiteRecall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusFor(err), err)
 		return
 	}
+	s.recordManualOffsiteMovement(r, req.Barcode, "returned_onsite", "")
 	writeJSON(w, http.StatusOK, s.lib.Status())
 }
 

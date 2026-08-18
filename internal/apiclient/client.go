@@ -671,6 +671,32 @@ func (c *Client) OffsiteRecall(barcode, toKind string, toAddr int) error {
 	}, nil)
 }
 
+// OffsiteRequestInfo mirrors internal/api's offsiteRequestView JSON shape
+// without importing internal/api (this package must not depend on it -
+// internal/api depends on this package's sibling internal/library, not
+// the other way around).
+type OffsiteRequestInfo struct {
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	Mode        string     `json:"mode"`
+	Barcodes    []string   `json:"barcodes"`
+	Urgent      bool       `json:"urgent,omitempty"`
+	Status      string     `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Actor       string     `json:"actor,omitempty"`
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+}
+
+func (c *Client) ListOffsiteRequests() ([]OffsiteRequestInfo, error) {
+	var reqs []OffsiteRequestInfo
+	err := c.do(http.MethodGet, "/api/v1/offsite/requests", nil, &reqs)
+	return reqs, err
+}
+
+func (c *Client) CancelOffsiteRequest(id string) error {
+	return c.do(http.MethodDelete, "/api/v1/offsite/requests/"+id, nil, nil)
+}
+
 // ---- wizard ----
 
 // KernelModeStatusInfo mirrors api.KernelModeStatus without importing the
